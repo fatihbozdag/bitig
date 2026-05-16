@@ -57,6 +57,10 @@ from bitig.recipes import (
 EvidenceRole = Literal["questioned", "known", "control"]
 _ROLES: tuple[EvidenceRole, ...] = ("questioned", "known", "control")
 
+DEFAULT_CASES_DIR: Path = Path.home() / ".bitig" / "cases"
+"""Default cases root (spec §9 open-followup). Override per-invocation with the
+``--cases-dir`` CLI flag or by passing an explicit root to ``Case.create``."""
+
 _CASE_JSON = "case.json"
 _STUDY_YAML = "study.yaml"
 _EVIDENCE_DIR = "evidence"
@@ -623,6 +627,59 @@ class Case:
 # ---------------------------------------------------------------------------
 
 
+def fork_case(
+    src_dir: Path,
+    new_id: str,
+    *,
+    cases_root: Path | None = None,
+    title: str | None = None,
+    examiner: str | None = None,
+) -> Case:
+    """Clone an existing Case into an unsigned descendant (spec §6).
+
+    Evidence files and the control-corpus reference carry over, as do the
+    recipe and overrides. Runs, report draft, and the signed state do not.
+    The new Case is created under ``cases_root`` (defaults to the parent of
+    ``src_dir``, mirroring the source layout) and is freshly hashed.
+
+    Raises :class:`CaseError` if the destination already exists.
+    """
+    source = Case.load(src_dir)
+    if cases_root is None:
+        cases_root = source.root.parent
+
+    forked = Case.create(
+        cases_root,
+        id=new_id,
+        title=title if title is not None else f"{source.record.title} (fork of {source.record.id})",
+        examiner=examiner if examiner is not None else source.record.examiner,
+        recipe=source.record.recipe,
+        overrides=dict(source.record.overrides),
+    )
+
+    for entry in source.record.evidence.questioned:
+        forked.add_evidence(
+            source.root / entry.path,
+            role="questioned",
+            author=entry.author,
+            year=entry.year,
+            dest_name=Path(entry.path).name,
+        )
+    for entry in source.record.evidence.known:
+        forked.add_evidence(
+            source.root / entry.path,
+            role="known",
+            author=entry.author,
+            year=entry.year,
+            dest_name=Path(entry.path).name,
+        )
+    if source.record.evidence.control is not None:
+        c = source.record.evidence.control
+        forked.set_control_corpus(c.corpus_id, n_docs=c.n_docs)
+
+    return forked
+
+
 def list_cases(root: Path) -> list[Case]:
     """Return every Case under ``root`` (one level deep).
 
@@ -644,6 +701,7 @@ def list_cases(root: Path) -> list[Case]:
 
 
 __all__ = [
+    "DEFAULT_CASES_DIR",
     "Case",
     "CaseError",
     "CaseEvidence",
@@ -653,6 +711,7 @@ __all__ = [
     "EvidenceRole",
     "compute_corpus_hash",
     "derive_mode",  # re-export for callers that already import from cases
+    "fork_case",
     "hash_file",
     "hash_text",
     "list_cases",

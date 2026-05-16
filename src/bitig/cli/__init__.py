@@ -8,6 +8,7 @@ from rich.console import Console
 from bitig._version import __version__
 from bitig.cli.bayesian_cmd import bayesian_command
 from bitig.cli.cache_cmd import cache_app
+from bitig.cli.case_cmd import case_app
 from bitig.cli.classify_cmd import classify_command
 from bitig.cli.cluster_cmd import cluster_command
 from bitig.cli.consensus_cmd import consensus_command
@@ -51,6 +52,7 @@ app.command(name="plot")(plot_command)
 app.command(name="shell")(shell_command)
 app.command(name="gui")(gui_command)
 app.add_typer(cache_app, name="cache")
+app.add_typer(case_app, name="case")
 
 
 def _version_callback(value: bool) -> None:
