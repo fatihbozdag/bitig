@@ -332,3 +332,41 @@ def test_case_sign_override_signed_by(tmp_path: Path) -> None:
 def test_case_sign_unknown_case_errors(tmp_path: Path) -> None:
     result = runner.invoke(app, ["case", "sign", "ghost", "--cases-dir", str(tmp_path / "cases")])
     assert result.exit_code != 0
+
+
+def test_case_sign_hmac_plugin_wraps_signature(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BITIG_SIGNATURE_KEY", "test-key-cli")
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "hmac1")
+
+    result = runner.invoke(
+        app,
+        [
+            "case",
+            "sign",
+            "hmac1",
+            "--signature-plugin",
+            "hmac",
+            "--cases-dir",
+            str(cases_dir),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "signature plugin: hmac" in result.output
+    assert "HMAC-SHA256" in result.output
+
+    payload = json.loads(
+        (cases_dir / "hmac1" / "report" / "signed.json").read_text(encoding="utf-8")
+    )
+    assert payload["signature"]["algorithm"] == "HMAC-SHA256"
+
+
+def test_case_sign_unknown_plugin_errors(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "p")
+    result = runner.invoke(
+        app,
+        ["case", "sign", "p", "--signature-plugin", "totally-fake", "--cases-dir", str(cases_dir)],
+    )
+    assert result.exit_code != 0
+    assert "Unknown signature plugin" in result.output

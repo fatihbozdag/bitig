@@ -183,6 +183,7 @@ class CaseRecord:
     signed: bool = False
     signed_at: str | None = None
     signed_by: str | None = None
+    signature_plugin_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -201,6 +202,7 @@ class CaseRecord:
             "signed": self.signed,
             "signed_at": self.signed_at,
             "signed_by": self.signed_by,
+            "signature_plugin_id": self.signature_plugin_id,
         }
 
     @classmethod
@@ -221,6 +223,7 @@ class CaseRecord:
             signed=bool(data.get("signed", False)),
             signed_at=data.get("signed_at"),
             signed_by=data.get("signed_by"),
+            signature_plugin_id=data.get("signature_plugin_id"),
         )
 
 
@@ -577,39 +580,60 @@ class Case:
     def is_signed(self) -> bool:
         return self.record.signed
 
-    def mark_signed(self, *, signed_by: str | None = None) -> dict[str, Any]:
+    def mark_signed(
+        self,
+        *,
+        signed_by: str | None = None,
+        signature_plugin: Any = None,
+    ) -> dict[str, Any]:
         """Freeze the Case and write ``report/signed.json`` (spec §6).
 
-        Returns the ``signed.json`` payload as a dict. Raises if already
-        signed — the GUI's `bitig case fork` produces a fresh unsigned
-        descendant for iteration.
+        ``signature_plugin`` is an optional :class:`~bitig.signatures
+        .SignaturePlugin` that wraps the base chain-of-custody payload
+        with an additional cryptographic binding (e.g. an HMAC or an
+        HSM-backed signature). The default (``None``) keeps the
+        chain-of-custody-only behaviour.
+
+        Returns the (possibly plugin-augmented) ``signed.json`` payload
+        as a dict. Raises :class:`CaseError` if the Case is already
+        signed — `bitig case fork` produces a fresh unsigned descendant.
         """
+        # Lazy import so bitig.cases stays importable without the new
+        # signatures module (e.g. minimal embedded use).
+        from bitig.signatures import DEFAULT_SIGNATURE_PLUGIN
+
         if self.record.signed:
             raise CaseError("Case is already signed.")
+
+        plugin = signature_plugin if signature_plugin is not None else DEFAULT_SIGNATURE_PLUGIN
 
         signed_at = _utcnow_iso()
         signed_by = signed_by or self.record.examiner
 
-        payload = {
+        payload: dict[str, Any] = {
             "signed_at": signed_at,
             "signed_by": signed_by,
             "case_state_hash": self._case_state_hash(),
             "report_html_hash": self._report_html_hash(),
             "bitig_version": __version__,
+            "signature_plugin_id": plugin.id,
         }
+        signed_payload = plugin.sign(payload, case=self)
+
         self.report_dir.mkdir(parents=True, exist_ok=True)
         (self.report_dir / _REPORT_SIGNED).write_text(
-            json.dumps(payload, indent=2), encoding="utf-8"
+            json.dumps(signed_payload, indent=2), encoding="utf-8"
         )
 
         self.record.signed = True
         self.record.signed_at = signed_at
         self.record.signed_by = signed_by
+        self.record.signature_plugin_id = plugin.id
         # save() also refreshes study_hash + corpus_hash; we want those
         # values captured at signing time, so re-save after the payload
         # writes (so the payload's case_state_hash reflects pre-sign state).
         self.save()
-        return payload
+        return signed_payload
 
     # -- internals ----------------------------------------------------------
 

@@ -22,6 +22,7 @@ from bitig.cases import (
     list_cases,
 )
 from bitig.recipes import RECIPES
+from bitig.signatures import SIGNATURE_PLUGINS, get_signature_plugin
 
 console = Console()
 
@@ -275,6 +276,15 @@ def case_sign(
     signed_by: str | None = typer.Option(
         None, "--signed-by", help="Override signer name (default: case examiner)."
     ),
+    signature_plugin: str | None = typer.Option(
+        None,
+        "--signature-plugin",
+        help=(
+            "Optional cryptographic signature plugin to wrap signed.json. "
+            f"Available: {', '.join(sorted(SIGNATURE_PLUGINS))}. "
+            "Default is chain-of-custody only (no cryptographic signature)."
+        ),
+    ),
     cases_dir: Path = typer.Option(  # noqa: B008
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
@@ -282,7 +292,13 @@ def case_sign(
     """Sign & lock a Case (spec §6). The Case becomes read-only after this."""
     case = _resolve_case(cases_dir, id)
     try:
-        payload = case.mark_signed(signed_by=signed_by)
+        plugin = get_signature_plugin(signature_plugin)
+    except (KeyError, ValueError) as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    try:
+        payload = case.mark_signed(signed_by=signed_by, signature_plugin=plugin)
     except CaseError as exc:
         console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -290,6 +306,12 @@ def case_sign(
         f"[green]signed[/green] {case.record.id} "
         f"at {payload['signed_at']} by {payload['signed_by']}"
     )
-    console.print(f"  case_state_hash: {payload['case_state_hash']}")
-    console.print(f"  bitig_version:   {payload['bitig_version']}")
-    console.print(f"  signed.json:     {case.report_dir / 'signed.json'}")
+    console.print(f"  signature plugin: {payload.get('signature_plugin_id', 'null')}")
+    console.print(f"  case_state_hash:  {payload['case_state_hash']}")
+    if "signature" in payload:
+        sig = payload["signature"]
+        console.print(
+            f"  signature:        {sig['algorithm']} key_fp={sig.get('key_fingerprint', '?')}"
+        )
+    console.print(f"  bitig_version:    {payload['bitig_version']}")
+    console.print(f"  signed.json:      {case.report_dir / 'signed.json'}")
