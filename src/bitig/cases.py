@@ -499,6 +499,30 @@ class Case:
         self.record.study_hash = hash_file(self.study_yaml_path)
         return self.study_yaml_path
 
+    def set_param(self, target: str, value: Any) -> None:
+        """Apply a ParamField override (spec §5.2 drawer save).
+
+        ``target`` follows :func:`bitig.recipes.apply_param_target` syntax
+        (e.g. ``"features[mfw].top_n"``). The override lives in
+        ``record.overrides`` so it survives recipe-mode re-derivation, and
+        ``study.yaml`` is regenerated against the new resolved study.
+
+        Raises :class:`CaseError` if the Case is signed.
+        """
+        from bitig.recipes import apply_param_target
+
+        self._require_unsigned("set param")
+        resolved = apply_param_target(self.resolved_study_dict(), target, value)
+
+        # Persist the override as a flat top-level patch over the recipe
+        # defaults. We strip ``corpus`` / ``name`` because those are filled
+        # in by :meth:`resolved_study_dict` from the Case itself.
+        resolved.pop("corpus", None)
+        resolved.pop("name", None)
+        self.record.overrides = resolved
+        self.regenerate_study_yaml()
+        self.save()
+
     def change_recipe(
         self,
         new_recipe: str,

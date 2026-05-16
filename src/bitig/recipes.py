@@ -341,6 +341,74 @@ def derive_mode(study: StudyConfig | dict[str, Any]) -> Mode:
     return "research"
 
 
+_BRACKET_RE = __import__("re").compile(r"^(?P<list>features|methods)\[(?P<id>[^\]]+)\]$")
+
+
+def _walk_target(study: dict[str, Any], target: str) -> tuple[dict[str, Any], str]:
+    """Walk ``target`` into ``study`` and return ``(parent, leaf_key)``.
+
+    Supports two shapes:
+    * ``seed`` — a top-level scalar; returns ``(study, "seed")``.
+    * ``features[id].field`` / ``methods[id].field`` — looks up the list
+      entry with matching ``id``, then descends into ``params`` for any
+      field outside the entry's declared slots (the same extras-collection
+      behaviour that ``FeatureConfig`` / ``MethodConfig`` use).
+
+    Raises :class:`KeyError` if the target can't be resolved (unknown
+    list id, malformed path, etc.).
+    """
+    parts = target.split(".")
+    if len(parts) == 1:
+        return study, parts[0]
+    if len(parts) != 2:
+        raise KeyError(f"unsupported ParamField target shape: {target!r}")
+
+    head, tail = parts
+    m = _BRACKET_RE.match(head)
+    if m is None:
+        raise KeyError(f"unsupported ParamField target shape: {target!r}")
+    bucket, item_id = m.group("list"), m.group("id")
+
+    items: list[dict[str, Any]] = study.get(bucket) or []
+    for entry in items:
+        if isinstance(entry, dict) and entry.get("id") == item_id:
+            # Fields outside the entry's "known" set live in ``params``;
+            # but at the recipe layer we keep everything flat (the Pydantic
+            # extras-collector folds them in on validate). Use the flat
+            # representation here so reads round-trip cleanly.
+            return entry, tail
+    raise KeyError(f"no {bucket[:-1]} with id={item_id!r} in study")
+
+
+def read_param_target(study: dict[str, Any], target: str) -> Any:
+    """Read the value at ``target`` from a resolved study dict (or None)."""
+    try:
+        parent, leaf = _walk_target(study, target)
+    except KeyError:
+        return None
+    return parent.get(leaf)
+
+
+def apply_param_target(study: dict[str, Any], target: str, value: Any) -> dict[str, Any]:
+    """Return a new study dict with ``target`` set to ``value``.
+
+    The input is not mutated. ``target`` follows the same syntax as
+    :func:`read_param_target`. Raises :class:`KeyError` if the target is
+    malformed or references an item id that isn't in ``study``.
+    """
+    out = _deepcopy_dict(study)
+    parent, leaf = _walk_target(out, target)
+    parent[leaf] = value
+    return out
+
+
+def _deepcopy_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """Cheap deep-copy specialised to recipe/study dicts (no exotic types)."""
+    import copy
+
+    return copy.deepcopy(d)
+
+
 def recipe_mode(recipe_id: str, study: StudyConfig | dict[str, Any] | None = None) -> Mode:
     """Mode for a recipe. For known recipes the declared mode wins. For
     ``"custom"`` the mode is derived from the resolved study (spec §3).
@@ -360,8 +428,10 @@ __all__ = [
     "Mode",
     "ParamField",
     "Recipe",
+    "apply_param_target",
     "derive_mode",
     "is_custom",
+    "read_param_target",
     "recipe_mode",
     "resolve_recipe",
 ]

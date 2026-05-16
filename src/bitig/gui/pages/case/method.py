@@ -9,6 +9,7 @@ from bitig.cases import Case, CaseError
 from bitig.gui.case_layout import case_shell
 from bitig.gui.pages.case._helpers import resolve_case
 from bitig.gui.state import get_state
+from bitig.gui.widgets import open_recipe_drawer
 from bitig.recipes import CUSTOM_RECIPE_ID, RECIPES, Recipe
 
 
@@ -56,13 +57,22 @@ def _recipe_tile(case: Case, recipe: Recipe) -> None:
     klass = "bitig-tile w-72" + (" selected" if selected else "")
 
     def select() -> None:
-        try:
-            case.change_recipe(recipe.id)
-        except CaseError as exc:
-            ui.notify(str(exc), type="negative")
-            return
-        ui.notify(f"recipe → {recipe.id}", type="positive")
-        ui.navigate.to(f"/case/{case.record.id}/method")  # rerender
+        # If the user clicked a tile for a *different* recipe, switch first
+        # (which resets overrides). Same-recipe click just opens the drawer
+        # so they can tweak params without nuking their existing edits.
+        if case.record.recipe != recipe.id:
+            try:
+                case.change_recipe(recipe.id)
+            except CaseError as exc:
+                ui.notify(str(exc), type="negative")
+                return
+            ui.notify(f"recipe → {recipe.id}", type="positive")
+
+        open_recipe_drawer(
+            case,
+            recipe,
+            on_save=lambda: ui.navigate.to(f"/case/{case.record.id}/method"),
+        )
 
     with ui.column().classes(klass).on("click", select):
         mode_klass = "bitig-warn" if recipe.mode == "forensic" else "bitig-info"
