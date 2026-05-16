@@ -27,6 +27,10 @@ from bitig.gui.pages.case._helpers import (
     short_hash,
 )
 from bitig.gui.state import get_state
+from bitig.report.case_report import (
+    ReportRendererError,
+    build_case_report,
+)
 
 
 @ui.page("/case/{case_id}/report")
@@ -81,18 +85,20 @@ def _sign(case: Case) -> None:
 
 
 def _export_pdf(case: Case) -> None:
-    """Stub — wires into the report renderer split (spec §7 step 6).
-
-    The renderer doesn't yet have a Case-mode-aware entry point; this
-    surfaces a clear "not yet implemented" message so analysts know the
-    polish pass owns this. The draft.html sitting on disk is still the
-    canonical artefact.
-    """
-    ui.notify(
-        "PDF export lands with the report-renderer split (spec §7 step 6). "
-        f"draft HTML lives at: {case.report_dir / 'draft.html'}",
-        type="warning",
-    )
+    """Render the Case → HTML draft → WeasyPrint PDF (spec §7 step 6)."""
+    # Always write the draft HTML first so it stays the canonical
+    # working file even if PDF export fails (missing WeasyPrint, etc.).
+    draft = build_case_report(case, format="html")
+    try:
+        pdf_path = build_case_report(case, format="pdf")
+    except ReportRendererError as exc:
+        ui.notify(
+            f"PDF export unavailable: {exc}. Draft HTML at: {draft}",
+            type="warning",
+            multi_line=True,
+        )
+        return
+    ui.notify(f"PDF exported to {pdf_path}", type="positive")
 
 
 # ---------------------------------------------------------------------------
