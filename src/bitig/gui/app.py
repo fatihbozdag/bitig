@@ -7,4 +7,4 @@ at module scope — NiceGUI forbids that when using ``@ui.page``.
 
 from __future__ import annotations
 
-from bitig.gui.pages import forensic, ingest, results, run, study  # noqa: F401
+from bitig.gui.pages import case, forensic, ingest, results, run, study  # noqa: F401

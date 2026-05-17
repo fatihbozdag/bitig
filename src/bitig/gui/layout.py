@@ -18,6 +18,9 @@ NAV = [
     ("Run", "/run", "play_arrow"),
     ("Results", "/results", "insights"),
     ("Forensic", "/forensic", "gavel"),
+    # New Forensic Lab Case workflow (spec §5). The legacy pages above
+    # remain reachable; the new flow lives under /case.
+    ("Forensic Lab →", "/case", "biotech"),
 ]
 
 

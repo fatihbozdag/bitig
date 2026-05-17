@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    max-width: 920px;
+    margin: 2em auto;
+    padding: 0 1em;
+    line-height: 1.55;
+    color: #1a1a2e;
+    background: #fafaf7;
+  }
+  h1, h2, h3 { color: #1a1a2e; font-family: Georgia, serif; }
+  h1 { border-bottom: 2px solid #C9A34A; padding-bottom: 0.2em; }
+  .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace; font-size: 0.9em; }
+  .muted { color: #555; }
+  .toolbar {
+    color: #c9d1d9; background: #0d1117;
+    padding: 0.6em 1em; margin: -2em -1em 1.5em; border-radius: 0 0 4px 4px;
+    font-family: "JetBrains Mono", monospace; font-size: 0.85em;
+  }
+  .headline-card {
+    border-left: 4px solid #C9A34A; padding: 0.8em 1.2em;
+    background: #fff; min-width: 220px; display: inline-block;
+  }
+  .headline-card .label {
+    font-family: "JetBrains Mono", monospace; font-size: 0.8em; color: #555;
+  }
+  .headline-card .value {
+    font-family: Georgia, serif; font-size: 34px; color: #1a1a2e;
+  }
+  .two-col { display: flex; gap: 2em; margin-top: 1em; }
+  .two-col > * { flex: 1; }
+  table { border-collapse: collapse; margin: 0.6em 0; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 0.3em 0.6em; text-align: left; font-size: 0.9em; }
+  th { background: #f0eee5; }
+  .figure-grid { display: flex; flex-wrap: wrap; gap: 0.8em; margin: 1em 0; }
+  .figure-grid img { max-width: 280px; border: 1px solid #ddd; }
+  .provenance {
+    font-family: "JetBrains Mono", monospace; font-size: 0.78em; color: #666;
+    margin-top: 2em; border-top: 1px solid #ccc; padding-top: 0.8em;
+  }
+  .signed { color: #2f7a2f; }
+  .draft { color: #b97400; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  {% if signed -%}
+    <span class="signed">● SIGNED</span> @ {{ signed_at }} by {{ signed_by }}
+  {%- else -%}
+    <span class="draft">▎ draft · not signed</span>
+  {%- endif %}
+  &nbsp;·&nbsp; case={{ case_id }} &nbsp;·&nbsp; mode={{ mode }}
+</div>
+
+<h1>{{ title }}</h1>
+<p class="mono muted">
+  Examiner: <strong>{{ examiner }}</strong> ·
+  Date: {{ date_iso }} ·
+  bitig {{ bitig_version }} ·
+  case hash: {{ case_state_hash[:12] }}…
+</p>
+
+{% if research_question or hypothesis %}
+<h2>Research question</h2>
+{% if research_question %}<p>{{ research_question }}</p>{% endif %}
+{% if hypothesis %}<p><strong>Hypothesis:</strong> {{ hypothesis }}</p>{% endif %}
+{% endif %}
+
+{% if headline_scalars %}
+<h2>Headline result</h2>
+<div style="display: flex; gap: 2em; align-items: flex-start;">
+  {% set primary = headline_scalars[0] %}
+  <div class="headline-card">
+    <div class="label">{{ primary.label }}</div>
+    <div class="value">{{ primary.value }}</div>
+  </div>
+  <div>
+    <h3 style="margin-top: 0;">Method context</h3>
+    <p>{{ methods_paragraph or "Result derived via the configured recipe; see the Findings step for figures and additional scalars." }}</p>
+  </div>
+</div>
+{% if headline_scalars|length > 1 %}
+<table>
+  <tr>{% for s in headline_scalars %}<th>{{ s.label }}</th>{% endfor %}</tr>
+  <tr>{% for s in headline_scalars %}<td><span class="mono">{{ s.value }}</span></td>{% endfor %}</tr>
+</table>
+{% endif %}
+{% endif %}
+
+<div class="two-col">
+  <div>
+    <h2>Methods</h2>
+    <p>{{ methods_paragraph or "(methods paragraph not provided)" }}</p>
+  </div>
+  <div>
+    <h2>Data availability &amp; citations</h2>
+    <p>{{ data_availability or "Citations and data availability wire into CITATION.cff and the registered corpora provenance; the polish pass for the report-renderer split will populate this section automatically." }}</p>
+    {% if chain_of_custody %}
+    <h3>Registered evidence</h3>
+    <table>
+      <tr><th>role</th><th>document</th><th>tokens</th></tr>
+      {% for e in chain_of_custody %}
+        {% if e.role == "control" %}
+        <tr><td>{{ e.role }}</td><td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }})</span></td><td>—</td></tr>
+        {% else %}
+        <tr><td>{{ e.role }}</td><td>{{ e.label }}</td><td>{{ e.tokens }}</td></tr>
+        {% endif %}
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+</div>
+
+{% if figures %}
+<h2>Figures</h2>
+<div class="figure-grid">
+  {% for fig in figures %}
+  <img src="{{ fig }}" alt="figure {{ loop.index }}">
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if provenance %}
+<div class="provenance">
+  corpus={{ provenance.corpus_hash[:12] }}… ·
+  feature={{ (provenance.feature_hash or "")[:12] }}{% if provenance.feature_hash %}…{% endif %} ·
+  study={{ provenance.study_hash[:12] }}… ·
+  seed={{ provenance.seed }} ·
+  bitig {{ provenance.bitig_version }} ·
+  spaCy {{ provenance.spacy_model }}
+</div>
+{% endif %}
+</body>
+</html>

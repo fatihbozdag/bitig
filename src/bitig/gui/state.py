@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from bitig.cases import DEFAULT_CASES_DIR
+
 PlotFormat = Literal["static", "interactive"]
 
 
@@ -19,6 +21,11 @@ class GuiState:
     study_path: Path | None = None
     run_dir: Path | None = None
     plot_format: PlotFormat = "static"
+    # Forensic Lab (spec §2). The GUI carries the *currently-open* Case id
+    # plus the cases-root path so deep links into a step page survive page
+    # reloads. Both default to None on a fresh GUI session.
+    current_case_id: str | None = None
+    cases_dir: Path = field(default_factory=lambda: DEFAULT_CASES_DIR)
 
 
 _STATE: GuiState | None = None

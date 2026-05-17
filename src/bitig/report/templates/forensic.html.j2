@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    max-width: 920px;
+    margin: 2em auto;
+    padding: 0 1em;
+    line-height: 1.55;
+    color: #1a1a2e;
+    background: #fafaf7;
+  }
+  h1, h2, h3 { color: #1a1a2e; font-family: Georgia, serif; }
+  h1 { border-bottom: 2px solid #C9A34A; padding-bottom: 0.2em; }
+  .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace; font-size: 0.9em; }
+  .muted { color: #555; }
+  .toolbar {
+    color: #c9d1d9; background: #0d1117;
+    padding: 0.6em 1em; margin: -2em -1em 1.5em; border-radius: 0 0 4px 4px;
+    font-family: "JetBrains Mono", monospace; font-size: 0.85em;
+  }
+  .lr-card {
+    border-left: 4px solid #C9A34A; padding: 0.8em 1.2em;
+    background: #fff; min-width: 220px; display: inline-block;
+  }
+  .lr-card .label {
+    font-family: "JetBrains Mono", monospace; font-size: 0.8em; color: #555;
+  }
+  .lr-card .value {
+    font-family: Georgia, serif; font-size: 34px; color: #1a1a2e;
+  }
+  .ladder { list-style: none; padding-left: 0; margin: 0; }
+  .ladder li { padding: 0.1em 0; color: #555; }
+  .ladder li.active { color: #C9A34A; font-weight: 600; }
+  .two-col { display: flex; gap: 2em; margin-top: 1em; }
+  .two-col > * { flex: 1; }
+  table { border-collapse: collapse; margin: 0.6em 0; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 0.3em 0.6em; text-align: left; font-size: 0.9em; }
+  th { background: #f0eee5; }
+  .figure-grid { display: flex; flex-wrap: wrap; gap: 0.8em; margin: 1em 0; }
+  .figure-grid img { max-width: 280px; border: 1px solid #ddd; }
+  .provenance {
+    font-family: "JetBrains Mono", monospace; font-size: 0.78em; color: #666;
+    margin-top: 2em; border-top: 1px solid #ccc; padding-top: 0.8em;
+  }
+  .signed { color: #2f7a2f; }
+  .draft { color: #b97400; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  {% if signed -%}
+    <span class="signed">● SIGNED</span> @ {{ signed_at }} by {{ signed_by }}
+  {%- else -%}
+    <span class="draft">▎ draft · not signed</span>
+  {%- endif %}
+  &nbsp;·&nbsp; case={{ case_id }} &nbsp;·&nbsp; mode={{ mode }}
+</div>
+
+<h1>{{ title }}</h1>
+<p class="mono muted">
+  Examiner: <strong>{{ examiner }}</strong> ·
+  Date: {{ date_iso }} ·
+  bitig {{ bitig_version }} ·
+  case hash: {{ case_state_hash[:12] }}…
+</p>
+
+{% if hypothesis_p or hypothesis_d %}
+<h2>Hypotheses</h2>
+{% if hypothesis_p %}<p><strong>H<sub>p</sub> (prosecution):</strong> {{ hypothesis_p }}</p>{% endif %}
+{% if hypothesis_d %}<p><strong>H<sub>d</sub> (defence):</strong> {{ hypothesis_d }}</p>{% endif %}
+{% endif %}
+
+{% if lr_value %}
+<h2>Likelihood ratio</h2>
+<div style="display: flex; gap: 2em; align-items: flex-start;">
+  <div class="lr-card">
+    <div class="label">LR</div>
+    <div class="value">{{ lr_value }}</div>
+  </div>
+  {% if lr_verbal_rung %}
+  <div>
+    <div class="mono muted">Verbal scale (ENFSI):</div>
+    <ul class="ladder">
+      <li class="{{ 'active' if lr_verbal_rung == 'weak support' else '' }}">  weak support (1-10)</li>
+      <li class="{{ 'active' if lr_verbal_rung == 'moderate support' else '' }}">  moderate support (10-100)</li>
+      <li class="{{ 'active' if lr_verbal_rung == 'strong support' else '' }}">  strong support (100-1000)</li>
+      <li class="{{ 'active' if lr_verbal_rung == 'very strong support' else '' }}">  very strong support (1000-10000)</li>
+      <li class="{{ 'active' if lr_verbal_rung == 'extremely strong support' else '' }}">  extremely strong support (&gt;10000)</li>
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if headline_scalars %}
+<h2>Headline scalars</h2>
+<table>
+  <tr>{% for s in headline_scalars %}<th>{{ s.label }}</th>{% endfor %}</tr>
+  <tr>{% for s in headline_scalars %}<td><span class="mono">{{ s.value }}</span></td>{% endfor %}</tr>
+</table>
+{% endif %}
+
+<div class="two-col">
+  <div>
+    <h2>Method</h2>
+    <p>{{ method_paragraph or "(method paragraph not provided)" }}</p>
+  </div>
+  <div>
+    <h2>Chain of custody</h2>
+    {% if chain_of_custody %}
+    <table>
+      <tr><th>role</th><th>document</th><th>tokens</th><th>sha256</th></tr>
+      {% for e in chain_of_custody %}
+        {% if e.role == "control" %}
+        <tr>
+          <td>{{ e.role }}</td>
+          <td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }})</span></td>
+          <td>—</td>
+          <td class="mono muted">—</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td>{{ e.role }}</td>
+          <td>{{ e.label }}</td>
+          <td>{{ e.tokens }}</td>
+          <td class="mono">{{ e.sha256[:12] }}…</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">No evidence registered yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if figures %}
+<h2>Figures</h2>
+<div class="figure-grid">
+  {% for fig in figures %}
+  <img src="{{ fig }}" alt="figure {{ loop.index }}">
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if provenance %}
+<div class="provenance">
+  corpus={{ provenance.corpus_hash[:12] }}… ·
+  feature={{ (provenance.feature_hash or "")[:12] }}{% if provenance.feature_hash %}…{% endif %} ·
+  study={{ provenance.study_hash[:12] }}… ·
+  seed={{ provenance.seed }} ·
+  bitig {{ provenance.bitig_version }} ·
+  spaCy {{ provenance.spacy_model }}
+</div>
+{% endif %}
+</body>
+</html>

@@ -25,6 +25,18 @@ def test_default_state_is_empty() -> None:
     assert s.study_path is None
     assert s.run_dir is None
     assert s.plot_format == "static"
+    # Forensic Lab additions
+    assert s.current_case_id is None
+    assert s.cases_dir.name == "cases"  # ~/.bitig/cases/
+
+
+def test_state_tracks_current_case(tmp_path: Path) -> None:
+    reset_state()
+    s = get_state()
+    s.current_case_id = "r-v-doe"
+    s.cases_dir = tmp_path / "custom-cases"
+    assert get_state().current_case_id == "r-v-doe"
+    assert get_state().cases_dir == tmp_path / "custom-cases"
 
 
 def test_state_mutation_persists_across_get(tmp_path: Path) -> None:
