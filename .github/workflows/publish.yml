@@ -1,0 +1,89 @@
+name: Publish to PyPI
+
+# Fires on every `v*.*.*` tag push and is also available via manual dispatch
+# (for republishing an existing tag after wiring up Trusted Publishing).
+#
+# Trusted Publishing setup (one-time, on the PyPI side):
+#   1. Go to https://pypi.org/manage/project/bitig/settings/publishing/
+#   2. Add a "GitHub" trusted publisher with:
+#        owner:                fatihbozdag
+#        repository name:      bitig
+#        workflow filename:    publish.yml
+#        environment (opt):    pypi
+#   3. Optionally configure the `pypi` environment under the repo's
+#      Settings → Environments to require a reviewer before deploys.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag or ref to publish (e.g. v0.2.0). Defaults to the dispatched ref.'
+        required: false
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Verify wheel metadata version matches tag
+        if: github.event_name == 'push'
+        run: |
+          tag_ref="${GITHUB_REF##*/}"
+          tag_version="${tag_ref#v}"
+          wheel_version=$(ls dist/*.whl | sed -E 's/.*bitig-([0-9.]+)-.*/\1/')
+          if [ "$tag_version" != "$wheel_version" ]; then
+            echo "::error::Tag $tag_ref does not match wheel version $wheel_version"
+            exit 1
+          fi
+          echo "tag=$tag_version wheel=$wheel_version (match)"
+
+      - name: Upload distributions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish to PyPI via Trusted Publishing
+    needs: build
+    runs-on: ubuntu-latest
+    # `pypi` is a GitHub environment — add deployment protection rules
+    # (manual approval, branch restrictions, …) under Settings → Environments.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/bitig
+    permissions:
+      # Trusted Publishing on PyPI requires this OIDC token write permission.
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          # `skip-existing` is intentionally OFF: a clobbered version is a
+          # release-process bug we want loud, not silent.
+          skip-existing: false
