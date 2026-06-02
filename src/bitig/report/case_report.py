@@ -51,27 +51,41 @@ def build_case_report(
 ) -> Path:
     """Render ``case`` into a report and return the output path.
 
-    HTML is always written to ``case.report_dir / "draft.html"`` (the
-    spec's working draft file). When ``format == "pdf"``, the same HTML
-    is rendered to a PDF at ``output_path`` (default
-    ``case.report_dir / "final.pdf"``) via WeasyPrint.
+    Once a case is sealed, its report is **frozen**: an immutable
+    ``signed.html`` snapshot is taken at sign time, and from then on this
+    function serves that snapshot verbatim — it never re-renders or rewrites
+    it, so Export-to-PDF on a signed case can never invalidate the sealed
+    ``report_html_hash`` (audit P1.7). Until that snapshot exists the report
+    is rendered fresh to ``draft.html`` (this is also the path
+    ``Case.mark_signed`` drives, with the signed banner already set). When
+    ``format == "pdf"`` the (fresh or frozen) HTML is rendered to a PDF at
+    ``output_path`` (default ``case.report_dir / "final.pdf"``) via WeasyPrint.
 
-    Raises :exc:`ReportRendererError` if WeasyPrint isn't installed when
-    a PDF is requested.
+    Raises :exc:`ReportRendererError` if WeasyPrint isn't installed when a PDF
+    is requested.
     """
-    context = _build_context(case)
-    html = _render_html(context)
-
-    draft_path = case.report_dir / "draft.html"
     case.report_dir.mkdir(parents=True, exist_ok=True)
-    draft_path.write_text(html, encoding="utf-8")
+    signed_html = case.report_dir / "signed.html"
+    draft_path = case.report_dir / "draft.html"
+
+    if signed_html.is_file():
+        # Sealed — serve the immutable snapshot verbatim, never re-render.
+        html = signed_html.read_text(encoding="utf-8")
+        report_path = signed_html
+    else:
+        context = _build_context(case)
+        html = _render_html(context)
+        draft_path.write_text(html, encoding="utf-8")
+        report_path = draft_path
 
     if format == "html":
-        return draft_path
+        return report_path
 
-    # PDF path
+    # PDF path. base_url is the CASE ROOT because _list_figure_paths emits
+    # figure src paths relative to the case root (runs/<ts>/.../fig.png), not
+    # relative to report_dir (audit P1.8).
     out_pdf = output_path if output_path is not None else case.report_dir / "final.pdf"
-    _export_pdf(html, out_pdf, base_url=case.report_dir)
+    _export_pdf(html, out_pdf, base_url=case.root)
     return out_pdf
 
 
@@ -255,13 +269,13 @@ def _list_figure_paths(case: Case) -> list[str]:
     figures: list[Path] = []
     for ext in (".png", ".svg"):
         figures.extend(sorted(run_dir.rglob(f"*{ext}")))
-    # Templates resolve <img src=...> relative to the report_dir, so we
-    # output paths *relative to that directory* (which is a sibling of
-    # runs/).
+    # Emit <img src=...> paths relative to the CASE ROOT (e.g.
+    # runs/<ts>/<method>/fig.png). build_case_report passes base_url=case.root
+    # so WeasyPrint and a browser opening the HTML both resolve them (P1.8).
     out: list[str] = []
     for fig in figures:
         try:
-            rel = fig.relative_to(case.report_dir.parent)
+            rel = fig.relative_to(case.root)
         except ValueError:
             rel = fig
         out.append(rel.as_posix() if isinstance(rel, Path) else str(rel))

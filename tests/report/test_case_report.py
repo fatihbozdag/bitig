@@ -172,6 +172,46 @@ def test_unsigned_case_toolbar_shows_draft_badge(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Frozen report + figure paths (audit P1.7, P1.8)
+# ---------------------------------------------------------------------------
+
+
+def test_build_on_signed_case_serves_frozen_snapshot(tmp_path: Path) -> None:
+    """build_case_report on a signed case returns the immutable signed.html and
+    never rewrites draft.html (audit P1.7)."""
+    case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="frozen")
+    _attach_run(case, method_name="verify", values={"lr": 5.0})
+    case.mark_signed()
+
+    signed_html = case.report_dir / "signed.html"
+    frozen_bytes = signed_html.read_bytes()
+    draft_before = (case.report_dir / "draft.html").read_bytes()
+
+    out = build_case_report(case, format="html")
+    assert out == signed_html
+    # Serving the frozen report must not mutate either artefact.
+    assert signed_html.read_bytes() == frozen_bytes
+    assert (case.report_dir / "draft.html").read_bytes() == draft_before
+    # And the seal still verifies.
+    assert case.verify_seal().ok
+
+
+def test_figure_paths_are_case_root_relative(tmp_path: Path) -> None:
+    """Figure <img src> paths resolve against the case root, matching the
+    base_url build_case_report passes to WeasyPrint (audit P1.8)."""
+    case = _seed_case(tmp_path, recipe="exploration", mode_label="figs")
+    run_id = _attach_run(case, method_name="pca", values={"explained_variance_ratio": [0.6, 0.3]})
+    fig = case.runs_dir / run_id / "pca" / "scatter.png"
+    fig.write_bytes(b"\x89PNG\r\n\x1a\n stub")
+
+    html = build_case_report(case, format="html").read_text(encoding="utf-8")
+    expected = f"runs/{run_id}/pca/scatter.png"
+    assert expected in html
+    # The path must resolve from the case root (where base_url points).
+    assert (case.root / expected).is_file()
+
+
+# ---------------------------------------------------------------------------
 # ReportContext validation
 # ---------------------------------------------------------------------------
 

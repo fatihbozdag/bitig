@@ -1,0 +1,141 @@
+<h2>Method picker: recipes or raw knobs?</h2>
+<p class="subtitle">Step 2 of a Case. A linguist with no stats background needs to choose what to do; an expert wants every knob exposed. Both shown in Forensic Lab style.</p>
+
+<div class="cards">
+
+  <!-- OPTION A: RECIPE GALLERY -->
+  <div class="card" data-choice="recipes" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0; background:#0d1117; overflow:hidden; border-radius:6px; color:#e6edf3; min-height:340px;">
+      <div style="background:#161b22; padding:8px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #30363d;">
+        <span style="font-family:'JetBrains Mono','SF Mono',monospace; font-weight:700; color:#C9A34A; font-size:12px;">▎R v. Doe</span>
+        <span style="color:#7d8590; font-size:9px; font-family:'JetBrains Mono',monospace;">step 2 of 5 · method</span>
+      </div>
+      <!-- stepper -->
+      <div style="display:flex; gap:0; border-bottom:1px solid #30363d; background:#0d1117; font-size:10px;">
+        <div style="padding:5px 10px; color:#3fb950; font-family:system-ui;">1 · Evidence ✓</div>
+        <div style="padding:5px 10px; border-bottom:2px solid #C9A34A; color:#C9A34A; font-weight:600;">2 · Method</div>
+        <div style="padding:5px 10px; color:#7d8590;">3 · Run</div>
+        <div style="padding:5px 10px; color:#7d8590;">4 · Findings</div>
+        <div style="padding:5px 10px; color:#7d8590;">5 · Report</div>
+      </div>
+      <div style="padding:14px; font-family:system-ui;">
+        <div style="font-family:'JetBrains Mono',monospace; color:#7d8590; font-size:9px; letter-spacing:1px; margin-bottom:8px;">// WHAT ARE YOU TRYING TO ANSWER?</div>
+        <!-- recipe grid -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div style="border:1px solid #30363d; border-left:3px solid #C9A34A; background:#161b22; padding:8px 10px; border-radius:3px;">
+            <div style="font-size:11px; font-weight:600; margin-bottom:2px;">⚖ Did <em>this person</em> write this?</div>
+            <div style="font-size:9px; color:#7d8590; line-height:1.4;">One candidate vs everyone else. General Impostors verification + LR + calibration.</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8px; color:#3fb950; margin-top:4px;">forensic · evidential</div>
+          </div>
+          <div style="border:1px solid #30363d; background:#161b22; padding:8px 10px; border-radius:3px;">
+            <div style="font-size:11px; font-weight:600; margin-bottom:2px;">👥 Which author, out of N?</div>
+            <div style="font-size:9px; color:#7d8590; line-height:1.4;">Burrows / Eder / Cosine Delta against known-author corpora.</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8px; color:#1f6feb; margin-top:4px;">attribution</div>
+          </div>
+          <div style="border:1px solid #30363d; background:#161b22; padding:8px 10px; border-radius:3px;">
+            <div style="font-size:11px; font-weight:600; margin-bottom:2px;">🗺 How is this corpus structured?</div>
+            <div style="font-size:9px; color:#7d8590; line-height:1.4;">PCA, UMAP, hierarchical cluster — unsupervised mapping.</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8px; color:#1f6feb; margin-top:4px;">exploration</div>
+          </div>
+          <div style="border:1px solid #30363d; background:#161b22; padding:8px 10px; border-radius:3px;">
+            <div style="font-size:11px; font-weight:600; margin-bottom:2px;">📊 What distinguishes group A from B?</div>
+            <div style="font-size:9px; color:#7d8590; line-height:1.4;">Craig / Eder Zeta — distinctive-words contrast.</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8px; color:#1f6feb; margin-top:4px;">contrast</div>
+          </div>
+          <div style="border:1px solid #30363d; background:#161b22; padding:8px 10px; border-radius:3px;">
+            <div style="font-size:11px; font-weight:600; margin-bottom:2px;">📈 Bayesian author posterior</div>
+            <div style="font-size:9px; color:#7d8590; line-height:1.4;">Wallace-Mosteller hierarchical posterior across authors.</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8px; color:#d29922; margin-top:4px;">bayesian</div>
+          </div>
+          <div style="border:1px dashed #30363d; background:#0d1117; padding:8px 10px; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#7d8590; font-family:'JetBrains Mono',monospace; font-size:10px;">
+            ⚙ Custom (raw YAML)
+          </div>
+        </div>
+        <div style="margin-top:10px; font-size:9px; color:#7d8590; font-family:'JetBrains Mono',monospace;">// pick one → open params drawer → live YAML preview</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Recipe gallery (recommended)</h3>
+      <p>Six plain-language goals, each backed by a curated method + feature combo + sensible defaults. Click a recipe → a side drawer opens with just the params that matter, plus a live <code>study.yaml</code> preview. Power users still get full control via the <strong>Custom</strong> tile, which is the existing one-screen form. Maps to user intent, not to Delta-vs-Zeta jargon.</p>
+    </div>
+  </div>
+
+  <!-- OPTION B: TWO-PANEL BROWSE -->
+  <div class="card" data-choice="twopanel" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0; background:#0d1117; overflow:hidden; border-radius:6px; color:#e6edf3; min-height:340px;">
+      <div style="background:#161b22; padding:8px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #30363d;">
+        <span style="font-family:'JetBrains Mono','SF Mono',monospace; font-weight:700; color:#C9A34A; font-size:12px;">▎R v. Doe</span>
+        <span style="color:#7d8590; font-size:9px; font-family:'JetBrains Mono',monospace;">step 2 of 5 · method</span>
+      </div>
+      <div style="display:flex; gap:0; border-bottom:1px solid #30363d; background:#0d1117; font-size:10px;">
+        <div style="padding:5px 10px; color:#3fb950; font-family:system-ui;">1 · Evidence ✓</div>
+        <div style="padding:5px 10px; border-bottom:2px solid #C9A34A; color:#C9A34A; font-weight:600;">2 · Method</div>
+        <div style="padding:5px 10px; color:#7d8590;">3 · Run</div>
+        <div style="padding:5px 10px; color:#7d8590;">4 · Findings</div>
+        <div style="padding:5px 10px; color:#7d8590;">5 · Report</div>
+      </div>
+      <div style="display:flex; height:280px; font-family:system-ui;">
+        <!-- methods list -->
+        <div style="width:140px; background:#0d1117; padding:8px 6px; font-size:10px; color:#e6edf3; border-right:1px solid #30363d;">
+          <div style="font-family:'JetBrains Mono',monospace; color:#7d8590; font-size:9px; letter-spacing:1px; padding:3px 6px; margin-bottom:4px;">METHOD</div>
+          <div style="padding:4px 6px; background:#1f6feb22; border-left:2px solid #C9A34A; margin-bottom:1px;">Delta · Burrows</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Delta · Cosine</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Delta · Argamon</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Delta · Eder</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Zeta · Classic</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Zeta · Eder</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">PCA</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">UMAP</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">t-SNE / MDS</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Hier. cluster</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">k-means · HDBSCAN</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Bootstrap consensus</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Classify · logreg</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">Bayesian</div>
+          <div style="padding:4px 6px; color:#c9d1d9; margin-bottom:1px;">GI Imposters</div>
+          <div style="padding:4px 6px; color:#c9d1d9;">Unmasking</div>
+        </div>
+        <!-- params panel -->
+        <div style="flex:1; padding:10px 12px;">
+          <div style="font-size:11px; font-weight:600; margin-bottom:6px;">Burrows Delta</div>
+          <div style="font-size:9px; color:#7d8590; margin-bottom:8px; line-height:1.4;">Classic nearest-author-centroid distance over MFW.</div>
+          <div style="font-size:9px; color:#7d8590; margin-bottom:2px;">Feature</div>
+          <div style="background:#161b22; border:1px solid #30363d; padding:4px 6px; font-size:10px; border-radius:2px; margin-bottom:6px;">MFW ▾</div>
+          <div style="font-size:9px; color:#7d8590; margin-bottom:2px;">top-n words</div>
+          <div style="background:#161b22; border:1px solid #30363d; padding:4px 6px; font-size:10px; border-radius:2px; margin-bottom:6px; font-family:'JetBrains Mono',monospace;">200</div>
+          <div style="font-size:9px; color:#7d8590; margin-bottom:2px;">group_by</div>
+          <div style="background:#161b22; border:1px solid #30363d; padding:4px 6px; font-size:10px; border-radius:2px; margin-bottom:6px; font-family:'JetBrains Mono',monospace;">author</div>
+        </div>
+        <!-- live YAML preview -->
+        <div style="width:140px; background:#010409; padding:8px 8px; font-family:'JetBrains Mono',monospace; font-size:8px; color:#7d8590; border-left:1px solid #30363d;">
+          <div style="color:#C9A34A; margin-bottom:4px;">study.yaml</div>
+          <div>seed: 42</div>
+          <div>features:</div>
+          <div>&nbsp;- id: mfw</div>
+          <div>&nbsp;&nbsp;type: mfw</div>
+          <div>&nbsp;&nbsp;params:</div>
+          <div>&nbsp;&nbsp;&nbsp;n: 200</div>
+          <div>methods:</div>
+          <div>&nbsp;- id: delta_1</div>
+          <div>&nbsp;&nbsp;kind: delta</div>
+          <div>&nbsp;&nbsp;params:</div>
+          <div>&nbsp;&nbsp;&nbsp;variant:</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;burrows</div>
+          <div>&nbsp;&nbsp;features:</div>
+          <div>&nbsp;&nbsp;&nbsp;mfw</div>
+          <div>&nbsp;&nbsp;group_by:</div>
+          <div>&nbsp;&nbsp;&nbsp;author</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Two-panel browse</h3>
+      <p>Full method roster on the left, params in the middle, live YAML on the right. Honest exposure of all 16+ method variants. Faster for users who already know what they want; harder for a humanities researcher who's never heard of "Burrows" or "Argamon L2."</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <p class="subtitle">A hybrid is natural: <strong>Recipes by default</strong>, with a "<em>show all methods</em>" toggle that reveals the B layout for power users. Tell me in the terminal if that's preferred.</p>
+</div>

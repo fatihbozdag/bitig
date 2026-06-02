@@ -218,6 +218,17 @@ def case_status(
         f"  runs:      {len(r.runs)}" + (f" (latest={r.latest_run})" if r.latest_run else "")
     )
 
+    if r.signed:
+        # Warn if the sealed state can no longer be reproduced (audit P1.1).
+        seal = case.verify_seal()
+        broken = [c for c in seal.checks if not c.ok and c.name != "signature"]
+        if broken:
+            console.print(
+                "  [red]⚠ seal cannot be reproduced — run `bitig case verify` for detail:[/red]"
+            )
+            for c in broken:
+                console.print(f"    [red]✗ {c.name}: {c.detail}[/red]")
+
     if verify:
         mismatches = case.verify_custody()
         if mismatches:
@@ -315,3 +326,44 @@ def case_sign(
         )
     console.print(f"  bitig_version:    {payload['bitig_version']}")
     console.print(f"  signed.json:      {case.report_dir / 'signed.json'}")
+
+
+# ---------------------------------------------------------------------------
+# verify
+# ---------------------------------------------------------------------------
+
+
+@case_app.command("verify")
+def case_verify(
+    id: str = typer.Argument(..., help="Case id to verify."),
+    key: str | None = typer.Option(
+        None,
+        "--key",
+        help="Signature key for cryptographic plugins (HMAC). Falls back to $BITIG_SIGNATURE_KEY.",
+    ),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Verify a signed Case's chain-of-custody seal (audit P1.1).
+
+    Recomputes every sealed quantity from disk and compares it to signed.json.
+    Exit codes: 0 = seal intact, 1 = case is not signed (nothing to verify),
+    2 = seal broken (tamper / mismatch). Scriptable in CI.
+    """
+    case = _resolve_case(cases_dir, id)
+    result = case.verify_seal(signature_key=key)
+
+    if not result.signed:
+        console.print(f"[yellow]{id} is not signed — nothing to verify.[/yellow]")
+        raise typer.Exit(code=1)
+
+    for c in result.checks:
+        mark = "[green]✓[/green]" if c.ok else "[red]✗[/red]"
+        console.print(f"  {mark} {c.name}: {c.detail}")
+
+    if result.ok:
+        console.print(f"[green]seal verified[/green] — {case.record.id} is intact")
+    else:
+        console.print(f"[red]SEAL BROKEN[/red] — {case.record.id} failed verification")
+        raise typer.Exit(code=2)

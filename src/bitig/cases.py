@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -69,6 +70,7 @@ _RUNS_LATEST = "latest"
 _REPORT_DIR = "report"
 _REPORT_DRAFT = "draft.html"
 _REPORT_SIGNED = "signed.json"
+_REPORT_SIGNED_HTML = "signed.html"  # immutable snapshot of the report at sign time
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +245,40 @@ def hash_file(path: Path, *, chunk_size: int = 65536) -> str:
 
 def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _short_hash(h: str | None, n: int = 12) -> str:
+    return f"{h[:n]}…" if h else "—"
+
+
+# ---------------------------------------------------------------------------
+# Seal verification result (audit P1.1)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SealCheck:
+    """One line of a :class:`SealVerification` — a single integrity check."""
+
+    name: str
+    ok: bool
+    detail: str
+
+
+@dataclass(frozen=True)
+class SealVerification:
+    """Result of :meth:`Case.verify_seal`.
+
+    ``signed`` is False for an unsigned case (nothing to verify). ``ok`` is
+    True only when the case is signed and *every* check passed.
+    """
+
+    signed: bool
+    checks: list[SealCheck]
+
+    @property
+    def ok(self) -> bool:
+        return self.signed and all(c.ok for c in self.checks)
 
 
 def _count_tokens(path: Path) -> int:
@@ -606,33 +642,68 @@ class Case:
             raise CaseError("Case is already signed.")
 
         plugin = signature_plugin if signature_plugin is not None else DEFAULT_SIGNATURE_PLUGIN
-
         signed_at = _utcnow_iso()
         signed_by = signed_by or self.record.examiner
 
-        payload: dict[str, Any] = {
-            "signed_at": signed_at,
-            "signed_by": signed_by,
-            "case_state_hash": self._case_state_hash(),
-            "report_html_hash": self._report_html_hash(),
-            "bitig_version": __version__,
-            "signature_plugin_id": plugin.id,
-        }
-        signed_payload = plugin.sign(payload, case=self)
-
-        self.report_dir.mkdir(parents=True, exist_ok=True)
-        (self.report_dir / _REPORT_SIGNED).write_text(
-            json.dumps(signed_payload, indent=2), encoding="utf-8"
+        # Set the signing state BEFORE rendering so the sealed report shows the
+        # SIGNED banner + signer/timestamp (the document that gets sealed must
+        # reflect that it is signed). save() persists it; on any failure below
+        # we roll the record back so a half-signed state can't be left behind.
+        prev = (
+            self.record.signed,
+            self.record.signed_at,
+            self.record.signed_by,
+            self.record.signature_plugin_id,
         )
-
         self.record.signed = True
         self.record.signed_at = signed_at
         self.record.signed_by = signed_by
         self.record.signature_plugin_id = plugin.id
-        # save() also refreshes study_hash + corpus_hash; we want those
-        # values captured at signing time, so re-save after the payload
-        # writes (so the payload's case_state_hash reflects pre-sign state).
         self.save()
+
+        try:
+            # Render the final (signed-context) report and freeze it as an
+            # immutable signed.html. Export-to-PDF and any later render serve
+            # this frozen copy, so the locked artefact can never be silently
+            # rewritten out from under its sealed hash (audit P1.5, P1.7).
+            # Lazy import: bitig.report imports bitig.cases, so importing it at
+            # module scope would cycle — but at call time the cycle is resolved.
+            from bitig.report.case_report import build_case_report
+
+            build_case_report(self, format="html")  # writes draft.html (signed banner)
+            draft = self.report_dir / _REPORT_DRAFT
+            if not draft.is_file():  # pragma: no cover - renderer always writes it
+                raise CaseError("Report rendering produced no draft.html; cannot seal.")
+            shutil.copy2(draft, self.report_dir / _REPORT_SIGNED_HTML)
+
+            # case_state_hash is sign-invariant (see _case_state_hash) so it is
+            # reproducible after the save() above. report_html_hash binds the
+            # frozen report as a SEPARATE sealed field — folding it into
+            # case_state_hash would be circular, since the report footer
+            # displays case_state_hash itself. verify_seal() checks both.
+            payload: dict[str, Any] = {
+                "signed_at": signed_at,
+                "signed_by": signed_by,
+                "case_state_hash": self._case_state_hash(),
+                "report_html_hash": self._report_html_hash(),
+                "bitig_version": __version__,
+                "signature_plugin_id": plugin.id,
+            }
+            signed_payload = plugin.sign(payload, case=self)
+            (self.report_dir / _REPORT_SIGNED).write_text(
+                json.dumps(signed_payload, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            # Roll back so the case is not left in a half-signed state.
+            (
+                self.record.signed,
+                self.record.signed_at,
+                self.record.signed_by,
+                self.record.signature_plugin_id,
+            ) = prev
+            self.save()
+            raise
+
         return signed_payload
 
     # -- internals ----------------------------------------------------------
@@ -641,25 +712,192 @@ class Case:
         if self.record.signed:
             raise CaseError(f"Case is signed; cannot {action}. Fork it for further work.")
 
+    def _canonical_state(self) -> dict[str, Any]:
+        """Sign-invariant projection of the case — the chain-of-custody anchor.
+
+        Deliberately EXCLUDES the signing fields (signed / signed_at /
+        signed_by / signature_plugin_id) and the mutable run bookkeeping
+        (runs / latest_run), so this projection — and therefore
+        :meth:`_case_state_hash` — is byte-identical before and after
+        ``mark_signed``'s own ``save()``. That is what makes the sealed
+        ``case_state_hash`` reproducible on a reloaded signed case (audit P0.1).
+
+        It also excludes the report hash: the report is bound separately via
+        ``signed.json``'s ``report_html_hash`` field, because the rendered
+        report footer *displays* ``case_state_hash`` and folding the report
+        hash in here would be circular.
+
+        It covers everything that defines *what was analysed*: identity,
+        examiner, recipe + overrides, the resolved ``study.yaml``, and every
+        evidence file's registered hash. Tampering with any of these changes
+        the hash.
+        """
+        r = self.record
+        evidence = [
+            {
+                "role": e.role,
+                "path": e.path,
+                "sha256": e.sha256,
+                "tokens": e.tokens,
+                "author": e.author,
+                "year": e.year,
+            }
+            for e in sorted(r.evidence.all_files(), key=lambda e: (e.role, e.path))
+        ]
+        control = (
+            {"corpus_id": r.evidence.control.corpus_id, "n_docs": r.evidence.control.n_docs}
+            if r.evidence.control is not None
+            else None
+        )
+        return {
+            "schema": 1,
+            "id": r.id,
+            "title": r.title,
+            "examiner": r.examiner,
+            "created_at": r.created_at,
+            "recipe": r.recipe,
+            "mode": r.mode,
+            "overrides": r.overrides,
+            "study_yaml_sha256": (
+                hash_file(self.study_yaml_path) if self.study_yaml_path.is_file() else None
+            ),
+            "evidence": evidence,
+            "control": control,
+        }
+
     def _case_state_hash(self) -> str:
-        """SHA-256 over case.json + study.yaml + sorted file hashes (spec §6)."""
-        parts: list[str] = []
-        if self.case_json_path.is_file():
-            parts.append("case.json:" + hash_file(self.case_json_path))
-        if self.study_yaml_path.is_file():
-            parts.append("study.yaml:" + hash_file(self.study_yaml_path))
-        for entry in sorted(self.record.evidence.all_files(), key=lambda e: e.path):
-            parts.append(f"{entry.path}:{entry.sha256}")
-        if self.record.evidence.control is not None:
-            c = self.record.evidence.control
-            parts.append(f"control:{c.corpus_id}:{c.n_docs}")
-        return hash_text("\n".join(parts))
+        """SHA-256 over the sign-invariant canonical state (spec §6, audit P0.1).
+
+        Stable across ``mark_signed``'s own ``save()`` — recomputing on a
+        reloaded signed case yields the identical hash, so ``signed.json`` is
+        independently verifiable (see :meth:`verify_seal`).
+        """
+        canonical = json.dumps(self._canonical_state(), sort_keys=True, ensure_ascii=False)
+        return hash_text(canonical)
 
     def _report_html_hash(self) -> str | None:
+        """Hash of the report of record.
+
+        For a signed case this is the immutable ``signed.html`` snapshot; for
+        an unsigned case it is the working ``draft.html``. Returns ``None``
+        when no report has been rendered yet.
+        """
+        signed_html = self.report_dir / _REPORT_SIGNED_HTML
+        if signed_html.is_file():
+            return hash_file(signed_html)
         draft = self.report_dir / _REPORT_DRAFT
         if draft.is_file():
             return hash_file(draft)
         return None
+
+    def verify_seal(self, *, signature_key: bytes | str | None = None) -> SealVerification:
+        """Independently verify a signed case's chain-of-custody seal (audit P1.1).
+
+        Recomputes every sealed quantity from the current on-disk state and
+        compares it to ``report/signed.json``: the canonical state hash, the
+        report hash, evidence custody, and — when a non-Null signature plugin
+        was used — the cryptographic signature (HMAC needs ``signature_key`` or
+        ``$BITIG_SIGNATURE_KEY``). Returns a structured result; the overall
+        ``.ok`` is True only if *every* check passes. Pure read-only.
+        """
+        from bitig.signatures import verify_hmac_signature
+
+        if not self.record.signed:
+            return SealVerification(
+                signed=False,
+                checks=[SealCheck("signed", False, "Case is not signed; nothing to verify.")],
+            )
+
+        signed_path = self.report_dir / _REPORT_SIGNED
+        if not signed_path.is_file():
+            return SealVerification(
+                signed=True,
+                checks=[
+                    SealCheck("signed_json", False, f"signed=true but {_REPORT_SIGNED} is missing")
+                ],
+            )
+        try:
+            payload = json.loads(signed_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return SealVerification(
+                signed=True,
+                checks=[SealCheck("signed_json", False, f"cannot read {_REPORT_SIGNED}: {exc}")],
+            )
+
+        checks: list[SealCheck] = []
+
+        recomputed = self._case_state_hash()
+        sealed = payload.get("case_state_hash")
+        checks.append(
+            SealCheck(
+                "case_state_hash",
+                recomputed == sealed,
+                "matches sealed value"
+                if recomputed == sealed
+                else f"MISMATCH sealed={_short_hash(sealed)} recomputed={_short_hash(recomputed)}",
+            )
+        )
+
+        rep = self._report_html_hash()
+        sealed_rep = payload.get("report_html_hash")
+        checks.append(
+            SealCheck(
+                "report_html_hash",
+                rep == sealed_rep,
+                "report matches sealed value"
+                if rep == sealed_rep
+                else f"MISMATCH sealed={_short_hash(sealed_rep)} recomputed={_short_hash(rep)}",
+            )
+        )
+
+        mismatches = self.verify_custody()
+        checks.append(
+            SealCheck(
+                "evidence_custody",
+                not mismatches,
+                "all evidence files match registered hashes"
+                if not mismatches
+                else f"{len(mismatches)} file(s) altered/missing: "
+                + ", ".join(m.path for m in mismatches),
+            )
+        )
+
+        plugin_id = payload.get("signature_plugin_id", "null")
+        sig = payload.get("signature")
+        if plugin_id == "null" or sig is None:
+            checks.append(
+                SealCheck(
+                    "signature",
+                    True,
+                    "no cryptographic signature (Null plugin) — chain-of-custody hashes only",
+                )
+            )
+        elif plugin_id == "hmac":
+            key = signature_key or os.environ.get("BITIG_SIGNATURE_KEY")
+            if not key:
+                checks.append(
+                    SealCheck(
+                        "signature",
+                        False,
+                        "HMAC signature present but no key provided "
+                        "(pass signature_key= or set BITIG_SIGNATURE_KEY)",
+                    )
+                )
+            else:
+                ok = verify_hmac_signature(payload, key=key)
+                checks.append(
+                    SealCheck(
+                        "signature",
+                        ok,
+                        "HMAC signature valid"
+                        if ok
+                        else "HMAC signature INVALID (wrong key or tampered payload)",
+                    )
+                )
+        else:
+            checks.append(SealCheck("signature", False, f"unknown signature plugin {plugin_id!r}"))
+
+        return SealVerification(signed=True, checks=checks)
 
     # -- convenience --------------------------------------------------------
 
@@ -757,6 +995,8 @@ __all__ = [
     "ControlCorpusRef",
     "EvidenceEntry",
     "EvidenceRole",
+    "SealCheck",
+    "SealVerification",
     "compute_corpus_hash",
     "derive_mode",  # re-export for callers that already import from cases
     "fork_case",

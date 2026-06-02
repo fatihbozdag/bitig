@@ -57,6 +57,13 @@ def _make_text_file(path: Path, content: str = "alpha beta gamma") -> Path:
     return path
 
 
+def _stub_report(cases_dir: Path, case_id: str) -> None:
+    """Write a draft.html so `case sign` succeeds (mark_signed needs a report — audit P1.5)."""
+    report_dir = cases_dir / case_id / "report"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "draft.html").write_text("<html>stub</html>", encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # `case new`
 # ---------------------------------------------------------------------------
@@ -234,6 +241,7 @@ def test_case_fork_creates_unsigned_descendant(tmp_path: Path) -> None:
     case.add_evidence(_make_text_file(tmp_path / "q.txt", "q"), role="questioned")
     case.add_evidence(_make_text_file(tmp_path / "k.txt", "k"), role="known")
     case.set_control_corpus("BUMR", n_docs=10)
+    _stub_report(cases_dir, "source")
     case.mark_signed()
 
     result = runner.invoke(app, ["case", "fork", "source", "iter1", "--cases-dir", str(cases_dir)])
@@ -290,6 +298,7 @@ def test_case_fork_destination_exists_errors(tmp_path: Path) -> None:
 def test_case_sign_writes_signed_json_and_freezes(tmp_path: Path) -> None:
     cases_dir = tmp_path / "cases"
     _new(cases_dir, "tosign", examiner="Original Examiner")
+    _stub_report(cases_dir, "tosign")
 
     result = runner.invoke(app, ["case", "sign", "tosign", "--cases-dir", str(cases_dir)])
     assert result.exit_code == 0
@@ -309,6 +318,7 @@ def test_case_sign_writes_signed_json_and_freezes(tmp_path: Path) -> None:
 def test_case_sign_override_signed_by(tmp_path: Path) -> None:
     cases_dir = tmp_path / "cases"
     _new(cases_dir, "case1", examiner="Default Examiner")
+    _stub_report(cases_dir, "case1")
 
     result = runner.invoke(
         app,
@@ -338,6 +348,7 @@ def test_case_sign_hmac_plugin_wraps_signature(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setenv("BITIG_SIGNATURE_KEY", "test-key-cli")
     cases_dir = tmp_path / "cases"
     _new(cases_dir, "hmac1")
+    _stub_report(cases_dir, "hmac1")
 
     result = runner.invoke(
         app,
@@ -370,3 +381,41 @@ def test_case_sign_unknown_plugin_errors(tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
     assert "Unknown signature plugin" in result.output
+
+
+# ---------------------------------------------------------------------------
+# `case verify` (audit P1.1)
+# ---------------------------------------------------------------------------
+
+
+def test_case_verify_passes_for_untampered_seal(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "vok")
+    _stub_report(cases_dir, "vok")
+    assert runner.invoke(app, ["case", "sign", "vok", "--cases-dir", str(cases_dir)]).exit_code == 0
+
+    result = runner.invoke(app, ["case", "verify", "vok", "--cases-dir", str(cases_dir)])
+    assert result.exit_code == 0, result.output
+    assert "seal verified" in result.output
+
+
+def test_case_verify_exits_2_on_tamper(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "vbad")
+    _stub_report(cases_dir, "vbad")
+    runner.invoke(app, ["case", "sign", "vbad", "--cases-dir", str(cases_dir)])
+
+    # Tamper with the frozen report after signing.
+    (cases_dir / "vbad" / "report" / "signed.html").write_text("<html>forged</html>", "utf-8")
+
+    result = runner.invoke(app, ["case", "verify", "vbad", "--cases-dir", str(cases_dir)])
+    assert result.exit_code == 2
+    assert "SEAL BROKEN" in result.output
+
+
+def test_case_verify_exits_1_when_unsigned(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "uns")
+    result = runner.invoke(app, ["case", "verify", "uns", "--cases-dir", str(cases_dir)])
+    assert result.exit_code == 1
+    assert "not signed" in result.output
