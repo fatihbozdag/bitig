@@ -45,6 +45,19 @@ def text_factory(tmp_path: Path):
     return make
 
 
+def _render_stub_report(case: Case) -> None:
+    """Write a minimal report draft so the case can be signed.
+
+    mark_signed refuses to sign a case with no rendered report (audit P1.5);
+    these tests exercise signing semantics, not report rendering, so a stub
+    draft.html stands in for the real bitig.report.build_case_report output.
+    """
+    case.report_dir.mkdir(parents=True, exist_ok=True)
+    (case.report_dir / "draft.html").write_text(
+        "<html><body>stub report</body></html>", encoding="utf-8"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Directory layout + persistence
 # ---------------------------------------------------------------------------
@@ -271,6 +284,7 @@ def test_mark_signed_writes_signed_json_and_freezes_case(cases_root: Path, text_
     )
     case.add_evidence(text_factory("q"), role="questioned")
     case.add_evidence(text_factory("k"), role="known")
+    _render_stub_report(case)
 
     payload = case.mark_signed()
 
@@ -284,8 +298,20 @@ def test_mark_signed_writes_signed_json_and_freezes_case(cases_root: Path, text_
     assert payload["bitig_version"]
 
 
+def test_mark_signed_always_binds_a_report(cases_root: Path):
+    """A signed case always binds a rendered report — mark_signed renders and
+    freezes signed.html itself, so report_html_hash is never null (audit P1.5)."""
+    case = Case.create(cases_root, id="noreport", title="t", examiner="x", recipe="exploration")
+    payload = case.mark_signed()
+    assert payload["report_html_hash"]  # non-null
+    assert (case.report_dir / "signed.html").is_file()
+    # The frozen snapshot reflects the SIGNED state, not a draft banner.
+    assert "SIGNED" in (case.report_dir / "signed.html").read_text(encoding="utf-8")
+
+
 def test_signed_case_rejects_mutations(cases_root: Path, text_factory):
     case = Case.create(cases_root, id="frozen", title="t", examiner="x", recipe="imposters_lr")
+    _render_stub_report(case)
     case.mark_signed()
 
     with pytest.raises(CaseError):
@@ -312,8 +338,73 @@ def test_signed_by_falls_back_to_examiner(cases_root: Path):
     case = Case.create(
         cases_root, id="auto", title="t", examiner="Dr. Watson", recipe="exploration"
     )
+    _render_stub_report(case)
     payload = case.mark_signed()
     assert payload["signed_by"] == "Dr. Watson"
+
+
+# ---------------------------------------------------------------------------
+# Chain-of-custody seal (audit P0.1, P1.1, P1.7)
+# ---------------------------------------------------------------------------
+
+
+def test_sealed_case_state_hash_is_reproducible_after_reload(cases_root: Path, text_factory):
+    """The keystone regression (audit P0.1): the sealed case_state_hash must
+    recompute identically after the sign-time save() and a fresh load."""
+    case = Case.create(cases_root, id="seal", title="t", examiner="x", recipe="imposters_lr")
+    case.add_evidence(text_factory("q"), role="questioned")
+    case.add_evidence(text_factory("k"), role="known")
+    _render_stub_report(case)
+
+    payload = case.mark_signed()
+
+    # Same object, post-save:
+    assert case._case_state_hash() == payload["case_state_hash"]
+    # Fresh load from disk:
+    reloaded = Case.load(case.root)
+    assert reloaded._case_state_hash() == payload["case_state_hash"]
+
+
+def test_verify_seal_passes_for_untampered_signed_case(cases_root: Path, text_factory):
+    case = Case.create(cases_root, id="vok", title="t", examiner="x", recipe="imposters_lr")
+    case.add_evidence(text_factory("q"), role="questioned")
+    _render_stub_report(case)
+    case.mark_signed()
+
+    result = Case.load(case.root).verify_seal()
+    assert result.signed
+    assert result.ok, [(c.name, c.detail) for c in result.checks if not c.ok]
+
+
+def test_verify_seal_fails_when_evidence_tampered(cases_root: Path, text_factory):
+    case = Case.create(cases_root, id="vtamper", title="t", examiner="x", recipe="imposters_lr")
+    entry = case.add_evidence(text_factory("original"), role="known")
+    _render_stub_report(case)
+    case.mark_signed()
+
+    (case.root / entry.path).write_text("tampered after signing", encoding="utf-8")
+    result = Case.load(case.root).verify_seal()
+    assert not result.ok
+    assert any(c.name == "evidence_custody" and not c.ok for c in result.checks)
+
+
+def test_verify_seal_fails_when_report_swapped(cases_root: Path, text_factory):
+    case = Case.create(cases_root, id="vrep", title="t", examiner="x", recipe="imposters_lr")
+    case.add_evidence(text_factory("q"), role="questioned")
+    _render_stub_report(case)
+    case.mark_signed()
+
+    (case.report_dir / "signed.html").write_text("<html>forged</html>", encoding="utf-8")
+    result = Case.load(case.root).verify_seal()
+    assert not result.ok
+    assert any(c.name == "report_html_hash" and not c.ok for c in result.checks)
+
+
+def test_verify_seal_unsigned_case(cases_root: Path):
+    case = Case.create(cases_root, id="uns", title="t", examiner="x", recipe="exploration")
+    result = case.verify_seal()
+    assert not result.signed
+    assert not result.ok
 
 
 # ---------------------------------------------------------------------------

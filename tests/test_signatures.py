@@ -18,6 +18,16 @@ from bitig.signatures import (
     verify_hmac_signature,
 )
 
+
+def _signable_case(
+    tmp_path: Path, *, id: str, title: str = "t", examiner: str = "x", recipe: str = "exploration"
+) -> Case:
+    """Create a case with a stub report so it can be signed (audit P1.5)."""
+    case = Case.create(tmp_path / "cases", id=id, title=title, examiner=examiner, recipe=recipe)
+    (case.report_dir / "draft.html").write_text("<html>stub</html>", encoding="utf-8")
+    return case
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -74,14 +84,14 @@ def test_hmac_plugin_satisfies_protocol():
 
 
 def test_null_plugin_passes_payload_through(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="n", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="n")
     payload = case.mark_signed(signature_plugin=NullSignaturePlugin())
     assert payload["signature_plugin_id"] == "null"
     assert "signature" not in payload
 
 
 def test_mark_signed_without_plugin_writes_null_id(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="d", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="d")
     payload = case.mark_signed()
     assert payload["signature_plugin_id"] == "null"
 
@@ -103,7 +113,7 @@ def test_hmac_plugin_reads_env_key(monkeypatch):
 
 
 def test_hmac_plugin_signs_payload(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="h", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="h")
     plugin = HmacSignaturePlugin(key="secret-key")
 
     payload = case.mark_signed(signature_plugin=plugin)
@@ -121,19 +131,19 @@ def test_hmac_plugin_signs_payload(tmp_path: Path):
 
 
 def test_hmac_signature_verifies_with_same_key(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="v", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="v")
     payload = case.mark_signed(signature_plugin=HmacSignaturePlugin(key="my-key"))
     assert verify_hmac_signature(payload, key="my-key") is True
 
 
 def test_hmac_signature_fails_with_different_key(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="vd", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="vd")
     payload = case.mark_signed(signature_plugin=HmacSignaturePlugin(key="real-key"))
     assert verify_hmac_signature(payload, key="wrong-key") is False
 
 
 def test_hmac_signature_fails_when_case_state_tampered(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="vt", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="vt")
     payload = case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
 
     tampered = dict(payload)
@@ -151,12 +161,47 @@ def test_verify_returns_false_on_missing_signature():
 
 
 def test_signature_plugin_id_round_trips(tmp_path: Path):
-    case = Case.create(tmp_path / "cases", id="rt", title="t", examiner="x", recipe="exploration")
+    case = _signable_case(tmp_path, id="rt")
     case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
 
     reloaded = Case.load(case.root)
     assert reloaded.record.signature_plugin_id == "hmac"
     assert reloaded.record.signed is True
+
+
+# ---------------------------------------------------------------------------
+# verify_seal integration with the HMAC plugin (audit P1.1)
+# ---------------------------------------------------------------------------
+
+
+def test_verify_seal_hmac_valid_with_correct_key(tmp_path: Path):
+    case = _signable_case(tmp_path, id="hv")
+    case.mark_signed(signature_plugin=HmacSignaturePlugin(key="court-key"))
+
+    result = Case.load(case.root).verify_seal(signature_key="court-key")
+    assert result.ok
+    assert any(c.name == "signature" and c.ok for c in result.checks)
+
+
+def test_verify_seal_hmac_fails_with_wrong_key(tmp_path: Path):
+    case = _signable_case(tmp_path, id="hw")
+    case.mark_signed(signature_plugin=HmacSignaturePlugin(key="real-key"))
+
+    result = Case.load(case.root).verify_seal(signature_key="wrong-key")
+    assert not result.ok
+    sig = next(c for c in result.checks if c.name == "signature")
+    assert not sig.ok and "INVALID" in sig.detail
+
+
+def test_verify_seal_hmac_unverified_without_key(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="hn")
+    case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
+
+    result = Case.load(case.root).verify_seal()  # no key supplied
+    assert not result.ok  # cannot claim verified without checking the signature
+    sig = next(c for c in result.checks if c.name == "signature")
+    assert not sig.ok and "no key" in sig.detail.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -176,13 +221,7 @@ class _AuditTrailPlugin:
 
 
 def test_custom_plugin_can_augment_payload(tmp_path: Path):
-    case = Case.create(
-        tmp_path / "cases",
-        id="aud",
-        title="t",
-        examiner="Inspector Lestrade",
-        recipe="exploration",
-    )
+    case = _signable_case(tmp_path, id="aud", examiner="Inspector Lestrade")
     payload = case.mark_signed(signature_plugin=_AuditTrailPlugin())
 
     assert payload["signature_plugin_id"] == "audit-trail-test"

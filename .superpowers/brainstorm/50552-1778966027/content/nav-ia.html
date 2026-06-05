@@ -1,0 +1,116 @@
+<h2>Navigation: Cases or Stages?</h2>
+<p class="subtitle">For a desktop app a forensic linguist or lawyer opens repeatedly, what's the top-level concept — a <strong>Case</strong> they switch between, or a fixed pipeline of <strong>Stages</strong>? Both rendered in the Forensic Lab style you picked.</p>
+
+<div class="cards">
+
+  <!-- IA-1: CASES-CENTRIC -->
+  <div class="card" data-choice="cases" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0; background:#0d1117; overflow:hidden; border-radius:6px; color:#e6edf3; min-height:280px;">
+      <div style="background:#161b22; padding:8px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #30363d;">
+        <span style="font-family:'JetBrains Mono','SF Mono',monospace; font-weight:700; color:#C9A34A; font-size:12px;">▎bitig</span>
+        <span style="color:#7d8590; font-size:9px; font-family:'JetBrains Mono',monospace;">CASES (3 OPEN) · 2026-05-17</span>
+      </div>
+      <div style="display:flex; min-height:240px; font-family:system-ui;">
+        <!-- CASE LIST RAIL -->
+        <div style="width:120px; background:#0d1117; padding:8px 6px; font-size:10px; color:#e6edf3; border-right:1px solid #30363d;">
+          <div style="font-family:'JetBrains Mono',monospace; color:#7d8590; font-size:9px; letter-spacing:1px; padding:3px 6px; margin-bottom:4px;">CASES</div>
+          <div style="padding:5px 6px; background:#1f6feb22; border-left:2px solid #C9A34A; margin-bottom:2px;">
+            <div style="font-weight:600; font-size:10px;">R v. Doe</div>
+            <div style="color:#7d8590; font-size:8px; font-family:'JetBrains Mono',monospace;">●  open</div>
+          </div>
+          <div style="padding:5px 6px; color:#c9d1d9; margin-bottom:2px;">
+            <div style="font-size:10px;">Federalist</div>
+            <div style="color:#3fb950; font-size:8px; font-family:'JetBrains Mono',monospace;">●  done</div>
+          </div>
+          <div style="padding:5px 6px; color:#c9d1d9; margin-bottom:2px;">
+            <div style="font-size:10px;">Seyfettin</div>
+            <div style="color:#3fb950; font-size:8px; font-family:'JetBrains Mono',monospace;">●  done</div>
+          </div>
+          <div style="padding:5px 6px; color:#7d8590;">
+            <div style="font-size:10px;">Tale of Two…</div>
+            <div style="color:#d29922; font-size:8px; font-family:'JetBrains Mono',monospace;">●  running</div>
+          </div>
+          <div style="margin-top:10px; padding:5px 6px; background:#C9A34A; color:#0d1117; font-size:9px; font-weight:700; text-align:center; border-radius:3px; font-family:'JetBrains Mono',monospace;">+ NEW CASE</div>
+        </div>
+        <!-- CASE WORKSPACE -->
+        <div style="flex:1; padding:10px 14px;">
+          <!-- breadcrumb + meta -->
+          <div style="font-family:'JetBrains Mono',monospace; font-size:9px; color:#7d8590; margin-bottom:4px;">CASES / R v. Doe</div>
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+            <div style="font-size:14px; font-weight:600;">R v. Doe — anonymous letter</div>
+            <div style="font-size:9px; color:#7d8590; font-family:'JetBrains Mono',monospace;">hash 7f3a · custody ok</div>
+          </div>
+          <!-- stepper / tabs -->
+          <div style="display:flex; gap:0; border-bottom:1px solid #30363d; margin-bottom:10px; font-size:10px;">
+            <div style="padding:4px 8px; border-bottom:2px solid #C9A34A; color:#C9A34A; font-weight:600;">1 · Evidence</div>
+            <div style="padding:4px 8px; color:#7d8590;">2 · Method</div>
+            <div style="padding:4px 8px; color:#7d8590;">3 · Run</div>
+            <div style="padding:4px 8px; color:#7d8590;">4 · Findings</div>
+            <div style="padding:4px 8px; color:#7d8590;">5 · Report</div>
+          </div>
+          <!-- active step body -->
+          <div style="font-family:'JetBrains Mono',monospace; font-size:9px; color:#7d8590; letter-spacing:1px; margin-bottom:4px;">// QUESTIONED + KNOWN DOCUMENTS</div>
+          <div style="border:1px solid #30363d; border-left:3px solid #C9A34A; padding:5px 8px; border-radius:3px; margin-bottom:3px; font-size:10px; display:flex; justify-content:space-between;">
+            <span><b>questioned/letter.txt</b></span><span style="color:#7d8590; font-family:'JetBrains Mono',monospace;">412 tokens · ?</span>
+          </div>
+          <div style="border:1px solid #30363d; padding:5px 8px; border-radius:3px; margin-bottom:3px; font-size:10px; display:flex; justify-content:space-between;">
+            <span>known/doe_2019.txt</span><span style="color:#7d8590; font-family:'JetBrains Mono',monospace;">1,847 tok · Doe</span>
+          </div>
+          <div style="border:1px solid #30363d; padding:5px 8px; border-radius:3px; margin-bottom:3px; font-size:10px; display:flex; justify-content:space-between;">
+            <span>known/doe_2021.txt</span><span style="color:#7d8590; font-family:'JetBrains Mono',monospace;">2,103 tok · Doe</span>
+          </div>
+          <div style="font-size:9px; color:#7d8590; font-family:'JetBrains Mono',monospace; margin-top:6px;">+ 9 more · drag files anywhere</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Cases-centric (recommended)</h3>
+      <p>Each investigation is a first-class <strong>Case</strong> with its own corpus, method, chain-of-custody, and report. The left rail is your case list (status dots: open / running / done). Inside a case, the work is a 5-step path. Mental model matches how a forensic linguist or lawyer thinks: "open the Doe case." Multiple cases live side-by-side; nothing leaks between them.</p>
+    </div>
+  </div>
+
+  <!-- IA-2: STAGE-CENTRIC -->
+  <div class="card" data-choice="stages" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0; background:#0d1117; overflow:hidden; border-radius:6px; color:#e6edf3; min-height:280px;">
+      <div style="background:#161b22; padding:8px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #30363d;">
+        <span style="font-family:'JetBrains Mono','SF Mono',monospace; font-weight:700; color:#C9A34A; font-size:12px;">▎bitig</span>
+        <span style="color:#7d8590; font-size:9px; font-family:'JetBrains Mono',monospace;">corpus: federalist/ · 2026-05-17</span>
+      </div>
+      <div style="display:flex; min-height:240px; font-family:system-ui;">
+        <!-- FIXED STAGE NAV -->
+        <div style="width:96px; background:#0d1117; padding:8px 6px; font-size:10px; color:#e6edf3; border-right:1px solid #30363d;">
+          <div style="font-family:'JetBrains Mono',monospace; color:#7d8590; font-size:9px; letter-spacing:1px; padding:3px 6px; margin-bottom:4px;">STAGES</div>
+          <div style="padding:5px 6px; background:#1f6feb22; border-left:2px solid #C9A34A; margin-bottom:2px;">⌂ Ingest</div>
+          <div style="padding:5px 6px; color:#c9d1d9; margin-bottom:2px;">⚙ Study</div>
+          <div style="padding:5px 6px; color:#c9d1d9; margin-bottom:2px;">▶ Run</div>
+          <div style="padding:5px 6px; color:#c9d1d9; margin-bottom:2px;">≣ Results</div>
+          <div style="padding:5px 6px; color:#C9A34A;">⚖ Forensic</div>
+          <div style="font-family:'JetBrains Mono',monospace; color:#7d8590; font-size:8px; padding:8px 6px; border-top:1px solid #30363d; margin-top:10px;">no notion<br>of "case"<br>here</div>
+        </div>
+        <!-- INGEST PAGE -->
+        <div style="flex:1; padding:10px 14px;">
+          <div style="font-size:14px; font-weight:600; margin-bottom:8px;">Ingest a corpus</div>
+          <div style="border:2px dashed #30363d; border-radius:6px; padding:24px; text-align:center; color:#7d8590; font-size:10px; margin-bottom:8px;">
+            Drag a folder of .txt files here<br>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:9px;">or click to browse</span>
+          </div>
+          <div style="font-size:10px; color:#7d8590; margin-bottom:4px;">Metadata file (.tsv, optional)</div>
+          <div style="background:#161b22; border:1px solid #30363d; padding:6px 8px; border-radius:3px; font-family:'JetBrains Mono',monospace; font-size:10px; color:#7d8590;">/path/to/metadata.tsv</div>
+          <div style="margin-top:14px; display:flex; gap:6px;">
+            <span style="background:#C9A34A; color:#0d1117; font-size:10px; padding:4px 10px; border-radius:3px; font-weight:600;">Ingest</span>
+            <span style="border:1px solid #30363d; color:#c9d1d9; font-size:10px; padding:4px 10px; border-radius:3px;">Cancel</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Stages-centric (today's structure)</h3>
+      <p>Five top-level pages — Ingest, Study, Run, Results, Forensic — operating on whatever's loaded into session state. Familiar to existing users, less work to migrate. But there's no "what am I working on?" anchor: switching projects means re-ingesting, and the Forensic tab feels parallel to the rest rather than a different mode of using the same case.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <p class="subtitle">If <strong>A</strong>, the existing Ingest/Study/Run/Results/Forensic pages become the 5 steps inside a Case. Nothing is thrown away — only re-homed. The flat <code>bitig run study.yaml</code> CLI still works untouched.</p>
+</div>

@@ -64,6 +64,10 @@ def _render_toolbar(case: Case) -> None:
 
         ui.space()
 
+        if case.record.signed:
+            ui.button("Verify seal", icon="verified", on_click=lambda: _verify_seal(case)).props(
+                "outline color=white"
+            )
         ui.button("Export PDF", icon="picture_as_pdf", on_click=lambda: _export_pdf(case)).props(
             "outline color=white"
         )
@@ -74,10 +78,20 @@ def _render_toolbar(case: Case) -> None:
 
 
 def _sign(case: Case) -> None:
-    state = get_state()
+    # Never sign over tampered evidence (audit P1.9).
+    mismatches = case.verify_custody()
+    if mismatches:
+        ui.notify(
+            f"Cannot sign: {len(mismatches)} evidence file(s) fail chain-of-custody. "
+            "Re-acknowledge on the Evidence step first.",
+            type="negative",
+            multi_line=True,
+        )
+        return
+    # mark_signed renders + freezes the sealed report itself (audit P1.5/P1.7).
     try:
-        payload = case.mark_signed(signed_by=state.current_case_id and case.record.examiner)
-    except CaseError as exc:
+        payload = case.mark_signed()
+    except (CaseError, ReportRendererError) as exc:
         ui.notify(str(exc), type="negative")
         return
     ui.notify(f"signed at {payload['signed_at']}", type="positive")
@@ -85,20 +99,36 @@ def _sign(case: Case) -> None:
 
 
 def _export_pdf(case: Case) -> None:
-    """Render the Case → HTML draft → WeasyPrint PDF (spec §7 step 6)."""
-    # Always write the draft HTML first so it stays the canonical
-    # working file even if PDF export fails (missing WeasyPrint, etc.).
-    draft = build_case_report(case, format="html")
+    """Export the report to PDF (spec §7 step 6).
+
+    For a signed case this renders the frozen ``signed.html`` snapshot, so it
+    cannot invalidate the sealed report hash (audit P1.7).
+    """
     try:
         pdf_path = build_case_report(case, format="pdf")
     except ReportRendererError as exc:
-        ui.notify(
-            f"PDF export unavailable: {exc}. Draft HTML at: {draft}",
-            type="warning",
-            multi_line=True,
-        )
+        ui.notify(f"PDF export unavailable: {exc}", type="warning", multi_line=True)
         return
     ui.notify(f"PDF exported to {pdf_path}", type="positive")
+
+
+def _verify_seal(case: Case) -> None:
+    """Recompute and display the chain-of-custody seal status (audit P1.1)."""
+    result = case.verify_seal()
+    with ui.dialog() as dialog, ui.card().classes("bg-slate-900 text-slate-100 min-w-96"):
+        ui.label("Seal verification").classes("text-lg font-semibold")
+        if not result.signed:
+            ui.label("Case is not signed — nothing to verify.").classes("bitig-muted")
+        else:
+            headline = "● PASS — seal intact" if result.ok else "● FAIL — seal broken"
+            ui.label(headline).classes("bitig-mono " + ("bitig-ok" if result.ok else "bitig-err"))
+            for c in result.checks:
+                mark = "✓" if c.ok else "✗"
+                klass = "bitig-ok" if c.ok else "bitig-err"
+                ui.label(f"{mark} {c.name}: {c.detail}").classes(f"bitig-mono text-xs {klass}")
+        with ui.row().classes("w-full justify-end"):
+            ui.button("Close", on_click=dialog.close).props("flat color=white")
+    dialog.open()
 
 
 # ---------------------------------------------------------------------------

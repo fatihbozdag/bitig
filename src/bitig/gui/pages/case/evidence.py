@@ -58,14 +58,19 @@ def _render_body(case: Case) -> None:
         if case.record.mode == "forensic":
             _render_control_corpus(case, rerender=lambda: _rerender(case, container))
 
-    # Footer nav
+    # Footer nav. Block progress on a chain-of-custody mismatch (audit P1.9):
+    # the spec (cases.verify_custody docstring) says a mismatch must block
+    # step 4+, and an analyst must not carry tampered evidence into a report.
     with ui.row().classes("w-full justify-end mt-4 gap-2"):
-        ui.button(
+        next_btn = ui.button(
             "Next: Method →",
             on_click=lambda: ui.navigate.to(f"/case/{case.record.id}/method"),
-        ).props("color=amber").set_enabled(
-            bool(case.record.evidence.questioned or case.record.evidence.known)
+        ).props("color=amber")
+        next_btn.set_enabled(
+            bool(case.record.evidence.questioned or case.record.evidence.known) and not custody
         )
+        if custody:
+            next_btn.tooltip("Resolve the chain-of-custody mismatch above before continuing.")
 
 
 def _rerender(case: Case, container: ui.column) -> None:

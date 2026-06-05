@@ -58,6 +58,20 @@ def _render_body(case: Case) -> None:
             if case.record.signed:
                 ui.notify("Case is signed; cannot re-run.", type="negative")
                 return
+            # Hard chain-of-custody gate (audit P1.9): never analyse evidence
+            # whose on-disk bytes no longer match what was registered.
+            mismatches = case.verify_custody()
+            if mismatches:
+                status_label.set_text("blocked")
+                log_box.push(
+                    f"[red]chain-of-custody mismatch on {len(mismatches)} file(s); "
+                    f"aborting run[/red]"
+                )
+                ui.notify(
+                    "Evidence failed chain-of-custody; re-acknowledge on the Evidence step.",
+                    type="negative",
+                )
+                return
             run_btn.set_enabled(False)
             status_label.set_text("running…")
             log_box.clear()

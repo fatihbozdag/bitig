@@ -86,6 +86,7 @@ def test_case_set_param_signed_case_rejects(tmp_path: Path):
     from bitig.cases import CaseError
 
     case = Case.create(tmp_path / "cases", id="lock", title="t", examiner="x", recipe="exploration")
+    (case.report_dir / "draft.html").write_text("<html>stub</html>", encoding="utf-8")
     case.mark_signed()
     with pytest.raises(CaseError):
         case.set_param("seed", 1)
