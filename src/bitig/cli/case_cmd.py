@@ -18,6 +18,7 @@ from bitig.cases import (
     DEFAULT_CASES_DIR,
     Case,
     CaseError,
+    _validate_case_id,
     fork_case,
     list_cases,
 )
@@ -42,9 +43,9 @@ def _cases_dir_option() -> Path:
 
 def _resolve_case(cases_dir: Path, case_id: str) -> Case:
     """Load ``<cases_dir>/<case_id>`` or exit with a helpful message."""
-    case_dir = cases_dir / case_id
     try:
-        return Case.load(case_dir)
+        _validate_case_id(case_id)  # reject traversal ids before building the path (P1.3)
+        return Case.load(cases_dir / case_id)
     except CaseError as exc:
         console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc

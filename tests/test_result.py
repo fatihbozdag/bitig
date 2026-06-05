@@ -25,6 +25,20 @@ def _prov() -> Provenance:
     )
 
 
+def test_to_json_encodes_numpy_bool(tmp_path) -> None:
+    """np.bool_ scalars must JSON-encode (audit P2): they previously fell
+    through _encode and made to_json() raise so result.json was never written."""
+    r = Result(
+        method_name="verify",
+        values={"is_match": np.bool_(True), "flags": np.array([True, False])},
+    )
+    out = tmp_path / "result.json"
+    r.to_json(out)  # must not raise
+    restored = Result.from_json(out)
+    assert restored.values["is_match"] is True
+    assert list(restored.values["flags"]) == [True, False]
+
+
 def test_result_basic_construction() -> None:
     r = Result(
         method_name="burrows_delta",

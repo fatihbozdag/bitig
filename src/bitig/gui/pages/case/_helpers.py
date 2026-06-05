@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bitig.cases import Case, CaseError
+from bitig.cases import Case, CaseError, _validate_case_id
 from bitig.forensic.verbal_scale import LR_LADDER, lr_verbal_rung
 from bitig.gui.state import get_state
 from bitig.report.scalars import headline_scalars as _headline_scalars
@@ -34,6 +34,7 @@ def resolve_case(case_id: str, cases_dir: Path | None = None) -> Case | None:
     state = get_state()
     root = cases_dir if cases_dir is not None else state.cases_dir
     try:
+        _validate_case_id(case_id)  # reject traversal ids from URL params (P1.3)
         return Case.load(root / case_id)
     except (CaseError, FileNotFoundError):
         return None

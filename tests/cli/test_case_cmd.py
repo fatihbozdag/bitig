@@ -424,3 +424,34 @@ def test_case_verify_exits_1_when_unsigned(tmp_path: Path) -> None:
     result = runner.invoke(app, ["case", "verify", "uns", "--cases-dir", str(cases_dir)])
     assert result.exit_code == 1
     assert "not signed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Path-traversal rejection (audit P1.3)
+# ---------------------------------------------------------------------------
+
+
+def test_case_new_rejects_traversal_id(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases"
+    result = runner.invoke(
+        app,
+        [
+            "case",
+            "new",
+            "../evil",
+            "--title",
+            "x",
+            "--examiner",
+            "x",
+            "--cases-dir",
+            str(cases_dir),
+        ],
+    )
+    assert result.exit_code != 0
+    assert not (cases_dir.parent / "evil").exists()
+
+
+def test_case_status_rejects_traversal_id(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases"
+    result = runner.invoke(app, ["case", "status", "../../etc", "--cases-dir", str(cases_dir)])
+    assert result.exit_code != 0

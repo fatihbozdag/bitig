@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -252,6 +253,64 @@ def _short_hash(h: str | None, n: int = 12) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Path-safety helpers (audit P1.2/P1.3/P1.4)
+#
+# Cases are designed to be portable and shareable, so a case id, a dest_name,
+# and the paths inside a case.json are all UNTRUSTED boundaries. A crafted
+# value must not be able to read, write, or copy files outside the case dir.
+# ---------------------------------------------------------------------------
+
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _validate_case_id(case_id: str) -> str:
+    """Reject case ids that aren't a single safe path component (P1.3)."""
+    if not isinstance(case_id, str) or case_id in {"", ".", ".."} or not _SAFE_ID_RE.match(case_id):
+        raise CaseError(
+            f"Invalid case id {case_id!r}: must match [A-Za-z0-9._-]+ and not be '.' or '..' "
+            "(no path separators, no parent-directory traversal, not absolute)."
+        )
+    return case_id
+
+
+def _safe_component(name: str) -> str:
+    """Return ``name`` iff it is a single safe filename component (P1.2)."""
+    if (
+        not isinstance(name, str)
+        or name in {"", ".", ".."}
+        or "/" in name
+        or "\\" in name
+        or os.path.isabs(name)
+    ):
+        raise CaseError(
+            f"Invalid filename {name!r}: must be a single path component "
+            "(no separators, no '..', not absolute)."
+        )
+    return name
+
+
+def _ensure_within(path: Path, root: Path) -> Path:
+    """Resolve ``path`` and assert it stays within ``root`` (P1.2/P1.4)."""
+    resolved = path.resolve()
+    root_resolved = root.resolve()
+    if resolved != root_resolved and root_resolved not in resolved.parents:
+        raise CaseError(f"Path {path!r} escapes the case directory {root}.")
+    return resolved
+
+
+def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    """Write ``text`` to ``path`` atomically (write temp + os.replace) so an
+    interrupted write can't truncate an integrity-root file (audit P2)."""
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        tmp.write_text(text, encoding=encoding)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
 # Seal verification result (audit P1.1)
 # ---------------------------------------------------------------------------
 
@@ -351,6 +410,7 @@ class Case:
         case directory already exists, to prevent silent overwrites.
         """
         root = Path(root)
+        _validate_case_id(id)  # reject traversal ids before touching the filesystem (P1.3)
         case_dir = root / id
         if case_dir.exists():
             raise CaseError(f"Case directory already exists: {case_dir}")
@@ -396,7 +456,16 @@ class Case:
         if not case_json.is_file():
             raise CaseError(f"Not a Case directory (missing {_CASE_JSON}): {case_dir}")
         data = json.loads(case_json.read_text(encoding="utf-8"))
-        return cls(case_dir, CaseRecord.from_dict(data))
+        record = CaseRecord.from_dict(data)
+        # case.json is untrusted (cases are shareable). Reject any evidence path
+        # that is absolute or escapes the case dir BEFORE anything hashes or
+        # copies it — otherwise a crafted entry is an arbitrary-file read (via
+        # verify_custody) and a copy-out primitive (via fork_case). Audit P1.4.
+        for entry in record.evidence.all_files():
+            if os.path.isabs(entry.path):
+                raise CaseError(f"Evidence path is absolute (rejected): {entry.path!r}")
+            _ensure_within(case_dir / entry.path, case_dir)
+        return cls(case_dir, record)
 
     # -- paths --------------------------------------------------------------
 
@@ -436,7 +505,7 @@ class Case:
             self.record.study_hash = hash_file(self.study_yaml_path)
         self.record.corpus_hash = compute_corpus_hash(self.record.evidence)
         payload = json.dumps(self.record.to_dict(), indent=2)
-        self.case_json_path.write_text(payload, encoding="utf-8")
+        _atomic_write_text(self.case_json_path, payload)
 
     # -- evidence -----------------------------------------------------------
 
@@ -456,13 +525,23 @@ class Case:
         the source. Raises :class:`CaseError` if the Case is signed.
         """
         self._require_unsigned("add evidence")
+        # Reject the control role before any filesystem mutation, so a failed
+        # call leaves the evidence tree byte-for-byte unchanged (audit P1.6).
+        if role == "control":
+            raise CaseError(
+                "Use set_control_corpus() for control-corpus references, not add_evidence()."
+            )
         src = Path(src)
         if not src.is_file():
             raise FileNotFoundError(src)
 
+        # dest_name (public API) and the src.name fallback are untrusted: a
+        # crafted '../../report/forged.html' must not escape the role dir (P1.2).
+        name = _safe_component(dest_name) if dest_name is not None else _safe_component(src.name)
         role_dir = self.evidence_role_dir(role)
         role_dir.mkdir(parents=True, exist_ok=True)
-        dest = role_dir / (dest_name or src.name)
+        dest = role_dir / name
+        _ensure_within(dest, role_dir)
         if dest.exists():
             raise CaseError(f"Destination already exists: {dest}. Pass dest_name= to disambiguate.")
         shutil.copy2(src, dest)
@@ -476,10 +555,6 @@ class Case:
             year=year,
         )
         bucket = getattr(self.record.evidence, role)
-        if role == "control":
-            raise CaseError(
-                "Use set_control_corpus() for control-corpus references, not add_evidence()."
-            )
         bucket.append(entry)
         self.save()
         return entry
@@ -534,7 +609,7 @@ class Case:
         # Validate before writing so we never persist a broken study.
         StudyConfig.model_validate(resolved)
         text = yaml.safe_dump(resolved, sort_keys=False)
-        self.study_yaml_path.write_text(text, encoding="utf-8")
+        _atomic_write_text(self.study_yaml_path, text)
         self.record.study_hash = hash_file(self.study_yaml_path)
         return self.study_yaml_path
 
@@ -690,8 +765,8 @@ class Case:
                 "signature_plugin_id": plugin.id,
             }
             signed_payload = plugin.sign(payload, case=self)
-            (self.report_dir / _REPORT_SIGNED).write_text(
-                json.dumps(signed_payload, indent=2), encoding="utf-8"
+            _atomic_write_text(
+                self.report_dir / _REPORT_SIGNED, json.dumps(signed_payload, indent=2)
             )
         except Exception:
             # Roll back so the case is not left in a half-signed state.
