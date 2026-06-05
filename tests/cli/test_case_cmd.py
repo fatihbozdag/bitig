@@ -12,9 +12,11 @@ from bitig.cases import Case
 from bitig.cli import app
 
 # Rich wraps long lines at the detected terminal width and CliRunner emulates
-# a narrow terminal; force a wide one so paths and table rows survive intact
-# (same trick used elsewhere in this repo for help-text tests).
-os.environ.setdefault("COLUMNS", "200")
+# a narrow terminal; force a wide one so paths and table rows survive intact.
+# Unconditional (not setdefault) because some CI runners pre-set COLUMNS to a
+# narrow value that setdefault would not override — which wrapped a long tmp
+# path on ubuntu CI and broke test_case_open_prints_path_and_metadata.
+os.environ["COLUMNS"] = "200"
 
 runner = CliRunner()
 
@@ -173,8 +175,11 @@ def test_case_open_prints_path_and_metadata(tmp_path: Path) -> None:
     result = runner.invoke(app, ["case", "open", "alpha", "--cases-dir", str(cases_dir)])
     assert result.exit_code == 0
     assert "alpha" in result.output
-    # Rich may line-wrap the long path; flatten whitespace before checking.
-    flat = " ".join(result.output.split())
+    # Rich hard-wraps the long tmp path at the terminal width, and `pytest -n
+    # auto` makes COLUMNS unreliable, so a wrap can split the path across lines
+    # (seen on ubuntu CI: ".../cases/a\nlpha"). Strip ALL whitespace so the
+    # wrap can't fragment the path we're asserting on (the path has none).
+    flat = "".join(result.output.split())
     assert str(cases_dir / "alpha") in flat
     assert "One-line summary case" in result.output
 
