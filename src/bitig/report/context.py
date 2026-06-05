@@ -78,8 +78,9 @@ class ReportContext(BaseModel):
     # ---- forensic-only ----
     hypothesis_p: str | None = None
     hypothesis_d: str | None = None
-    lr_value: str | None = None
-    lr_verbal_rung: str | None = None
+    lr_value: str | None = None  # formatted LR for display; None when no calibrated LR
+    lr_verbal_rung: str | None = None  # classified from the RAW LR float, not lr_value
+    lr_ladder_rows: list[tuple[str, str, str]] = Field(default_factory=list)
     method_paragraph: str | None = None
 
     # ---- research-only ----

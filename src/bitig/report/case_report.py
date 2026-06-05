@@ -22,12 +22,14 @@ from jinja2 import Environment
 
 from bitig._version import __version__
 from bitig.cases import Case
+from bitig.forensic.verbal_scale import ladder_rows, lr_from_values, lr_verbal_rung
 from bitig.report.context import (
     ChainOfCustodyEntry,
     HeadlineScalar,
     ProvenanceFooter,
     ReportContext,
 )
+from bitig.report.scalars import fmt_scalar, headline_scalars, load_latest_result
 from bitig.result import Result
 
 Format = Literal["html", "pdf"]
@@ -95,7 +97,7 @@ def build_case_report(
 
 
 def _build_context(case: Case) -> ReportContext:
-    result = _load_latest_result(case)
+    result = load_latest_result(case)
     scalars = _build_headline_scalars(case, result)
     coc = _build_chain_of_custody(case)
     provenance = _build_provenance_footer(case, result)
@@ -104,7 +106,10 @@ def _build_context(case: Case) -> ReportContext:
     date_iso = _today_iso()
 
     if case.record.mode == "forensic":
-        lr_value = scalars[0].value if scalars and scalars[0].label == "LR" else None
+        # The verbal rung is classified from the RAW LR float, never from the
+        # display-rounded string (audit P1.11). lr_value/ladder are populated
+        # only when a calibrated LR actually exists (audit P1.10).
+        lr = lr_from_values(result.values) if result is not None else None
         return ReportContext(
             mode="forensic",
             title=case.record.title,
@@ -122,8 +127,9 @@ def _build_context(case: Case) -> ReportContext:
             signed_by=case.record.signed_by,
             hypothesis_p="The questioned text and the known texts share an author.",
             hypothesis_d="The questioned text and the known texts do not share an author.",
-            lr_value=lr_value,
-            lr_verbal_rung=_verbal_rung_for_value(lr_value),
+            lr_value=fmt_scalar(lr) if lr is not None else None,
+            lr_verbal_rung=lr_verbal_rung(lr) if lr is not None else None,
+            lr_ladder_rows=ladder_rows() if lr is not None else [],
             method_paragraph=_forensic_method_paragraph(result),
         )
 
@@ -149,67 +155,13 @@ def _build_context(case: Case) -> ReportContext:
     )
 
 
-def _load_latest_result(case: Case) -> Result | None:
-    """Inline copy of the GUI helper so the renderer has no GUI dep."""
-    if case.record.latest_run is None:
-        return None
-    run_dir = case.runs_dir / case.record.latest_run
-    if not run_dir.is_dir():
-        return None
-    for method_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
-        candidate = method_dir / "result.json"
-        if candidate.is_file():
-            try:
-                return Result.from_json(candidate)
-            except Exception:
-                return None
-    return None
-
-
 def _build_headline_scalars(case: Case, result: Result | None) -> list[HeadlineScalar]:
-    if result is None:
-        return [HeadlineScalar(label="status", value="no run yet", is_primary=True)]
-
-    v = result.values
-    if case.record.mode == "forensic":
-        out: list[HeadlineScalar] = []
-        if "lr" in v:
-            out.append(HeadlineScalar(label="LR", value=_fmt(v["lr"]), is_primary=True))
-        elif "log_lr" in v:
-            out.append(HeadlineScalar(label="log LR", value=_fmt(v["log_lr"]), is_primary=True))
-        for key, label in (("auc", "AUC"), ("c_at_1", "c@1"), ("cllr", "C_llr")):
-            if key in v:
-                out.append(HeadlineScalar(label=label, value=_fmt(v[key])))
-        if not out:
-            out.append(
-                HeadlineScalar(
-                    label="score", value=_fmt(next(iter(v.values()), "—")), is_primary=True
-                )
-            )
-        return out
-
-    # research
-    method = result.method_name
-    if method == "pca":
-        evr = v.get("explained_variance_ratio")
-        if evr is not None and hasattr(evr, "__len__") and len(evr) >= 1:
-            scalars = [HeadlineScalar(label="PC1 var", value=_fmt(evr[0]), is_primary=True)]
-            if len(evr) >= 2:
-                scalars.append(HeadlineScalar(label="PC2 var", value=_fmt(evr[1])))
-                scalars.append(HeadlineScalar(label="cum.", value=_fmt(sum(evr[:2]))))
-            return scalars
-    if method in {"classify", "classification"}:
-        out = []
-        for key, label in (("accuracy", "accuracy"), ("macro_f1", "macro-F1"), ("ece", "ECE")):
-            if key in v:
-                out.append(HeadlineScalar(label=label, value=_fmt(v[key]), is_primary=not out))
-        if out:
-            return out
-    if method in {"bayesian", "bayes"} and "posterior_mode" in v:
-        return [
-            HeadlineScalar(label="posterior mode", value=str(v["posterior_mode"]), is_primary=True)
-        ]
-    return [HeadlineScalar(label="method", value=method, is_primary=True)]
+    """Adapt the shared ``(label, value, is_primary)`` tuples into the Pydantic
+    ``HeadlineScalar`` rows the templates render."""
+    return [
+        HeadlineScalar(label=label, value=value, is_primary=primary)
+        for label, value, primary in headline_scalars(case, result)
+    ]
 
 
 def _build_chain_of_custody(case: Case) -> list[ChainOfCustodyEntry]:
@@ -306,43 +258,6 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
 
     output.parent.mkdir(parents=True, exist_ok=True)
     HTML(string=html, base_url=str(base_url)).write_pdf(str(output))
-
-
-def _fmt(value: object) -> str:
-    """Same compact numeric formatter the GUI helpers use."""
-    try:
-        x = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return str(value)
-    if x == 0:
-        return "0"
-    if abs(x) >= 1e4 or abs(x) < 1e-3:
-        return f"{x:.2e}"
-    return f"{x:.3g}"
-
-
-def _verbal_rung_for_value(lr_value: str | None) -> str | None:
-    if lr_value is None:
-        return None
-    try:
-        lr = float(lr_value)
-    except ValueError:
-        # Scientific notation already; parse it.
-        try:
-            lr = float(lr_value.replace("e", "E"))
-        except ValueError:
-            return None
-    if lr < 1:
-        return "no support"
-    if lr < 10:
-        return "weak support"
-    if lr < 100:
-        return "moderate support"
-    if lr < 1000:
-        return "strong support"
-    if lr < 10000:
-        return "very strong support"
-    return "extremely strong support"
 
 
 def _forensic_method_paragraph(result: Result | None) -> str:

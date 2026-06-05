@@ -196,6 +196,41 @@ def test_build_on_signed_case_serves_frozen_snapshot(tmp_path: Path) -> None:
     assert case.verify_seal().ok
 
 
+def test_forensic_rung_classified_from_raw_lr_not_rounded(tmp_path: Path) -> None:
+    """The verbal rung must come from the RAW LR float, not the rounded display
+    string (audit P1.11): LR=0.9999 displays as "1" but is "no support", not
+    the "weak support" the old round-then-classify produced."""
+    from bitig.report.case_report import _build_context
+
+    case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="rung")
+    _attach_run(case, method_name="verify", values={"lr": 0.9999})
+    ctx = _build_context(case)
+
+    assert ctx.lr_value == "1"  # display rounds up...
+    assert ctx.lr_verbal_rung == "no support"  # ...but the rung uses the raw float
+    assert ctx.lr_ladder_rows  # ladder present for a real LR
+
+
+def test_forensic_gi_result_has_no_lr_or_ladder(tmp_path: Path) -> None:
+    """An uncalibrated GI win-fraction is not an LR: no LR value, no ladder, and
+    the headline shows the GI score (a number), not the candidate name (P1.10)."""
+    from bitig.report.case_report import _build_context
+
+    case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="gi")
+    _attach_run(
+        case,
+        method_name="verify",
+        values={"candidate": "suspect_A", "scores": {"suspect_A": 0.83}},
+    )
+    ctx = _build_context(case)
+
+    assert ctx.lr_value is None
+    assert ctx.lr_verbal_rung is None
+    assert ctx.lr_ladder_rows == []
+    assert ctx.headline_scalars[0].label == "GI score"
+    assert "suspect_A" not in ctx.headline_scalars[0].value
+
+
 def test_figure_paths_are_case_root_relative(tmp_path: Path) -> None:
     """Figure <img src> paths resolve against the case root, matching the
     base_url build_case_report passes to WeasyPrint (audit P1.8)."""

@@ -81,15 +81,13 @@
     <div class="label">LR</div>
     <div class="value">{{ lr_value }}</div>
   </div>
-  {% if lr_verbal_rung %}
+  {% if lr_verbal_rung and lr_ladder_rows %}
   <div>
     <div class="mono muted">Verbal scale (ENFSI):</div>
     <ul class="ladder">
-      <li class="{{ 'active' if lr_verbal_rung == 'weak support' else '' }}">  weak support (1-10)</li>
-      <li class="{{ 'active' if lr_verbal_rung == 'moderate support' else '' }}">  moderate support (10-100)</li>
-      <li class="{{ 'active' if lr_verbal_rung == 'strong support' else '' }}">  strong support (100-1000)</li>
-      <li class="{{ 'active' if lr_verbal_rung == 'very strong support' else '' }}">  very strong support (1000-10000)</li>
-      <li class="{{ 'active' if lr_verbal_rung == 'extremely strong support' else '' }}">  extremely strong support (&gt;10000)</li>
+      {% for label, lo, hi in lr_ladder_rows %}
+      <li class="{{ 'active' if lr_verbal_rung == label else '' }}">  {{ label }} ({{ lo }}–{{ hi }})</li>
+      {% endfor %}
     </ul>
   </div>
   {% endif %}
