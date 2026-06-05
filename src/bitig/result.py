@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,14 @@ class Result:
             "values": _encode(self.values),
             "provenance": self.provenance.to_dict() if self.provenance else None,
         }
-        Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Atomic write so an interrupted save can't leave a truncated result.json.
+        path = Path(path)
+        tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     @classmethod
     def from_json(cls, path: str | Path) -> Result:
@@ -69,6 +77,8 @@ def _encode(obj: Any) -> Any:
             "shape": list(obj.shape),
             "dtype": str(obj.dtype),
         }
+    if isinstance(obj, np.bool_):
+        return bool(obj)
     if isinstance(obj, np.integer | np.floating):
         return obj.item()
     return obj

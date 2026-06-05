@@ -174,6 +174,75 @@ def test_add_evidence_rejects_control_role(cases_root: Path, text_factory):
         case.add_evidence(text_factory(), role="control")
 
 
+# ---------------------------------------------------------------------------
+# Path-traversal hardening (audit P1.2/P1.3/P1.4/P1.6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bad_id", ["../evil", "a/b", "..", ".", "", "/abs", "a\\b"])
+def test_create_rejects_traversal_id(cases_root: Path, bad_id: str):
+    with pytest.raises(CaseError):
+        Case.create(cases_root, id=bad_id, title="t", examiner="x", recipe="exploration")
+    # Nothing escaped the cases root.
+    assert not (cases_root.parent / "evil").exists()
+
+
+def test_add_evidence_rejects_dest_name_traversal(cases_root: Path, text_factory):
+    case = Case.create(cases_root, id="trav", title="t", examiner="x", recipe="imposters_lr")
+    with pytest.raises(CaseError):
+        case.add_evidence(text_factory("x"), role="known", dest_name="../../report/forged.html")
+    # The traversal target was never written.
+    assert not (case.root / "report" / "forged.html").exists()
+    assert case.record.evidence.known == []
+
+
+def test_add_evidence_control_role_writes_nothing(cases_root: Path, text_factory):
+    """The control-role rejection must fire before any filesystem mutation (P1.6)."""
+    case = Case.create(cases_root, id="ctrl0", title="t", examiner="x", recipe="imposters_lr")
+    before = sorted((case.evidence_dir / "control").iterdir())
+    with pytest.raises(CaseError):
+        case.add_evidence(text_factory("x"), role="control")
+    assert sorted((case.evidence_dir / "control").iterdir()) == before  # no orphan file
+
+
+def test_load_rejects_crafted_evidence_path(cases_root: Path, text_factory, tmp_path):
+    """A shared/crafted case.json must not load an evidence path that escapes
+    the case dir — that would be arbitrary-file read (verify_custody) and
+    copy-out (fork). Audit P1.4."""
+    case = Case.create(cases_root, id="crafted", title="t", examiner="x", recipe="imposters_lr")
+    case.add_evidence(text_factory("real"), role="known")
+
+    # Tamper the on-disk case.json to point evidence outside the case dir.
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top secret", encoding="utf-8")
+    data = json.loads(case.case_json_path.read_text(encoding="utf-8"))
+    data["evidence"]["known"][0]["path"] = "../../secret.txt"
+    case.case_json_path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(CaseError, match=r"escapes|absolute"):
+        Case.load(case.root)
+
+
+def test_load_rejects_absolute_evidence_path(cases_root: Path, text_factory):
+    case = Case.create(cases_root, id="absol", title="t", examiner="x", recipe="imposters_lr")
+    case.add_evidence(text_factory("real"), role="known")
+    data = json.loads(case.case_json_path.read_text(encoding="utf-8"))
+    data["evidence"]["known"][0]["path"] = "/etc/passwd"
+    case.case_json_path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(CaseError, match="absolute"):
+        Case.load(case.root)
+
+
+def test_save_is_atomic_no_tmp_left_behind(cases_root: Path, text_factory):
+    case = Case.create(cases_root, id="atomic", title="t", examiner="x", recipe="imposters_lr")
+    case.add_evidence(text_factory("x"), role="known")
+    case.save()
+    leftovers = [p.name for p in case.root.iterdir() if p.name.startswith(".case.json.tmp")]
+    assert leftovers == []
+    # case.json is valid JSON after the atomic write.
+    json.loads(case.case_json_path.read_text(encoding="utf-8"))
+
+
 def test_verify_custody_clean_when_files_untouched(cases_root: Path, text_factory):
     case = Case.create(cases_root, id="clean", title="t", examiner="x", recipe="imposters_lr")
     case.add_evidence(text_factory("a"), role="questioned")
