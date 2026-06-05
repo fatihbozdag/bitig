@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 import pytest
 
 from bitig.corpus import Corpus, Document
@@ -55,6 +57,48 @@ def test_zeta_eder_smooths_with_laplace() -> None:
     # Eder's variant applies Laplace smoothing; no division-by-zero on singleton groups.
     res = ZetaEder(group_by="group", top_k=3).fit_transform(c)
     assert len(res.tables) == 2
+
+
+def test_zeta_eder_smoothing_differs_from_classic() -> None:
+    """Regression (audit P1.12): add-k smoothing must actually change the score
+    on a zero-count word — the old implementation cancelled to ZetaClassic."""
+    # 'alpha' is in both A docs, absent from both B docs.
+    count_a: Counter[str] = Counter({"alpha": 2})
+    count_b: Counter[str] = Counter()
+    n_a = n_b = 2
+    vocab = {"alpha"}
+
+    classic = ZetaClassic(group_by="group")._score(count_a, count_b, n_a, n_b, vocab)
+    eder = ZetaEder(group_by="group")._score(count_a, count_b, n_a, n_b, vocab)
+
+    # Classic: 2/2 - 0/2 = 1.0
+    assert classic["alpha"] == pytest.approx(1.0)
+    # Eder (k=0.5): (2+0.5)/(2+1) - (0+0.5)/(2+1) = 2/3
+    assert eder["alpha"] == pytest.approx(2.0 / 3.0)
+    assert eder["alpha"] != pytest.approx(classic["alpha"])
+
+
+def test_zeta_eder_not_identical_to_classic_on_corpus() -> None:
+    """End-to-end: a word present in A but absent from B must get a different
+    zeta under Eder vs Classic."""
+    c = _corpus(
+        "alpha alpha shared",
+        "alpha alpha shared",
+        "shared other words",
+        "shared other words",
+        groups=["A", "A", "B", "B"],
+    )
+    classic = ZetaClassic(group_by="group", top_k=10).fit_transform(c)
+    eder = ZetaEder(group_by="group", top_k=10).fit_transform(c)
+
+    def _zeta_of(res, word: str) -> float:
+        for tbl in res.tables:
+            hit = tbl[tbl["word"] == word]
+            if not hit.empty:
+                return float(hit["zeta"].iloc[0])
+        raise AssertionError(f"{word!r} not in tables")
+
+    assert _zeta_of(classic, "alpha") != pytest.approx(_zeta_of(eder, "alpha"))
 
 
 def test_zeta_rejects_fewer_than_two_groups() -> None:

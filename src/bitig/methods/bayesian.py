@@ -87,6 +87,16 @@ class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
         y: np.ndarray,
     ) -> BayesianAuthorshipAttributor:
         counts = _as_array(X)
+        # The rate model is only meaningful for non-negative count features.
+        # Reject z-scored / mean-centred input loudly rather than silently
+        # clipping negatives to 1e-12 (which yields confident but invalid
+        # attributions). Build the feature with scale='none' or scale='l1'.
+        if np.any(counts < 0):
+            raise ValueError(
+                "BayesianAuthorshipAttributor requires non-negative count features, but the "
+                "input contains negative values (it looks z-scored / mean-centred). Build the "
+                "feature with scale='none' or scale='l1' — e.g. MFWExtractor(scale='none')."
+            )
         y_arr = np.asarray(y)
         self.classes_ = np.unique(y_arr)
 
@@ -95,7 +105,13 @@ class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
             class_counts = counts[y_arr == cls].sum(axis=0)
             # Additive (Dirichlet / Beta for binary words) smoothing.
             smoothed = class_counts + self.prior_alpha
-            rates = smoothed / smoothed.sum()
+            denom = smoothed.sum()
+            if denom <= 0:
+                raise ValueError(
+                    f"class {cls!r} has zero total smoothed count; cannot form a rate vector "
+                    "(use prior_alpha > 0 or non-empty count features)."
+                )
+            rates = smoothed / denom
             # Clip for numerical stability on unseen-but-allowed words.
             rates = np.clip(rates, 1e-12, 1.0)
             self.log_rates_[str(cls)] = np.log(rates)

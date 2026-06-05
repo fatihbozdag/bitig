@@ -42,8 +42,18 @@ class _ZetaBase:
         self.group_b = group_b
 
     def _score(
-        self, proportion_a: dict[str, float], proportion_b: dict[str, float]
+        self,
+        count_in_a: Counter[str],
+        count_in_b: Counter[str],
+        n_a: int,
+        n_b: int,
+        vocabulary: set[str],
     ) -> dict[str, float]:
+        """Return ``{word: zeta}`` from per-group document-occurrence counts.
+
+        Subclasses receive the raw counts and group sizes (not pre-divided
+        proportions) so smoothing variants can apply add-k to the counts.
+        """
         raise NotImplementedError
 
     def fit_transform(self, corpus: Corpus) -> Result:
@@ -77,9 +87,11 @@ class _ZetaBase:
         vocabulary = {w for w, c in count_in_a.items() if c >= min_df_a}
         vocabulary |= {w for w, c in count_in_b.items() if c >= min_df_b}
 
+        # proportion_* are kept for the output tables (display columns); the
+        # score itself is computed from raw counts so smoothing variants work.
         proportion_a = {w: count_in_a.get(w, 0) / n_a for w in vocabulary}
         proportion_b = {w: count_in_b.get(w, 0) / n_b for w in vocabulary}
-        scores = self._score(proportion_a, proportion_b)
+        scores = self._score(count_in_a, count_in_b, n_a, n_b, vocabulary)
 
         scored = sorted(scores.items(), key=lambda kv: kv[1])
         # Only include words with a directional preference for the group:
@@ -123,17 +135,43 @@ class _ZetaBase:
 
 class ZetaClassic(_ZetaBase):
     def _score(
-        self, proportion_a: dict[str, float], proportion_b: dict[str, float]
+        self,
+        count_in_a: Counter[str],
+        count_in_b: Counter[str],
+        n_a: int,
+        n_b: int,
+        vocabulary: set[str],
     ) -> dict[str, float]:
-        return {w: proportion_a[w] - proportion_b[w] for w in proportion_a}
+        return {w: count_in_a.get(w, 0) / n_a - count_in_b.get(w, 0) / n_b for w in vocabulary}
 
 
 class ZetaEder(_ZetaBase):
-    """Eder 2017 variant with Laplace smoothing."""
+    """Eder 2017 variant with add-k (Laplace) smoothing on the per-group
+    document-occurrence counts:
+
+        prop_X(w) = (count_X(w) + k) / (n_X + 2k),  k = 0.5
+
+    The +2k in the denominator is what makes this differ from classic Zeta —
+    smoothing the *counts* (not the already-divided proportions) shrinks rare
+    words toward 0.5 and keeps zero-count words from dominating the
+    logarithmic Zeta variants. With k applied to proportions and a unit
+    denominator the +k cancels in the difference, which is why the previous
+    implementation was silently identical to ``ZetaClassic``.
+    """
+
+    _K = 0.5
 
     def _score(
-        self, proportion_a: dict[str, float], proportion_b: dict[str, float]
+        self,
+        count_in_a: Counter[str],
+        count_in_b: Counter[str],
+        n_a: int,
+        n_b: int,
+        vocabulary: set[str],
     ) -> dict[str, float]:
+        k = self._K
         return {
-            w: (proportion_a[w] + 0.5) / 1.0 - (proportion_b[w] + 0.5) / 1.0 for w in proportion_a
+            w: (count_in_a.get(w, 0) + k) / (n_a + 2 * k)
+            - (count_in_b.get(w, 0) + k) / (n_b + 2 * k)
+            for w in vocabulary
         }

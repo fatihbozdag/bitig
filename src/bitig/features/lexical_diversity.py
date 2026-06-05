@@ -92,7 +92,13 @@ def _mtld(tokens: list[str], ttr_threshold: float = 0.72) -> float:
             # Partial factor: scale by how close to the threshold it got.
             partial = (1 - (len(seen) / count)) / (1 - ttr_threshold) if ttr_threshold < 1 else 0
             factor_count += partial
-        return len(toks) / factor_count if factor_count > 0 else 0.0
+        if factor_count > 0:
+            return len(toks) / factor_count
+        # factor_count == 0 means TTR never fell to the threshold — the text is
+        # maximally diverse over its whole length. MTLD is the token count by
+        # the McCarthy & Jarvis (2010) floor, NOT 0.0 (returning 0 inverts the
+        # measure, scoring maximal diversity as minimal).
+        return float(len(toks))
 
     forward = _one_direction(tokens)
     backward = _one_direction(list(reversed(tokens)))
