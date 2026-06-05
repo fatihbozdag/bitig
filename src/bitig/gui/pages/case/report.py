@@ -18,11 +18,11 @@ from datetime import UTC, datetime
 from nicegui import ui
 
 from bitig.cases import Case, CaseError
+from bitig.forensic.verbal_scale import ladder_rows, lr_from_values, lr_verbal_rung
 from bitig.gui.case_layout import case_shell
 from bitig.gui.pages.case._helpers import (
     headline_scalars,
     load_latest_result,
-    lr_verbal_rung,
     resolve_case,
     short_hash,
 )
@@ -153,9 +153,11 @@ def _render_forensic_body(case: Case) -> None:
     ui.label("H_p (prosecution): the questioned text and the known texts share an author.")
     ui.label("H_d (defence):   the questioned text and the known texts do not share an author.")
 
-    # LR block + verbal scale
-    lr_label, lr_value = scalars[0] if scalars else ("LR", "—")
-    lr_float = _maybe_float(lr_value)
+    # Headline card: LR when a calibrated LR exists, else the GI verification
+    # score — never the candidate's name (audit P1.10). The verbal rung is
+    # classified from the RAW LR float, never the display string (audit P1.11).
+    headline_label, headline_value = scalars[0] if scalars else ("score", "—")
+    lr = lr_from_values(result.values) if result is not None else None
     with ui.row().classes("w-full items-center gap-4 mt-2"):
         with (
             ui.column()
@@ -164,15 +166,15 @@ def _render_forensic_body(case: Case) -> None:
                 "border-left: 4px solid var(--bitig-accent); background: #fff; min-width: 200px;"
             )
         ):
-            ui.label(lr_label).classes("bitig-mono").style("color: #555; font-size: 12px;")
-            ui.label(lr_value).style(
+            ui.label(headline_label).classes("bitig-mono").style("color: #555; font-size: 12px;")
+            ui.label(headline_value).style(
                 "font-family: var(--bitig-font-serif); font-size: 34px; color: #1a1a2e;"
             )
-        if lr_float is not None and case.record.mode == "forensic":
-            rung = lr_verbal_rung(lr_float)
+        if lr is not None:
+            rung = lr_verbal_rung(lr)
             with ui.column().classes("gap-1"):
                 ui.label("Verbal scale (ENFSI):").style("font-size: 12px; color: #555;")
-                for label_, lo, hi in _LADDER_DISPLAY:
+                for label_, lo, hi in ladder_rows():
                     active = label_ == rung
                     style = (
                         "font-weight: 600; color: var(--bitig-accent);"
@@ -180,6 +182,11 @@ def _render_forensic_body(case: Case) -> None:
                         else "color: #555;"
                     )
                     ui.label(f"  {label_}  ({lo}-{hi})").style(style)
+        elif headline_label == "GI score":
+            ui.label(
+                "Uncalibrated General-Impostors verification score in [0, 1] — not a "
+                "likelihood ratio; no ENFSI rung applies until calibration is configured."
+            ).style("font-size: 12px; color: #555; max-width: 320px;")
 
     # Method paragraph + chain of custody
     with ui.row().classes("w-full gap-6 mt-2"):
@@ -265,22 +272,6 @@ def _render_research_body(case: Case) -> None:
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
-
-
-_LADDER_DISPLAY: list[tuple[str, str, str]] = [
-    ("weak support", "1", "10"),
-    ("moderate support", "10", "100"),
-    ("strong support", "100", "1000"),
-    ("very strong support", "1000", "10000"),
-    ("extremely strong support", "10000", "∞"),
-]
-
-
-def _maybe_float(value: str) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _now_iso() -> str:
