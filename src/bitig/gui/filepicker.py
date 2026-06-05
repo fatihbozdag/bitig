@@ -30,7 +30,7 @@ async def pick_folder(title: str = "Select folder") -> str | None:
     window = _main_window()
     if window is None:
         return None
-    result = await window.create_file_dialog(
+    result = await window.create_file_dialog(  # type: ignore[misc]  # nicegui stub mistypes this async pywebview API (awaitable at runtime)
         FileDialog.FOLDER,
         directory="",
         allow_multiple=False,
@@ -47,7 +47,7 @@ async def pick_file(
     window = _main_window()
     if window is None:
         return None
-    result = await window.create_file_dialog(
+    result = await window.create_file_dialog(  # type: ignore[misc]  # nicegui stub mistypes this async pywebview API (awaitable at runtime)
         FileDialog.OPEN,
         allow_multiple=False,
         file_types=tuple(file_types),
@@ -65,7 +65,7 @@ async def pick_save_path(
     window = _main_window()
     if window is None:
         return None
-    result = await window.create_file_dialog(
+    result = await window.create_file_dialog(  # type: ignore[misc]  # nicegui stub mistypes this async pywebview API (awaitable at runtime)
         FileDialog.SAVE,
         save_filename=default_filename,
         file_types=tuple(file_types),

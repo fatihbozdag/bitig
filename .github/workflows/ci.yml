@@ -42,3 +42,28 @@ jobs:
       - name: Download small spaCy model
         run: python -m spacy download en_core_web_sm
       - run: pytest -n auto --cov=bitig --cov-report=term-missing -m "not slow"
+
+  # The base matrix installs only [dev], so the GUI / report / plotly / PDF
+  # tests importorskip away and the court-facing surface ships unexercised
+  # (audit cross-cutting #3, P1.18/P1.19). This job installs the optional
+  # extras + WeasyPrint's system libraries so that surface is type-checked
+  # against its real dependencies and actually runs (incl. real PDF export).
+  test-extras:
+    name: extras (gui + report + pdf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install WeasyPrint system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
+      - run: uv pip install --system -e ".[dev,gui,reports,interactive,bayesian]"
+      - name: Download small spaCy model
+        run: python -m spacy download en_core_web_sm
+      - name: Type-check the full surface against its real dependencies
+        run: mypy src
+      - run: pytest -n auto -m "not slow"

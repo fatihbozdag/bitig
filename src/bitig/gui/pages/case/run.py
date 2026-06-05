@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from nicegui import run as nicegui_run
 from nicegui import ui
 
+from bitig.case_run import perform_run
 from bitig.cases import Case
 from bitig.gui.case_layout import case_shell
 from bitig.gui.pages.case._helpers import resolve_case, short_hash
 from bitig.gui.state import get_state
-from bitig.runner import run_study
 
 
 @ui.page("/case/{case_id}/run")
@@ -54,75 +52,49 @@ def _render_body(case: Case) -> None:
         status_label = ui.label("ready").classes("bitig-mono bitig-muted text-xs")
         run_btn = ui.button("Run analysis", icon="play_arrow").props("color=amber")
 
-        async def execute() -> None:
-            if case.record.signed:
-                ui.notify("Case is signed; cannot re-run.", type="negative")
-                return
-            # Hard chain-of-custody gate (audit P1.9): never analyse evidence
-            # whose on-disk bytes no longer match what was registered.
-            mismatches = case.verify_custody()
-            if mismatches:
-                status_label.set_text("blocked")
-                log_box.push(
-                    f"[red]chain-of-custody mismatch on {len(mismatches)} file(s); "
-                    f"aborting run[/red]"
-                )
-                ui.notify(
-                    "Evidence failed chain-of-custody; re-acknowledge on the Evidence step.",
-                    type="negative",
-                )
-                return
-            run_btn.set_enabled(False)
-            status_label.set_text("running…")
-            log_box.clear()
-            log_box.push("Loading study.yaml…")
-
-            try:
-                run_id = _new_run_id()
-                log_box.push(f"Run id: {run_id}")
-                log_box.push(f"Writing to: {case.runs_dir / run_id}")
-
-                # `run_study` writes one subdir per method under
-                # output_dir/run_name. We pass our pre-computed run_id as
-                # run_name so the resulting layout is runs/<run_id>/<method>/.
-                run_dir = await nicegui_run.io_bound(
-                    run_study,
-                    case.study_yaml_path,
-                    output_dir=case.runs_dir,
-                    run_name=run_id,
-                )
-
-                case.register_run(run_id)
-                method_dirs = [p.name for p in run_dir.iterdir() if p.is_dir()]
-                log_box.push(f"✓ run complete: methods={method_dirs}")
-                status_label.set_text("done")
-            except Exception as exc:
-                log_box.push(f"[red]error:[/red] {type(exc).__name__}: {exc}")
-                status_label.set_text("failed")
-                ui.notify(f"run failed: {exc}", type="negative")
-            finally:
-                run_btn.set_enabled(True)
-
-        run_btn.on_click(execute)
-        run_btn.set_enabled(not case.record.signed and case.study_yaml_path.is_file())
-
+    # Footer nav created before the run handler so execute() can re-enable the
+    # Findings button after a successful run (audit P2: it used to stay disabled
+    # because it was evaluated once at render time).
     with ui.row().classes("w-full justify-between mt-4 gap-2"):
         ui.button(
             "← Back: Method",
             on_click=lambda: ui.navigate.to(f"/case/{case.record.id}/method"),
         ).props("flat color=white")
-        ui.button(
+        next_btn = ui.button(
             "Next: Findings →",
             on_click=lambda: ui.navigate.to(f"/case/{case.record.id}/findings"),
-        ).props("color=amber").set_enabled(bool(case.record.runs))
+        ).props("color=amber")
+        next_btn.set_enabled(bool(case.record.runs))
+
+    async def execute() -> None:
+        run_btn.set_enabled(False)
+        status_label.set_text("running…")
+        log_box.clear()
+        log_box.push("Running study (this can take a while)…")
+
+        outcome = await nicegui_run.io_bound(perform_run, case)
+
+        for m in outcome.methods:
+            mark = "✓" if m.ok else "✗"
+            line = f"{mark} {m.method_id}" + ("" if m.ok else f" — {m.error}")
+            log_box.push(line)
+        log_box.push(outcome.message)
+        status_label.set_text(outcome.status)
+
+        ui.notify(
+            outcome.message,
+            type="positive" if outcome.unlocks_findings else "negative",
+            multi_line=True,
+        )
+        # Only unlock Findings when the run actually produced a result.
+        next_btn.set_enabled(outcome.unlocks_findings or bool(case.record.runs))
+        run_btn.set_enabled(not case.record.signed)
+
+    run_btn.on_click(execute)
+    run_btn.set_enabled(not case.record.signed and case.study_yaml_path.is_file())
 
 
 def _kv(label: str, value: str) -> None:
     with ui.column().classes("gap-0"):
         ui.label(label).classes("bitig-mono bitig-muted text-xs")
         ui.label(value).classes("bitig-mono text-xs")
-
-
-def _new_run_id() -> str:
-    """ISO-8601 UTC run id with filesystem-safe punctuation (spec §2)."""
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
