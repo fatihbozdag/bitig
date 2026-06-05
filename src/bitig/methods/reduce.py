@@ -75,6 +75,12 @@ class UMAPReducer(_ReducerBase):
 
     @property
     def _impl(self) -> type:  # type: ignore[override]
-        import umap
+        try:
+            import umap
+        except ImportError as exc:  # pragma: no cover - only without the extra
+            raise ImportError(
+                "UMAP reduction requires the 'cluster' extra. "
+                "Install with: uv pip install 'bitig[cluster]'"
+            ) from exc
 
         return umap.UMAP  # type: ignore[no-any-return]

@@ -42,12 +42,18 @@ jobs:
       - name: Build distributions
         run: uv build
 
+      # Only on tag pushes — a manual workflow_dispatch may target any ref
+      # (e.g. re-publishing an existing tag), so the tag/version match is
+      # intentionally skipped there.
       - name: Verify wheel metadata version matches tag
         if: github.event_name == 'push'
         run: |
           tag_ref="${GITHUB_REF##*/}"
           tag_version="${tag_ref#v}"
-          wheel_version=$(ls dist/*.whl | sed -E 's/.*bitig-([0-9.]+)-.*/\1/')
+          # Capture the full version segment between 'bitig-' and the next '-'
+          # so PEP440 pre/dev/post versions (e.g. 0.2.0rc1) match, not just the
+          # numeric prefix.
+          wheel_version=$(ls dist/*.whl | sed -E 's/.*bitig-([^-]+)-.*/\1/')
           if [ "$tag_version" != "$wheel_version" ]; then
             echo "::error::Tag $tag_ref does not match wheel version $wheel_version"
             exit 1

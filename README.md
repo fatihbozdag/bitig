@@ -8,7 +8,7 @@
   <a href="https://fatihbozdag.github.io/bitig/"><img alt="docs" src="https://img.shields.io/badge/docs-mkdocs%20material-0F1A2B?style=flat-square"></a>
   <a href="https://pypi.org/project/bitig/"><img alt="PyPI" src="https://img.shields.io/pypi/v/bitig?style=flat-square&color=0F1A2B"></a>
   <img alt="status" src="https://img.shields.io/badge/status-multi--language%20%7C%20forensic%20%7C%20phase%205-C9A34A?style=flat-square">
-  <img alt="tests" src="https://img.shields.io/badge/tests-493%20passing-0F1A2B?style=flat-square">
+  <img alt="tests" src="https://img.shields.io/badge/tests-700%20passing-0F1A2B?style=flat-square">
   <img alt="languages" src="https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20DE%20%7C%20ES%20%7C%20FR-0F1A2B?style=flat-square">
 </p>
 
@@ -195,7 +195,8 @@ for Spanish, Kandel–Moles + LIX for French). Function-word lists generated rep
 UD closed-class tokens.
 
 **Docs site landed** — MkDocs Material site with Concepts, Forensic toolkit, Federalist +
-PAN-CLEF + Turkish tutorials, and CLI/API reference. **417 tests passing.**
+PAN-CLEF + Turkish tutorials, and CLI/API reference, backed by a comprehensive automated
+test suite (see the badge above).
 
 **Docs site is multilingual** — English (default) and Turkish (`/tr/`) launched via
 `mkdocs-static-i18n`; DE/ES/FR infrastructure ready, translation content deferred.

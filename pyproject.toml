@@ -12,7 +12,7 @@ license = "BSD-3-Clause"
 authors = [{ name = "Fatih Bozdağ", email = "fbozdag1989@gmail.com" }]
 keywords = ["stylometry", "authorship", "corpus-linguistics", "digital-humanities", "nlp"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
@@ -40,11 +40,14 @@ dependencies = [
     "pydantic>=2",
     "jinja2>=3.1",
     "joblib>=1.3",
-    "umap-learn>=0.5",
-    "hdbscan>=0.8",
 ]
 
 [project.optional-dependencies]
+# UMAP + HDBSCAN are heavy numba / C-extension wheels imported only lazily by
+# the reduce/cluster methods. Keeping them out of the base deps means a build
+# break on a new Python doesn't sink installability for users who only touch
+# Delta / PCA / Zeta. Install with `bitig[cluster]`.
+cluster = ["umap-learn>=0.5", "hdbscan>=0.8"]
 bayesian = ["pymc>=5.10", "arviz>=0.17"]
 embeddings = ["sentence-transformers>=2.6", "torch>=2.2"]
 viz = ["plotly>=5.20", "kaleido>=0.2.1", "ete3>=3.1.3"]
@@ -77,6 +80,9 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
     "types-PyYAML",
+    # The reduce/cluster method tests exercise UMAP + HDBSCAN, so the dev/CI
+    # environment installs the cluster extra even though base install doesn't.
+    "bitig[cluster]",
 ]
 
 [project.scripts]
