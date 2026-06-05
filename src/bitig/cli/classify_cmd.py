@@ -21,7 +21,14 @@ def classify_command(
     metadata: Path = typer.Option(..., "--metadata", "-m", exists=True, dir_okay=False),  # noqa: B008
     estimator: str = typer.Option("logreg", "--estimator"),
     group_by: str = typer.Option("author", "--group-by"),
-    cv_kind: str = typer.Option("loao", "--cv-kind"),
+    cv_kind: str = typer.Option("stratified", "--cv-kind"),
+    groups_by: str | None = typer.Option(
+        None,
+        "--groups-by",
+        help="Metadata column to GROUP folds by for cv-kind=loao (must differ from --group-by, "
+        "so the held-out group isn't the classification target). Defaults to --group-by, which "
+        "is rejected as degenerate.",
+    ),
     folds: int = typer.Option(5, "--folds"),
     mfw: int = typer.Option(500, "--mfw"),
     seed: int = typer.Option(42, "--seed"),
@@ -29,6 +36,23 @@ def classify_command(
     """Fit+cross-validate a classifier and print per-author metrics."""
     corpus = load_corpus(path, metadata=metadata)
     y = np.array(corpus.metadata_column(group_by))
+
+    groups: np.ndarray | None = None
+    if cv_kind == "loao":
+        col = groups_by or group_by
+        groups = np.array(corpus.metadata_column(col))
+        # Grouping by the target holds out every instance of each class, so the
+        # held-out class is never in training → ~0 accuracy. Refuse loudly
+        # rather than reporting a meaningless score (audit P1.16).
+        if np.array_equal(groups, y):
+            console.print(
+                f"[red]error:[/red] cv-kind=loao groups by {col!r}, which is identical to the "
+                f"classification target ({group_by!r}). LeaveOneGroupOut would hold out every "
+                f"target class and yield ~0 accuracy. Pass --groups-by <other-column> "
+                f"(e.g. a topic/source column), or use --cv-kind stratified."
+            )
+            raise typer.Exit(code=1)
+
     fm = MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True).fit_transform(corpus)
     clf = build_classifier(estimator, random_state=seed)
     report = cross_validate_bitig(
@@ -36,7 +60,7 @@ def classify_command(
         fm,
         y,
         cv_kind=cv_kind,
-        groups_from=y if cv_kind == "loao" else None,
+        groups_from=groups,
         folds=folds,
         seed=seed,
     )

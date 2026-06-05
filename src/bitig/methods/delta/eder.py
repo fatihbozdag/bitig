@@ -5,15 +5,21 @@ from __future__ import annotations
 import numpy as np
 
 from bitig.features import FeatureMatrix
-from bitig.methods.delta.base import _DeltaBase
+from bitig.methods.delta.base import _as_ndarray, _DeltaBase
 
 
 class EderDelta(_DeltaBase):
-    """Eder Delta: like Burrows, but each feature's contribution is weighted by `(n - rank) / n`,
-    so the most frequent features contribute most. Features are ranked by their training-set mean
-    absolute z-score (more discriminating features get higher rank).
+    """Eder Delta (Eder 2015): like Burrows, but each feature's contribution is
+    weighted by its frequency *rank*, ``w_i = (n - i) / n`` for the i-th most
+    frequent feature, so the most frequent features contribute most and the
+    long tail is progressively down-weighted.
 
-    Scalar weighting is computed at `fit` time from the centroids.
+    The feature matrix arrives with columns already in descending frequency
+    order (``MFWExtractor`` sorts them), so the weight is a pure function of
+    column position — it is NOT derived from the class centroids (deriving the
+    weights from the very means the classifier then scores against would be
+    circular, and an earlier implementation that ranked by across-centroid
+    variance did exactly that).
     """
 
     def __init__(self) -> None:
@@ -22,15 +28,10 @@ class EderDelta(_DeltaBase):
 
     def fit(self, X: FeatureMatrix | np.ndarray, y: np.ndarray) -> EderDelta:  # type: ignore[override]  # noqa: N803
         super().fit(X, y)
-        # Feature importance proxy: across-centroid variance (discriminating features have high variance).
-        stacked = np.vstack(list(self.centroids_.values()))
-        importance = stacked.var(axis=0)
-        ranks = importance.argsort()[::-1]  # descending by importance
-        n = len(importance)
-        weights = np.zeros(n)
-        for rank_pos, feat_idx in enumerate(ranks):
-            weights[feat_idx] = (n - rank_pos) / n
-        self._weights = weights
+        n = _as_ndarray(X).shape[1]
+        # Frequency-rank weights: column 0 (most frequent) → 1.0, decreasing to
+        # 1/n for the rarest. Depends only on feature position, not the data.
+        self._weights = np.arange(n, 0, -1, dtype=float) / n
         return self
 
     def _distance(self, X: np.ndarray, centroid: np.ndarray) -> np.ndarray:  # noqa: N803

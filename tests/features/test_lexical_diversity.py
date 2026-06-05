@@ -34,3 +34,26 @@ def test_ldiv_feature_matrix_is_2d_numeric() -> None:
     fm = ex.fit_transform(_corpus("a b c", "a a a"))
     assert fm.X.shape == (2, 1)
     assert np.issubdtype(fm.X.dtype, np.floating)
+
+
+def test_mtld_diverse_text_scores_above_repetitive() -> None:
+    """Regression (audit P1.13): maximally diverse text must score ABOVE
+    repetitive text. The old code returned 0.0 for all-unique input, inverting
+    the measure."""
+    from bitig.features.lexical_diversity import _mtld
+
+    diverse = [f"w{i}" for i in range(100)]  # all unique → TTR never decays
+    repetitive = ["the"] * 100  # TTR collapses immediately
+
+    assert _mtld(diverse) > _mtld(repetitive)
+    # All-unique floors at the token count (McCarthy & Jarvis 2010), not 0.0.
+    assert _mtld(diverse) == 100.0
+    assert _mtld(repetitive) < _mtld(diverse)
+
+
+def test_mtld_index_nonzero_for_diverse_document() -> None:
+    """The public extractor must surface the corrected MTLD (not 0) for a
+    high-diversity document."""
+    ex = LexicalDiversityExtractor(indices=["mtld"])
+    fm = ex.fit_transform(_corpus(" ".join(f"w{i}" for i in range(60))))
+    assert fm.as_dataframe().loc["d0", "mtld"] > 0.0
