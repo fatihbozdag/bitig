@@ -88,7 +88,13 @@ class HDBSCANCluster:
         self.metric = metric
 
     def fit_transform(self, fm: FeatureMatrix) -> Result:
-        import hdbscan
+        try:
+            import hdbscan
+        except ImportError as exc:  # pragma: no cover - only without the extra
+            raise ImportError(
+                "HDBSCAN clustering requires the 'cluster' extra. "
+                "Install with: uv pip install 'bitig[cluster]'"
+            ) from exc
 
         model = hdbscan.HDBSCAN(
             min_cluster_size=self.min_cluster_size,
