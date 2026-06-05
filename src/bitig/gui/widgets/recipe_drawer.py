@@ -117,7 +117,8 @@ def _read_widget_value(field: ParamField, widget: Any) -> Any:
     """Coerce the widget's raw value back to ``field.kind``."""
     raw = getattr(widget, "value", None)
     if field.kind == "int":
-        return int(raw) if raw is not None and raw != "" else field.default
+        # round() not int(): int(3.9) silently truncates to 3 (audit P3).
+        return round(float(raw)) if raw is not None and raw != "" else field.default
     if field.kind == "float":
         return float(raw) if raw is not None and raw != "" else field.default
     if field.kind == "bool":

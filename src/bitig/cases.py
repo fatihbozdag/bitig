@@ -42,7 +42,7 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 
@@ -55,6 +55,9 @@ from bitig.recipes import (
     recipe_mode,
     resolve_recipe,
 )
+
+if TYPE_CHECKING:
+    from bitig.signatures import SignaturePlugin
 
 EvidenceRole = Literal["questioned", "known", "control"]
 _ROLES: tuple[EvidenceRole, ...] = ("questioned", "known", "control")
@@ -695,7 +698,7 @@ class Case:
         self,
         *,
         signed_by: str | None = None,
-        signature_plugin: Any = None,
+        signature_plugin: SignaturePlugin | None = None,
     ) -> dict[str, Any]:
         """Freeze the Case and write ``report/signed.json`` (spec §6).
 

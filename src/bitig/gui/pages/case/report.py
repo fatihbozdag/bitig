@@ -143,7 +143,7 @@ def _render_forensic_body(case: Case) -> None:
     # Title block
     ui.label(case.record.title).classes("text-2xl font-semibold")
     ui.label(
-        f"Examiner: {case.record.examiner}  ·  Date: {_now_iso()}  ·  case={case.record.id}"
+        f"Examiner: {case.record.examiner}  ·  Date: {_report_date(case)}  ·  case={case.record.id}"
     ).style("color: #555; font-family: var(--bitig-font-mono); font-size: 12px;")
 
     ui.html("<hr style='border-color: #ddd;'>")
@@ -227,7 +227,7 @@ def _render_research_body(case: Case) -> None:
 
     ui.label(case.record.title).classes("text-2xl font-semibold")
     ui.label(
-        f"Examiner: {case.record.examiner}  ·  Date: {_now_iso()}  ·  case={case.record.id}"
+        f"Examiner: {case.record.examiner}  ·  Date: {_report_date(case)}  ·  case={case.record.id}"
     ).style("color: #555; font-family: var(--bitig-font-mono); font-size: 12px;")
     ui.html("<hr style='border-color: #ddd;'>")
 
@@ -274,5 +274,9 @@ def _render_research_body(case: Case) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _now_iso() -> str:
+def _report_date(case: Case) -> str:
+    """Report date: the sign date for a signed case (so an old signed report
+    doesn't restamp to today every time it's viewed — audit P3), else today."""
+    if case.record.signed and case.record.signed_at:
+        return case.record.signed_at[:10]  # 'YYYY-MM-DD' prefix of the ISO stamp
     return datetime.now(UTC).strftime("%Y-%m-%d")

@@ -86,7 +86,10 @@ def _encode(obj: Any) -> Any:
 
 def _decode(obj: Any) -> Any:
     if isinstance(obj, dict):
-        if "__ndarray__" in obj:
+        # Only treat as our ndarray encoding when the full sentinel triple is
+        # present — a user value dict that merely happens to contain a
+        # "__ndarray__" key must decode as a plain dict, not crash (audit P3).
+        if "__ndarray__" in obj and "shape" in obj and "dtype" in obj:
             arr = np.array(obj["__ndarray__"], dtype=obj["dtype"])
             return arr.reshape(obj["shape"])
         return {k: _decode(v) for k, v in obj.items()}

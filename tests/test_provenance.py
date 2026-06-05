@@ -49,6 +49,22 @@ def test_provenance_current_captures_runtime():
     )
     assert p.bitig_version
     assert "." in p.python_version
+
+
+def test_current_snapshots_resolved_config():
+    """resolved_config is deep-copied, so mutating the caller's dict afterwards
+    can't retroactively change a captured provenance record (audit P3)."""
+    cfg = {"nested": {"k": "v"}}
+    p = Provenance.current(
+        spacy_model="en_core_web_sm",
+        spacy_version="3.7.2",
+        corpus_hash="h",
+        feature_hash=None,
+        seed=1,
+        resolved_config=cfg,
+    )
+    cfg["nested"]["k"] = "MUTATED"
+    assert p.resolved_config["nested"]["k"] == "v"
     assert isinstance(p.timestamp, datetime)
 
 
