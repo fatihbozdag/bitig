@@ -61,3 +61,6 @@ uv.lock
 .env
 .envrc
 examples/**/.tamga/
+
+# Superpowers brainstorm tool runtime dir (mockups + server state) — not part of the package
+.superpowers/
