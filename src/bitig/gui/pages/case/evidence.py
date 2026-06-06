@@ -30,6 +30,9 @@ def case_evidence_page(case_id: str) -> None:
 
 def _render_body(case: Case) -> None:
     custody = case.verify_custody()
+    # Compute the mismatch set once (verify_custody already hashed every file)
+    # and thread it to the cards, instead of each card re-hashing (audit P3).
+    mismatch_paths = {m.path for m in custody}
     if custody:
         with (
             ui.row()
@@ -53,7 +56,12 @@ def _render_body(case: Case) -> None:
     with container:
         for role, title, subtitle in roles:
             _render_role_dropzone(
-                case, role, title, subtitle, rerender=lambda: _rerender(case, container)
+                case,
+                role,
+                title,
+                subtitle,
+                rerender=lambda: _rerender(case, container),
+                mismatch_paths=mismatch_paths,
             )
         if case.record.mode == "forensic":
             _render_control_corpus(case, rerender=lambda: _rerender(case, container))
@@ -76,6 +84,7 @@ def _render_body(case: Case) -> None:
 def _rerender(case: Case, container: ui.column) -> None:
     """Reload the Case from disk + redraw the role panels."""
     case = Case.load(case.root)  # refresh against disk
+    mismatch_paths = {m.path for m in case.verify_custody()}
     container.clear()
     refresh_roles: list[tuple[EvidenceRole, str, str]] = [
         ("questioned", "Questioned", "Files of disputed authorship"),
@@ -84,7 +93,12 @@ def _rerender(case: Case, container: ui.column) -> None:
     with container:
         for role, title, subtitle in refresh_roles:
             _render_role_dropzone(
-                case, role, title, subtitle, rerender=lambda: _rerender(case, container)
+                case,
+                role,
+                title,
+                subtitle,
+                rerender=lambda: _rerender(case, container),
+                mismatch_paths=mismatch_paths,
             )
         if case.record.mode == "forensic":
             _render_control_corpus(case, rerender=lambda: _rerender(case, container))
@@ -97,6 +111,7 @@ def _render_role_dropzone(
     subtitle: str,
     *,
     rerender: Callable[[], None],
+    mismatch_paths: set[str],
 ) -> None:
     bucket = cast(list[EvidenceEntry], getattr(case.record.evidence, role))
     with ui.column().classes("w-full bitig-panel p-4 gap-2"):
@@ -132,21 +147,9 @@ def _render_role_dropzone(
                 title=Path(entry.path).name,
                 meta=f"{entry.tokens} tokens · " + (f"{entry.author}" if entry.author else "—"),
                 provenance=f"{short_hash(entry.sha256)} role={entry.role}",
-                state=(
-                    "err"
-                    if (case.root / entry.path).is_file() is False or _hash_mismatch(case, entry)
-                    else "default"
-                ),
+                # mismatch_paths already reflects the single verify_custody pass.
+                state="err" if entry.path in mismatch_paths else "default",
             )
-
-
-def _hash_mismatch(case: Case, entry: EvidenceEntry) -> bool:
-    from bitig.cases import hash_file
-
-    abs_path = case.root / entry.path
-    if not abs_path.is_file():
-        return True
-    return hash_file(abs_path) != entry.sha256
 
 
 def _render_control_corpus(case: Case, *, rerender: Callable[[], None]) -> None:

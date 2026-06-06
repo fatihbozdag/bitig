@@ -12,6 +12,7 @@ and the record is unchanged from its pre-forensic form.
 
 from __future__ import annotations
 
+import copy
 import platform
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -92,7 +93,9 @@ class Provenance:
             feature_hash=feature_hash,
             seed=seed,
             timestamp=datetime.now(UTC),
-            resolved_config=resolved_config,
+            # Snapshot the config so later mutation of the caller's dict can't
+            # retroactively change a captured provenance record (audit P3).
+            resolved_config=copy.deepcopy(resolved_config),
             questioned_description=questioned_description,
             known_description=known_description,
             hypothesis_pair=hypothesis_pair,

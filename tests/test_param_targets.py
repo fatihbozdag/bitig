@@ -51,6 +51,17 @@ def test_apply_target_top_level_scalar():
     assert new["seed"] == 7
 
 
+def test_read_and_apply_target_nested_params_form():
+    """In the validated nested form (extras folded into 'params'), reads/writes
+    must hit params[field], not create a flat duplicate (audit P2)."""
+    study = {"methods": [{"id": "verify", "kind": "verify", "params": {"iterations": 100}}]}
+    assert read_param_target(study, "methods[verify].iterations") == 100
+
+    new = apply_param_target(study, "methods[verify].iterations", 200)
+    assert new["methods"][0]["params"]["iterations"] == 200
+    assert "iterations" not in new["methods"][0]  # no flat duplicate created
+
+
 def test_apply_target_unknown_id_raises():
     study = resolve_recipe("imposters_lr", corpus_path="/x")
     with pytest.raises(KeyError):

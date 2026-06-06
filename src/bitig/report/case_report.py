@@ -257,7 +257,12 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
         ) from exc
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    HTML(string=html, base_url=str(base_url)).write_pdf(str(output))
+    try:
+        HTML(string=html, base_url=str(base_url)).write_pdf(str(output))
+    except Exception as exc:
+        # errors (e.g. missing libpango/cairo system libraries) that the GUI's
+        # ImportError-only handler would otherwise let escape (audit P3).
+        raise ReportRendererError(f"PDF rendering failed: {exc}") from exc
 
 
 def _forensic_method_paragraph(result: Result | None) -> str:

@@ -39,6 +39,19 @@ def test_to_json_encodes_numpy_bool(tmp_path) -> None:
     assert list(restored.values["flags"]) == [True, False]
 
 
+def test_decode_ignores_non_sentinel_ndarray_key(tmp_path) -> None:
+    """A user value dict that merely contains a '__ndarray__' key (without the
+    full shape/dtype sentinel) must decode as a plain dict, not crash (audit P3)."""
+    r = Result(
+        method_name="m",
+        values={"weird": {"__ndarray__": [1, 2], "note": "not our encoding"}},
+    )
+    out = tmp_path / "r.json"
+    r.to_json(out)
+    restored = Result.from_json(out)
+    assert restored.values["weird"] == {"__ndarray__": [1, 2], "note": "not our encoding"}
+
+
 def test_result_basic_construction() -> None:
     r = Result(
         method_name="burrows_delta",

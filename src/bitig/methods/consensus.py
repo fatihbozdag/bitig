@@ -36,6 +36,11 @@ class BootstrapConsensus:
     def fit_transform(self, corpus: Corpus) -> Result:
         doc_ids = [d.id for d in corpus.documents]
         n_docs = len(doc_ids)
+        if n_docs < 2:
+            raise ValueError(
+                f"Bootstrap consensus needs at least 2 documents, got {n_docs}. "
+                "A consensus tree is undefined for a single document."
+            )
         rng = derive_rng(self.seed, "consensus")
 
         clade_counts: Counter[frozenset[str]] = Counter()

@@ -372,10 +372,14 @@ def _walk_target(study: dict[str, Any], target: str) -> tuple[dict[str, Any], st
     items: list[dict[str, Any]] = study.get(bucket) or []
     for entry in items:
         if isinstance(entry, dict) and entry.get("id") == item_id:
-            # Fields outside the entry's "known" set live in ``params``;
-            # but at the recipe layer we keep everything flat (the Pydantic
-            # extras-collector folds them in on validate). Use the flat
-            # representation here so reads round-trip cleanly.
+            # At the recipe layer the study is flat, so the field is a
+            # top-level key of the entry. But if the entry is in the validated
+            # *nested* form (Pydantic folds extras into ``params``) and the
+            # field isn't a top-level key, target the ``params`` sub-dict —
+            # otherwise a write would create entry[field] alongside the real
+            # params[field], leaving the study inconsistent (audit P2).
+            if tail not in entry and isinstance(entry.get("params"), dict):
+                return entry["params"], tail
             return entry, tail
     raise KeyError(f"no {bucket[:-1]} with id={item_id!r} in study")
 

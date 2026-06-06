@@ -10,14 +10,15 @@ on ``mode``.
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field
 
-_STRICT = ConfigDict(extra="forbid")
+# Import the canonical Literals rather than re-declaring them (audit P3): a
+# silent divergence between these and the source-of-truth definitions would
+# pass mypy but corrupt the report model.
+from bitig.cases import EvidenceRole
+from bitig.recipes import Mode
 
-Mode = Literal["forensic", "research"]
-EvidenceRole = Literal["questioned", "known", "control"]
+_STRICT = ConfigDict(extra="forbid")
 
 
 class HeadlineScalar(BaseModel):
