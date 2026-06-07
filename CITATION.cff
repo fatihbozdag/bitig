@@ -9,7 +9,7 @@ type: software
 license: BSD-3-Clause
 url: "https://github.com/fatihbozdag/bitig"
 repository-code: "https://github.com/fatihbozdag/bitig"
-version: "0.3.0"
+version: "0.3.1"
 abstract: >
   bitig is a Python package and interactive CLI for computational stylometry.
   It provides feature parity with R's Stylo for authorship attribution,
