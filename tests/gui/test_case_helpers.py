@@ -153,25 +153,26 @@ def test_headline_scalars_pca_surfaces_variance(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_lr_verbal_rung_zero_is_no_support() -> None:
-    assert lr_verbal_rung(0) == "no support"
+def test_lr_verbal_rung_one_is_no_support() -> None:
+    assert lr_verbal_rung(1.0) == "no support"
 
 
 def test_lr_verbal_rung_thresholds() -> None:
+    # Two-sided ENFSI/Nordgaard bands (re-exported from bitig.forensic.verbal_scale).
     assert lr_verbal_rung(5) == "weak support"
     assert lr_verbal_rung(50) == "moderate support"
-    assert lr_verbal_rung(500) == "strong support"
-    assert lr_verbal_rung(5000) == "very strong support"
-    assert lr_verbal_rung(50000) == "extremely strong support"
-    assert lr_verbal_rung(1e9) == "extremely strong support"
+    assert lr_verbal_rung(500) == "moderately strong support"
+    assert lr_verbal_rung(5000) == "strong support"
+    assert lr_verbal_rung(50000) == "very strong support"
+    assert lr_verbal_rung(2e6) == "extremely strong support"
+    # Symmetric: a defence-favouring LR carries the same strength.
+    assert lr_verbal_rung(0.02) == lr_verbal_rung(50)
 
 
-def test_lr_ladder_is_continuous_and_starts_at_zero() -> None:
-    # First rung covers [0, 1); each subsequent rung starts where the previous ended.
-    prev_hi = 0.0
-    for i, (_label, lo, hi) in enumerate(LR_LADDER):
-        if i == 0:
-            assert lo == 0.0
-        else:
-            assert lo == prev_hi
+def test_lr_ladder_is_continuous_and_starts_at_one() -> None:
+    # Strength bands on the order of magnitude (max(LR, 1/LR)); start at 1.
+    assert LR_LADDER[0][1] == 1.0
+    prev_hi = 1.0
+    for _label, lo, hi in LR_LADDER:
+        assert lo == prev_hi
         prev_hi = hi

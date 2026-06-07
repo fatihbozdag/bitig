@@ -22,7 +22,12 @@ from jinja2 import Environment
 
 from bitig._version import __version__
 from bitig.cases import Case
-from bitig.forensic.verbal_scale import ladder_rows, lr_from_values, lr_verbal_rung
+from bitig.forensic.verbal_scale import (
+    ladder_rows,
+    lr_from_values,
+    lr_verbal_rung,
+    lr_verbal_statement,
+)
 from bitig.report.context import (
     ChainOfCustodyEntry,
     HeadlineScalar,
@@ -129,6 +134,7 @@ def _build_context(case: Case) -> ReportContext:
             hypothesis_d="The questioned text and the known texts do not share an author.",
             lr_value=fmt_scalar(lr) if lr is not None else None,
             lr_verbal_rung=lr_verbal_rung(lr) if lr is not None else None,
+            lr_statement=lr_verbal_statement(lr) if lr is not None else None,
             lr_ladder_rows=ladder_rows() if lr is not None else [],
             method_paragraph=_forensic_method_paragraph(result),
         )
