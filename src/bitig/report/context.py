@@ -80,7 +80,8 @@ class ReportContext(BaseModel):
     hypothesis_p: str | None = None
     hypothesis_d: str | None = None
     lr_value: str | None = None  # formatted LR for display; None when no calibrated LR
-    lr_verbal_rung: str | None = None  # classified from the RAW LR float, not lr_value
+    lr_verbal_rung: str | None = None  # strength rung (raw LR float), highlights the ladder
+    lr_statement: str | None = None  # full two-sided statement incl. which proposition
     lr_ladder_rows: list[tuple[str, str, str]] = Field(default_factory=list)
     method_paragraph: str | None = None
 

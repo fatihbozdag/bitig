@@ -83,7 +83,7 @@
   </div>
   {% if lr_verbal_rung and lr_ladder_rows %}
   <div>
-    <div class="mono muted">Verbal scale (ENFSI):</div>
+    <div class="mono muted">Verbal scale (ENFSI 2015 / Nordgaard 2012), by order of magnitude:</div>
     <ul class="ladder">
       {% for label, lo, hi in lr_ladder_rows %}
       <li class="{{ 'active' if lr_verbal_rung == label else '' }}">  {{ label }} ({{ lo }}–{{ hi }})</li>
@@ -92,6 +92,7 @@
   </div>
   {% endif %}
 </div>
+{% if lr_statement %}<p><strong>Interpretation:</strong> {{ lr_statement }}.</p>{% endif %}
 {% endif %}
 
 {% if headline_scalars %}

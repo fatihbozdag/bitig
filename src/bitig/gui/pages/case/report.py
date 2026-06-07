@@ -18,7 +18,12 @@ from datetime import UTC, datetime
 from nicegui import ui
 
 from bitig.cases import Case, CaseError
-from bitig.forensic.verbal_scale import ladder_rows, lr_from_values, lr_verbal_rung
+from bitig.forensic.verbal_scale import (
+    ladder_rows,
+    lr_from_values,
+    lr_verbal_rung,
+    lr_verbal_statement,
+)
 from bitig.gui.case_layout import case_shell
 from bitig.gui.pages.case._helpers import (
     headline_scalars,
@@ -173,7 +178,9 @@ def _render_forensic_body(case: Case) -> None:
         if lr is not None:
             rung = lr_verbal_rung(lr)
             with ui.column().classes("gap-1"):
-                ui.label("Verbal scale (ENFSI):").style("font-size: 12px; color: #555;")
+                ui.label("Verbal scale (ENFSI 2015), by order of magnitude:").style(
+                    "font-size: 12px; color: #555;"
+                )
                 for label_, lo, hi in ladder_rows():
                     active = label_ == rung
                     style = (
@@ -187,6 +194,11 @@ def _render_forensic_body(case: Case) -> None:
                 "Uncalibrated General-Impostors verification score in [0, 1] — not a "
                 "likelihood ratio; no ENFSI rung applies until calibration is configured."
             ).style("font-size: 12px; color: #555; max-width: 320px;")
+
+    if lr is not None:
+        ui.label(f"Interpretation: {lr_verbal_statement(lr)}.").style(
+            "font-size: 13px; color: #1a1a2e; font-weight: 600;"
+        )
 
     # Method paragraph + chain of custody
     with ui.row().classes("w-full gap-6 mt-2"):

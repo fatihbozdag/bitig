@@ -198,17 +198,32 @@ def test_build_on_signed_case_serves_frozen_snapshot(tmp_path: Path) -> None:
 
 def test_forensic_rung_classified_from_raw_lr_not_rounded(tmp_path: Path) -> None:
     """The verbal rung must come from the RAW LR float, not the rounded display
-    string (audit P1.11): LR=0.9999 displays as "1" but is "no support", not
-    the "weak support" the old round-then-classify produced."""
+    string (audit P1.11): LR=9.999 displays as "10" (which would classify as
+    'moderate') but the raw 9.999 is 'weak support'."""
     from bitig.report.case_report import _build_context
 
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="rung")
-    _attach_run(case, method_name="verify", values={"lr": 0.9999})
+    _attach_run(case, method_name="verify", values={"lr": 9.999})
     ctx = _build_context(case)
 
-    assert ctx.lr_value == "1"  # display rounds up...
-    assert ctx.lr_verbal_rung == "no support"  # ...but the rung uses the raw float
+    assert ctx.lr_value == "10"  # display rounds 9.999 → "10"...
+    assert ctx.lr_verbal_rung == "weak support"  # ...but the rung uses the raw 9.999
+    assert "prosecution" in ctx.lr_statement
     assert ctx.lr_ladder_rows  # ladder present for a real LR
+
+
+def test_forensic_lr_below_one_supports_defence(tmp_path: Path) -> None:
+    """Two-sided scale (judgment #1): LR<1 is exculpatory — it supports the
+    defence proposition, not collapsed to 'no support' as the old ladder did."""
+    from bitig.report.case_report import _build_context
+
+    case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="excul")
+    _attach_run(case, method_name="verify", values={"lr": 0.02})  # 1/0.02 = 50
+    ctx = _build_context(case)
+
+    assert ctx.lr_verbal_rung == "moderate support"  # symmetric strength of LR=50
+    assert "defence" in ctx.lr_statement
+    assert "different author" in ctx.lr_statement
 
 
 def test_forensic_gi_result_has_no_lr_or_ladder(tmp_path: Path) -> None:
