@@ -113,6 +113,68 @@ def test_imposters_single_author_corpus_raises() -> None:
         gi.fit_transform(one_author)
 
 
+def test_imposters_reports_chance_half_for_pairwise(synth_corpus: Corpus) -> None:
+    """Default impostor_n=1 → candidate-vs-one-impostor, so chance is exactly
+    0.5 and the 0.5 threshold sits at chance (audit P2 #2)."""
+    gi = GeneralImposters(
+        target_ids=["alice_target"],
+        candidate="Alice",
+        group_by="author",
+        n_iter=20,
+        mfw_n=40,
+        impostor_n=1,
+        seed=7,
+    )
+    result = gi.fit_transform(synth_corpus)
+    assert result.values["chance"] == 0.5
+    assert result.tables[0]["chance"].iloc[0] == 0.5
+    assert result.tables[0]["impostors_per_iter"].iloc[0] == 1
+
+
+def test_imposters_chance_scales_with_impostor_n() -> None:
+    """With 2 impostors sampled per iteration, chance is 1/(1+2) = 1/3."""
+
+    def _doc(i: int, author: str, toks: list[str]) -> Document:
+        rng = np.random.default_rng(i)
+        text = " ".join(rng.choice(toks, size=300).tolist())
+        return Document(id=f"{author}_{i}", text=text, metadata={"author": author})
+
+    corpus = Corpus(
+        documents=[
+            _doc(0, "A", ["the", "of", "and", "alice", "garden"]),
+            _doc(1, "A", ["the", "of", "and", "alice", "garden"]),
+            _doc(2, "B", ["but", "with", "from", "bob", "office"]),
+            _doc(3, "B", ["but", "with", "from", "bob", "office"]),
+            _doc(4, "C", ["yet", "upon", "into", "carol", "studio"]),
+            _doc(5, "C", ["yet", "upon", "into", "carol", "studio"]),
+            _doc(6, "A_t", ["the", "of", "and", "alice", "garden"]),
+        ]
+    )
+    # target id must match a real doc; reuse A_6 as the questioned text.
+    corpus.documents[6] = Document(
+        id="target",
+        text=corpus.documents[6].text,
+        metadata={"author": "A"},
+    )
+    gi = GeneralImposters(
+        target_ids=["target"],
+        candidate="A",
+        group_by="author",
+        n_iter=10,
+        mfw_n=12,
+        impostor_n=2,
+        seed=1,
+    )
+    result = gi.fit_transform(corpus)
+    assert result.values["chance"] == pytest.approx(1 / 3)
+    assert result.tables[0]["impostors_per_iter"].iloc[0] == 2
+
+
+def test_imposters_invalid_impostor_n_raises() -> None:
+    with pytest.raises(ValueError, match="impostor_n"):
+        GeneralImposters(target_ids=["x"], candidate="A", group_by="author", impostor_n=0)
+
+
 def test_imposters_invalid_feature_frac_raises() -> None:
     with pytest.raises(ValueError, match="feature_frac"):
         GeneralImposters(target_ids=["x"], candidate="Alice", group_by="author", feature_frac=0.0)

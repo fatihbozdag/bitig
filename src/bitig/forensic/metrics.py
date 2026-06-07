@@ -244,7 +244,12 @@ def c_at_1(probs: np.ndarray, y: np.ndarray, *, unanswered_margin: float = 0.0) 
     if unanswered_margin < 0:
         raise ValueError("unanswered_margin must be >= 0")
 
-    unanswered = np.abs(probs - 0.5) <= unanswered_margin
+    # Strict `<`: with unanswered_margin == 0 the band is empty, so NO trial is
+    # an abstention (not even an exact p == 0.5, which the prediction path below
+    # answers as class 1). This is what makes c@1 reduce exactly to accuracy at
+    # margin 0, as the docstring promises (audit P2 — `<=` marked p == 0.5
+    # unanswered and diverged from accuracy).
+    unanswered = np.abs(probs - 0.5) < unanswered_margin
     predictions = (probs >= 0.5).astype(int)
     correct = (predictions == y) & ~unanswered
     n_correct = int(correct.sum())

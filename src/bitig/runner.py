@@ -202,10 +202,20 @@ def _dispatch_method(
             )
         clf = cls().fit(fm, y)
         preds = clf.predict(fm)
+        # In-sample (train == test): the centroids were fit on these same
+        # documents and `fm` was z-scored over the whole corpus, so this is
+        # RESUBSTITUTION accuracy — a separability diagnostic, NOT a held-out
+        # generalization estimate. Labelling it plain "accuracy" overstated it
+        # (audit P2, diagnostic-vs-attribution). For an attribution accuracy
+        # estimate use `bitig classify` (stratified / leave-one-out CV).
         return Result(
             method_name=f"delta_{variant}",
             params=dict(method_cfg.params),
-            values={"predictions": preds, "accuracy": float((preds == y).mean())},
+            values={
+                "predictions": preds,
+                "resubstitution_accuracy": float((preds == y).mean()),
+                "evaluation": "resubstitution (in-sample); use `bitig classify` for held-out CV",
+            },
         )
 
     if kind == "rolling_delta":
