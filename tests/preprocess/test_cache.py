@@ -35,7 +35,7 @@ def test_cache_key_spacy_native_backend_version_format() -> None:
 def test_cache_key_stanza_backend_differs_from_spacy_native() -> None:
     """Different backend identifiers must never collide."""
     native = cache_key("doc-hash", "tr", "spacy=3.7.2", [])
-    stanza = cache_key("doc-hash", "tr", "spacy_stanza=1.0.4;stanza=1.8.0", [])
+    stanza = cache_key("doc-hash", "tr", "spacy_stanza=1.0.4;stanza=1.6.1", [])
     assert native != stanza
 
 
