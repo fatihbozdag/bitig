@@ -64,7 +64,9 @@ def test_delta_variant_runs(tmp_path: Path, mini_corpus_dir: Path, variant: str)
     assert result_path.exists(), f"no result.json for variant={variant}"
     payload = json.loads(result_path.read_text())
     assert payload["method_name"] == f"delta_{variant}"
-    assert "accuracy" in payload["values"]
+    # Delta reports in-sample accuracy under an honest key (audit P2).
+    assert "resubstitution_accuracy" in payload["values"]
+    assert "accuracy" not in payload["values"]
 
 
 @pytest.mark.parametrize(

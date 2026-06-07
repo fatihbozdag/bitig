@@ -1,13 +1,24 @@
-"""General Imposters -- Koppel & Winter (2014) authorship verification.
+"""General Imposters -- Koppel & Winter (2014) / Seidman (2013) verification.
 
-Bootstraps over feature subsets and asks: across many random projections of
-the MFW space, how often is the target text closer to the *candidate* author
-than to any *imposter* author? The aggregate score is in [0, 1]; values near
-1 mean the candidate consistently wins, values near 0 mean an imposter does.
+Each iteration draws TWO independent random samples: a subset of MFW features
+*and* a subset of impostor authors from the pool. In that random feature
+subspace the target is assigned to the nearest of the candidate plus the
+sampled impostors; the candidate "wins" the iteration if it is nearest. The
+aggregate score is the win fraction in [0, 1].
 
-This is a *verification* method (one candidate per method config) -- it is
-the natural complement to the regular delta runner branch, which is
-*attribution* (pick the closest of all candidates). Targets are excluded
+Sampling the impostors per iteration (rather than always comparing against the
+whole author set) is the defining feature of *General* Impostors and is what
+keeps the score interpretable: with one impostor per iteration (the default,
+``impostor_n=1``) the comparison is candidate-vs-one-impostor, so under no
+signal the candidate wins half the time — ``chance == 0.5`` — and the default
+0.5 threshold sits exactly at chance. Larger ``impostor_n`` approximates the
+stricter "nearer than every impostor" test with ``chance == 1/(1+impostor_n)``;
+``chance`` is reported on the Result so the score is always read against it.
+
+The score is an uncalibrated similarity statistic, NOT a likelihood ratio —
+turning it into an LR requires a calibration set (see the forensic-domain
+pass). This is a *verification* method (one candidate per config), the
+complement of the delta runner branch's *attribution*. Targets are excluded
 from the MFW vocabulary and z-score statistics so frequencies do not leak.
 """
 
@@ -58,6 +69,11 @@ class GeneralImposters:
         Fraction of MFW columns sampled per iteration. The classical GI
         value is 0.5; lower values produce noisier per-iteration votes but
         stabilise the aggregate score.
+    impostor_n : int
+        Impostors sampled per iteration from the pool. Default 1 → pairwise
+        candidate-vs-impostor comparison, so ``chance == 0.5`` and the 0.5
+        threshold is principled. Larger values give a stricter test with
+        ``chance == 1/(1+impostor_n)`` (reported on the Result).
     base_delta : str
         Distance kernel; one of `burrows`, `cosine`, `argamon_linear`,
         `quadratic`, `eder`, `eder_simple`.
@@ -80,6 +96,7 @@ class GeneralImposters:
         group_by: str,
         n_iter: int = 100,
         feature_frac: float = 0.5,
+        impostor_n: int = 1,
         base_delta: str = "burrows",
         mfw_n: int = 200,
         lowercase: bool = True,
@@ -94,11 +111,14 @@ class GeneralImposters:
             raise ValueError("feature_frac must be in (0, 1]")
         if n_iter < 1:
             raise ValueError("n_iter must be >= 1")
+        if impostor_n < 1:
+            raise ValueError("impostor_n must be >= 1")
         self.target_ids = list(target_ids)
         self.candidate = candidate
         self.group_by = group_by
         self.n_iter = int(n_iter)
         self.feature_frac = float(feature_frac)
+        self.impostor_n = int(impostor_n)
         self.base_delta = base_delta
         self.mfw_n = int(mfw_n)
         self.lowercase = lowercase
@@ -156,13 +176,30 @@ class GeneralImposters:
         n_features = x_train.shape[1]
         k = max(1, round(n_features * self.feature_frac))
 
+        impostors = [a for a in authors if a != self.candidate]
+        # Impostors sampled per iteration. With m == 1 (default) each iteration
+        # is a candidate-vs-one-random-impostor comparison, so under no signal
+        # the candidate wins half the time and the 0.5 threshold sits exactly at
+        # chance. Larger m approximates the stricter Koppel "nearer than all of
+        # a sampled impostor set" test, with chance 1/(1 + m).
+        m = min(self.impostor_n, len(impostors))
+        chance = 1.0 / (1 + m)
+
         rows: list[dict[str, object]] = []
         for doc, tgt in zip(target_docs, target_vectors, strict=True):
             wins = 0
             for _ in range(self.n_iter):
+                # Two independent randomisations per iteration: a feature
+                # subspace AND a fresh impostor subset drawn from the pool
+                # (Seidman 2013; Koppel & Winter 2014). Sampling impostors —
+                # not always comparing against the whole author set — is what
+                # makes this General Impostors and what calibrates the score.
                 cols = rng.choice(n_features, size=k, replace=False)
+                sampled = rng.choice(np.asarray(impostors, dtype=object), size=m, replace=False)
+                keep = {self.candidate, *(str(a) for a in sampled)}
+                mask = np.array([str(a) in keep for a in y_train])
                 clf = delta_cls()
-                clf.fit(x_train[:, cols], y_train)
+                clf.fit(x_train[mask][:, cols], y_train[mask])
                 # decision_function returns -distance; argmax => nearest centroid.
                 neg_dists = clf.decision_function(tgt[cols].reshape(1, -1))[0]
                 if str(clf.classes_[int(np.argmax(neg_dists))]) == self.candidate:
@@ -173,8 +210,10 @@ class GeneralImposters:
                     "target_id": doc.id,
                     "candidate": self.candidate,
                     "score": float(score),
+                    "chance": float(chance),
                     "n_iter": self.n_iter,
                     "n_features_per_iter": int(k),
+                    "impostors_per_iter": int(m),
                     "verified": bool(score >= self.threshold),
                 }
             )
@@ -188,6 +227,7 @@ class GeneralImposters:
                 "group_by": self.group_by,
                 "n_iter": self.n_iter,
                 "feature_frac": self.feature_frac,
+                "impostor_n": self.impostor_n,
                 "base_delta": self.base_delta,
                 "mfw_n": self.mfw_n,
                 "lowercase": self.lowercase,
@@ -196,8 +236,9 @@ class GeneralImposters:
             },
             values={
                 "candidate": self.candidate,
-                "imposters": [a for a in authors if a != self.candidate],
+                "imposters": impostors,
                 "threshold": self.threshold,
+                "chance": float(chance),
                 "scores": {row["target_id"]: row["score"] for row in rows},
             },
             tables=[table],

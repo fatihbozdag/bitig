@@ -90,6 +90,15 @@ class TestCAt1:
         with pytest.raises(ValueError, match="unanswered_margin"):
             c_at_1(np.array([0.5]), np.array([1]), unanswered_margin=-0.1)
 
+    def test_c_at_1_margin_zero_answers_exact_half(self) -> None:
+        """At margin 0 an exact p==0.5 is ANSWERED (predicted class 1), so c@1
+        equals plain accuracy — it must not be silently treated as an abstention
+        (audit P2; the old `<=` band marked p==0.5 unanswered and diverged)."""
+        probs = np.array([0.5, 0.9, 0.2])  # predictions at >=0.5 → [1, 1, 0]
+        assert c_at_1(probs, np.array([1, 1, 0]), unanswered_margin=0.0) == pytest.approx(1.0)
+        # p=0.5 predicts 1; with truth 0 it's simply wrong → 2/3 accuracy, no abstention credit.
+        assert c_at_1(probs, np.array([0, 1, 0]), unanswered_margin=0.0) == pytest.approx(2 / 3)
+
     def test_c_at_1_all_unanswered_returns_zero(self) -> None:
         probs = np.full(4, 0.5)
         y = np.array([1, 1, 0, 0])
