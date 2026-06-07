@@ -58,8 +58,10 @@ gui = [
     "pywebview>=5",
 ]
 turkish = [
+    # spacy-stanza 1.0.4 (its latest release) caps stanza at <1.7.0, so stanza
+    # must stay in that window; 1.6.x is the newest spacy-stanza can load.
     "spacy-stanza>=1.0.4",
-    "stanza>=1.8",
+    "stanza>=1.6,<1.7",
 ]
 multilang = [
     "bitig[turkish]",

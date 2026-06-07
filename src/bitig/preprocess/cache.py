@@ -20,7 +20,7 @@ def cache_key(
     """Return a stable cache key for a (document, backend configuration) pair.
 
     `backend_version` is a structured string like 'spacy=3.7.2' (native spaCy backend) or
-    'spacy_stanza=1.0.4;stanza=1.8.0' (Stanza-via-spacy-stanza backend). The native branch
+    'spacy_stanza=1.0.4;stanza=1.6.1' (Stanza-via-spacy-stanza backend). The native branch
     preserves the prior format so English caches built on older bitig versions remain valid.
     """
     return hash_mapping(
