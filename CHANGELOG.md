@@ -73,6 +73,13 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - **[results]** `HierarchicalGroupComparison` uses `sigma_group` for the author spread (it
   was created but unused) and standardises each feature, returning the mean/SD used.
   `BayesianAuthorshipAttributor` rejects negative or NaN input at predict time too.
+- **[results]** Turkish dotted capital İ no longer fragments tokens: `str.lower()` turns
+  "İ" into "i" + U+0307, so "İstanbul" split into "i" + "stanbul" and "İçin" counted as a
+  different word from "için". Every lowercasing tokenizer (MFW, Zeta, function words,
+  lexical diversity, dependency bigrams, word n-grams, Sapkota character n-grams,
+  Stamatatos distortion) now folds case with `plumbing.textnorm.fold_lower`. English
+  results are unchanged; the Turkish tutorial's PCA and Ward numbers are updated from a
+  re-run (ported from #57).
 - **[results]** Unmasking merges a trailing chunk shorter than half `chunk_size` into the
   previous chunk instead of counting it as a sample.
 - **[results]** Classification CV refits the feature extractor inside each training

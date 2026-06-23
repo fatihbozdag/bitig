@@ -9,6 +9,7 @@ import numpy as np
 
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
+from bitig.plumbing.textnorm import fold_lower
 from bitig.preprocess.pipeline import SpacyPipeline
 
 
@@ -40,8 +41,8 @@ class DependencyBigramExtractor(BaseFeatureExtractor):
         for tok in spacy_doc:  # type: ignore[attr-defined]
             if tok.is_space or tok.head is tok:  # skip whitespace tokens and root-self-loops
                 continue
-            head_lemma = tok.head.lemma_.lower() if self.lowercase else tok.head.lemma_
-            child_lemma = tok.lemma_.lower() if self.lowercase else tok.lemma_
+            head_lemma = fold_lower(tok.head.lemma_) if self.lowercase else tok.head.lemma_
+            child_lemma = fold_lower(tok.lemma_) if self.lowercase else tok.lemma_
             out.append(f"{head_lemma}|{tok.dep_}|{child_lemma}")
         return out
 

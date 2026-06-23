@@ -122,12 +122,12 @@ examples/turkish_seyfettin/results/seyfettin/
 
 ### PCA on the MFW-500 lexical space
 
-PC1 explains **8.0 %** of the variance, PC2 explains **6.9 %**. No single component
+PC1 explains **8.0 %** of the variance, PC2 explains **6.8 %**. No single component
 dominates: the lexical variance inside one author is spread across many small axes.
 
-**Largest loadings — PC1**: `o`, `akşam`, `gül`, `bana`, `karşı`, `bakıyordu`, `nihayet`, `ki`.
+**Largest loadings — PC1**: `o`, `gül`, `akşam`, `karşı`, `bana`, `bakıyordu`, `ki`, `nihayet`.
 
-**Largest loadings — PC2**: `durdu`, `idi`, `başını`, `hafif`, `değildi`, `üzerine`, `şeyler`, `tarafa`.
+**Largest loadings — PC2**: `idi`, `durdu`, `başını`, `hafif`, `değildi`, `üzerine`, `şeyler`, `tarafa`.
 
 `pca/pca_biplot.png` overlays the top-15 loading vectors onto the same 2-D projection.
 
@@ -137,14 +137,16 @@ Cutting the dendrogram (`ward/dendrogram.png`) at four flat clusters yields:
 
 | Cluster | n  | Members | Story length (tokens) |
 |--------:|---:|---|---|
-| 0       | 17 | `and`, `antiseptik`, `elma`, `kasag`, … | median 1 152 (326–3 115) |
-| 1       |  9 | `aleko`, `bomba`, `ferman`, `forsa`, … | median 2 418 (1 096–4 455) |
+| 0       |  2 | `antiseptik`, `bir_kay_s_n_tesiri` | median 595 (551–639) |
+| 1       | 24 | `aleko`, `and`, `ask_dalgas`, `ask_ve_ayak_parmaklar`, … | median 1 794 (326–4 455) |
 | 2       |  1 | `keramet` | 508 |
 | 3       |  1 | `hediye` | 454 |
 
-Story length tracks the clusters: the two singletons are the second- and third-shortest
-stories, and cluster 1 collects the longer ones. z-scored MFW counts get noisy in short
-texts, so short stories drift away from the main cloud regardless of topic. This is not a
+Story length partly tracks the clusters: all four stories outside the main cluster are among
+the six shortest (the singletons are the second- and third-shortest, the two-story cluster
+the fifth- and sixth-shortest), although the shortest story itself stays in the main cluster.
+z-scored MFW counts get noisy in short texts, so short stories tend to drift away from the
+main cloud regardless of topic. This is not a
 bug in the method — it is the natural consequence of MFW estimation variance at small *N*:
 
 > If you are running stylometry on Turkish short prose, raise the per-document
