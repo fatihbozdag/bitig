@@ -337,6 +337,7 @@ class SealVerification:
 
     signed: bool
     checks: list[SealCheck]
+    authenticated: bool = False
 
     @property
     def ok(self) -> bool:
@@ -719,6 +720,12 @@ class Case:
         if self.record.signed:
             raise CaseError("Case is already signed.")
 
+        if self.verify_custody():
+            raise CaseError("Evidence custody mismatch; cannot sign.")
+        if (self.report_dir / _REPORT_SIGNED_HTML).exists():
+            raise CaseError(
+                "Unsigned case contains a frozen report; recover or fork it before signing."
+            )
         plugin = signature_plugin if signature_plugin is not None else DEFAULT_SIGNATURE_PLUGIN
         signed_at = _utcnow_iso()
         signed_by = signed_by or self.record.examiner
@@ -760,6 +767,8 @@ class Case:
             # case_state_hash would be circular, since the report footer
             # displays case_state_hash itself. verify_seal() checks both.
             payload: dict[str, Any] = {
+                "seal_schema": 2,
+                "artifacts": self._artifact_manifest(),
                 "signed_at": signed_at,
                 "signed_by": signed_by,
                 "case_state_hash": self._case_state_hash(),
@@ -780,6 +789,7 @@ class Case:
                 self.record.signature_plugin_id,
             ) = prev
             self.save()
+            (self.report_dir / _REPORT_SIGNED_HTML).unlink(missing_ok=True)
             raise
 
         return signed_payload
@@ -868,7 +878,25 @@ class Case:
             return hash_file(draft)
         return None
 
-    def verify_seal(self, *, signature_key: bytes | str | None = None) -> SealVerification:
+    def _artifact_manifest(self) -> dict[str, str]:
+        """Bind the exact analysis outputs used to produce the frozen report."""
+        if self.record.latest_run is None:
+            return {}
+        run_dir = _ensure_within(self.runs_dir / self.record.latest_run, self.root)
+        if not run_dir.is_dir():
+            raise CaseError("Latest run is missing")
+        return {
+            p.relative_to(self.root).as_posix(): hash_file(_ensure_within(p, self.root))
+            for p in sorted(run_dir.rglob("*"))
+            if p.is_file()
+        }
+
+    def verify_seal(
+        self,
+        *,
+        signature_key: bytes | str | None = None,
+        expected_signature_plugin: str | None = None,
+    ) -> SealVerification:
         """Independently verify a signed case's chain-of-custody seal (audit P1.1).
 
         Recomputes every sealed quantity from the current on-disk state and
@@ -902,9 +930,43 @@ class Case:
                 checks=[SealCheck("signed_json", False, f"cannot read {_REPORT_SIGNED}: {exc}")],
             )
 
+        if not isinstance(payload, dict) or any(
+            not isinstance(payload.get(k), str) or not re.fullmatch(r"[0-9a-f]{64}", payload[k])
+            for k in ("case_state_hash", "report_html_hash")
+        ):
+            return SealVerification(
+                True, [SealCheck("signed_json", False, "malformed seal payload")]
+            )
         checks: list[SealCheck] = []
-
-        recomputed = self._case_state_hash()
+        for signing_field in ("signed_at", "signed_by", "signature_plugin_id"):
+            checks.append(
+                SealCheck(
+                    signing_field,
+                    payload.get(signing_field) == getattr(self.record, signing_field),
+                    "sealed signing metadata must match case record",
+                )
+            )
+        if payload.get("seal_schema") == 2:
+            checks.append(
+                SealCheck(
+                    "frozen_report",
+                    (self.report_dir / _REPORT_SIGNED_HTML).is_file(),
+                    "schema 2 requires the frozen signed report",
+                )
+            )
+            try:
+                artifacts_ok = payload.get("artifacts") == self._artifact_manifest()
+            except (OSError, CaseError):
+                artifacts_ok = False
+            checks.append(SealCheck("artifacts", artifacts_ok, "analysis artifact manifest"))
+        elif payload.get("seal_schema") is not None:
+            checks.append(SealCheck("seal_schema", False, "unsupported seal schema"))
+        try:
+            recomputed = self._case_state_hash()
+        except (OSError, CaseError):
+            return SealVerification(
+                True, [SealCheck("case_state_hash", False, "cannot read case state")]
+            )
         sealed = payload.get("case_state_hash")
         checks.append(
             SealCheck(
@@ -942,7 +1004,16 @@ class Case:
 
         plugin_id = payload.get("signature_plugin_id", "null")
         sig = payload.get("signature")
-        if plugin_id == "null" or sig is None:
+        expected = expected_signature_plugin or ("hmac" if signature_key is not None else None)
+        if expected is not None:
+            checks.append(
+                SealCheck(
+                    "expected_signature_plugin",
+                    plugin_id == expected,
+                    f"required signature scheme: {expected}",
+                )
+            )
+        if plugin_id == "null" and sig is None:
             checks.append(
                 SealCheck(
                     "signature",
@@ -950,6 +1021,8 @@ class Case:
                     "no cryptographic signature (Null plugin) — chain-of-custody hashes only",
                 )
             )
+        elif plugin_id == "hmac" and not isinstance(sig, dict):
+            checks.append(SealCheck("signature", False, "required HMAC signature is missing"))
         elif plugin_id == "hmac":
             key = signature_key or os.environ.get("BITIG_SIGNATURE_KEY")
             if not key:
@@ -975,7 +1048,11 @@ class Case:
         else:
             checks.append(SealCheck("signature", False, f"unknown signature plugin {plugin_id!r}"))
 
-        return SealVerification(signed=True, checks=checks)
+        return SealVerification(
+            signed=True,
+            checks=checks,
+            authenticated=plugin_id == "hmac" and all(c.ok for c in checks),
+        )
 
     # -- convenience --------------------------------------------------------
 

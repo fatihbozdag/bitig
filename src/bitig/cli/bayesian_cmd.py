@@ -36,12 +36,16 @@ def bayesian_command(
 
     corpus = load_corpus(path, metadata=metadata)
     if test_filter:
-        key, _, value = test_filter.partition("=")
+        key, separator, value = test_filter.partition("=")
+        if not separator or not key or not value:
+            raise typer.BadParameter("test-filter must be key=value")
         test = corpus.filter(**{key: value})
         train_docs = [d for d in corpus.documents if d not in test.documents]
         from bitig.corpus import Corpus
 
-        train = Corpus(documents=train_docs)
+        train = Corpus(documents=train_docs, language=corpus.language)
+        if not train.documents or not test.documents:
+            raise typer.BadParameter("test-filter must select a nonempty proper subset")
     else:
         train = corpus
         test = corpus
@@ -56,7 +60,10 @@ def bayesian_command(
     preds = clf.predict(test_fm)
     probs = clf.predict_proba(test_fm)
 
-    table = Table(title=f"Bayesian attribution — prior_alpha={prior_alpha}, mfw={mfw}")
+    evaluation = "held-out" if test_filter else "in-sample (not a generalization estimate)"
+    table = Table(
+        title=f"Bayesian attribution — {evaluation}; prior_alpha={prior_alpha}, mfw={mfw}"
+    )
     table.add_column("doc_id", style="cyan")
     table.add_column(f"{group_by} (observed)")
     table.add_column("predicted")

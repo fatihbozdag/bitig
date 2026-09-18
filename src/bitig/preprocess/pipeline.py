@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import zlib
 from collections.abc import Iterator
+from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
@@ -58,12 +61,14 @@ class SpacyPipeline:
         backend: Literal["spacy", "spacy_stanza"] | None = None,
         cache_dir: Path | str = ".bitig/cache/docbin",
         exclude: list[str] | None = None,
+        reuse_cache: bool = True,
     ) -> None:
         spec = get_language(language)
         self.language = spec.code
         self.model = model if model is not None else spec.default_model
         self.backend = backend if backend is not None else spec.backend
         self.exclude = list(exclude or [])
+        self.reuse_cache = reuse_cache
         self.cache = DocBinCache(Path(cache_dir))
         self._nlp: Language | None = None
 
@@ -116,8 +121,36 @@ class SpacyPipeline:
             return f"spacy_stanza={version('spacy_stanza')};stanza={version('stanza')}"
         return f"spacy={self.spacy_version}"
 
+    @cached_property
+    def model_identity(self) -> str:
+        """Fingerprint the loaded pipeline, including Stanza's external weight files."""
+        digest = hashlib.sha256(self.nlp.to_bytes())
+        if self.backend == "spacy_stanza":
+            stanza_pipeline = getattr(self.nlp.tokenizer, "snlp", None)
+            if stanza_pipeline is None:
+                raise RuntimeError("Stanza tokenizer does not expose model identity")
+            paths = set()
+            for processor in stanza_pipeline.processors.values():
+                for key, value in processor.config.items():
+                    if key.endswith("_path") and isinstance(value, str) and Path(value).is_file():
+                        paths.add(value)
+            if not paths:
+                raise RuntimeError(
+                    "Cannot fingerprint Stanza model weights; refusing unsafe cache reuse"
+                )
+            for path in sorted(paths):
+                with Path(path).open("rb") as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(block)
+        return digest.hexdigest()
+
     def _key(self, doc: Document) -> str:
-        return cache_key(doc.hash, self.model, self.backend_version, self.exclude)
+        return cache_key(
+            doc.hash,
+            self.model,
+            self.backend_version + ";weights=" + self.model_identity,
+            self.exclude,
+        )
 
     def parse(self, corpus: Corpus) -> ParsedCorpus:
         parsed: list[Doc | None] = []
@@ -125,15 +158,20 @@ class SpacyPipeline:
         to_parse_texts: list[str] = []
 
         for i, doc in enumerate(corpus.documents):
-            cached = self.cache.get(self._key(doc))
+            cached = self.cache.get(self._key(doc)) if self.reuse_cache else None
             if cached is not None:
-                bin_ = DocBin().from_bytes(cached)
-                (spacy_doc,) = list(bin_.get_docs(self.nlp.vocab))
-                parsed.append(spacy_doc)
-            else:
-                parsed.append(None)
-                to_parse_indices.append(i)
-                to_parse_texts.append(doc.text)
+                try:
+                    bin_ = DocBin().from_bytes(cached)
+                    (spacy_doc,) = list(bin_.get_docs(self.nlp.vocab))
+                    if spacy_doc.text != doc.text:
+                        raise ValueError("cached text mismatch")
+                    parsed.append(spacy_doc)
+                    continue
+                except (ValueError, TypeError, KeyError, EOFError, zlib.error):
+                    _log.warning("Corrupt cached parse for %s; reparsing", doc.id)
+            parsed.append(None)
+            to_parse_indices.append(i)
+            to_parse_texts.append(doc.text)
 
         if to_parse_texts:
             _log.info(

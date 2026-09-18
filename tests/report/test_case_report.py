@@ -246,7 +246,7 @@ def test_forensic_gi_result_has_no_lr_or_ladder(tmp_path: Path) -> None:
     assert "suspect_A" not in ctx.headline_scalars[0].value
 
 
-def test_figure_paths_are_case_root_relative(tmp_path: Path) -> None:
+def test_figures_are_embedded_for_portable_reports(tmp_path: Path) -> None:
     """Figure <img src> paths resolve against the case root, matching the
     base_url build_case_report passes to WeasyPrint (audit P1.8)."""
     case = _seed_case(tmp_path, recipe="exploration", mode_label="figs")
@@ -255,10 +255,11 @@ def test_figure_paths_are_case_root_relative(tmp_path: Path) -> None:
     fig.write_bytes(b"\x89PNG\r\n\x1a\n stub")
 
     html = build_case_report(case, format="html").read_text(encoding="utf-8")
-    expected = f"runs/{run_id}/pca/scatter.png"
+    import base64
+
+    expected = "data:image/png;base64," + base64.b64encode(fig.read_bytes()).decode("ascii")
     assert expected in html
-    # The path must resolve from the case root (where base_url points).
-    assert (case.root / expected).is_file()
+    assert base64.b64decode(expected.split(",", 1)[1]) == fig.read_bytes()
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +291,7 @@ def test_report_context_rejects_unknown_field() -> None:
 def _has_weasyprint() -> bool:
     try:
         import weasyprint  # noqa: F401
-    except ImportError:
+    except (ImportError, OSError):
         return False
     return True
 

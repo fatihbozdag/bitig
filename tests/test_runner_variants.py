@@ -25,7 +25,7 @@ def _study_yaml(
         "kind": kind,
         "params": dict(method_params or {}),
     }
-    if kind != "consensus":
+    if kind not in ("consensus", "verify", "rolling_delta", "zeta"):
         method_cfg["features"] = "feat1"
     if group_by:
         method_cfg["group_by"] = group_by

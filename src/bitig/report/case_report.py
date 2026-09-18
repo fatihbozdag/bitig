@@ -13,6 +13,7 @@ an optional ``reports`` extra). If WeasyPrint isn't installed,
 
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -75,8 +76,10 @@ def build_case_report(
     signed_html = case.report_dir / "signed.html"
     draft_path = case.report_dir / "draft.html"
 
-    if signed_html.is_file():
-        # Sealed — serve the immutable snapshot verbatim, never re-render.
+    if signed_html.is_file() or (case.record.signed and (case.report_dir / "signed.json").exists()):
+        verification = case.verify_seal()
+        if not verification.ok:
+            raise ReportRendererError("Case seal verification failed; refusing report export")
         html = signed_html.read_text(encoding="utf-8")
         report_path = signed_html
     else:
@@ -88,9 +91,7 @@ def build_case_report(
     if format == "html":
         return report_path
 
-    # PDF path. base_url is the CASE ROOT because _list_figure_paths emits
-    # figure src paths relative to the case root (runs/<ts>/.../fig.png), not
-    # relative to report_dir (audit P1.8).
+    # Figures are embedded, so browser and PDF consume the same sealed bytes.
     out_pdf = output_path if output_path is not None else case.report_dir / "final.pdf"
     _export_pdf(html, out_pdf, base_url=case.root)
     return out_pdf
@@ -227,16 +228,13 @@ def _list_figure_paths(case: Case) -> list[str]:
     figures: list[Path] = []
     for ext in (".png", ".svg"):
         figures.extend(sorted(run_dir.rglob(f"*{ext}")))
-    # Emit <img src=...> paths relative to the CASE ROOT (e.g.
-    # runs/<ts>/<method>/fig.png). build_case_report passes base_url=case.root
-    # so WeasyPrint and a browser opening the HTML both resolve them (P1.8).
+    # Embed image bytes so the frozen HTML is portable and its hash seals the visuals.
     out: list[str] = []
     for fig in figures:
-        try:
-            rel = fig.relative_to(case.root)
-        except ValueError:
-            rel = fig
-        out.append(rel.as_posix() if isinstance(rel, Path) else str(rel))
+        if not fig.resolve().is_relative_to(case.root.resolve()):
+            raise ReportRendererError("Figure escapes case directory")
+        mime = "image/png" if fig.suffix == ".png" else "image/svg+xml"
+        out.append(f"data:{mime};base64," + base64.b64encode(fig.read_bytes()).decode("ascii"))
     return out
 
 
@@ -257,9 +255,10 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
     """Render ``html`` to PDF via WeasyPrint, or surface a clear error."""
     try:
         from weasyprint import HTML  # type: ignore[import-not-found]
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
         raise ReportRendererError(
-            "PDF export requires WeasyPrint. Install with: uv pip install 'bitig[reports]'"
+            "PDF export requires WeasyPrint and its Pango libraries. "
+            "Install with: uv pip install 'bitig[reports]'; configure the system library path."
         ) from exc
 
     output.parent.mkdir(parents=True, exist_ok=True)

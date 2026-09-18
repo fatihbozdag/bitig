@@ -106,7 +106,7 @@ path = "src/bitig/_version.py"
 packages = ["src/bitig"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/bitig", "tests", "docs", "README.md", "LICENSE", "CITATION.cff"]
+include = ["src/bitig", "tests", "docs", "README.md", "LICENSE", "CITATION.cff", "collect_corpus.py", "review_corpus.py", "discover_news.py", "run_analysis.py"]
 
 [tool.ruff]
 line-length = 100

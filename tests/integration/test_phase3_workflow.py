@@ -36,9 +36,10 @@ def test_phase3_end_to_end_workflow() -> None:
 
     report = cross_validate_bitig(
         build_classifier("logreg", random_state=42),
-        fm,
+        corpus,
         y,
-        cv_kind="loao",
-        groups_from=y,
+        extractor=MFWExtractor(n=200, min_df=2, scale="zscore", lowercase=True),
+        cv_kind="stratified",
+        folds=2,
     )
     assert 0.0 <= report["accuracy"] <= 1.0

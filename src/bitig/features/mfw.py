@@ -43,6 +43,10 @@ class MFWExtractor(BaseFeatureExtractor):
         z-scores the *relative frequencies* (per-document rates) — the classical Mosteller &
         Wallace / Burrows formulation. "l1" normalises rows to sum to 1 (relative frequencies);
         "l2" normalises rows to unit length.
+    frequency_basis : {"document", "vocabulary"}
+        Denominator for z-score rates. "document" (default since the September 2026
+        correctness update) uses all tokens. "vocabulary" reproduces the historical
+        normalization over retained MFW only. This does not change L1/L2 scaling.
     lowercase : bool
         If True, case-fold before counting.
     """
@@ -57,7 +61,15 @@ class MFWExtractor(BaseFeatureExtractor):
         max_df: float = 1.0,
         scale: Scale = "zscore",
         lowercase: bool = False,
+        frequency_basis: Literal["document", "vocabulary"] = "document",
     ) -> None:
+        if scale not in ("none", "zscore", "l1", "l2"):
+            raise ValueError(f"unknown scale {scale!r}")
+        if frequency_basis not in ("document", "vocabulary"):
+            raise ValueError(f"unknown frequency_basis {frequency_basis!r}")
+        if n < 1 or min_df < 1 or not 0 < max_df <= 1:
+            raise ValueError("n/min_df must be positive and max_df must lie in (0, 1]")
+        self.frequency_basis = frequency_basis
         self.n = n
         self.min_df = min_df
         self.max_df = max_df
@@ -103,7 +115,7 @@ class MFWExtractor(BaseFeatureExtractor):
         X = self._raw_counts(corpus)  # noqa: N806 (sklearn convention)
         if self.scale == "zscore":
             assert self._column_means is not None and self._column_stds is not None
-            X_rel = self._l1_normalise(X)  # noqa: N806
+            X_rel = self._relative_frequencies(corpus)  # noqa: N806
             X = (X_rel - self._column_means) / self._column_stds  # noqa: N806
         elif self.scale == "l1":
             X = self._l1_normalise(X)  # noqa: N806
@@ -126,8 +138,13 @@ class MFWExtractor(BaseFeatureExtractor):
         return X
 
     def _relative_frequencies(self, corpus: Corpus) -> np.ndarray:
-        """Raw counts normalised to per-document rates (each row sums to ~1 over the MFW vocab)."""
-        return self._l1_normalise(self._raw_counts(corpus))
+        """Rates for z-scoring; document tokens by default, selected vocabulary for legacy runs."""
+        counts = self._raw_counts(corpus)
+        if self.frequency_basis == "vocabulary":
+            return self._l1_normalise(counts)
+        lengths = np.array([len(_tokenise(d.text, self.lowercase)) for d in corpus], dtype=float)
+        lengths[lengths == 0] = 1.0
+        return np.asarray(counts / lengths[:, None])
 
     @staticmethod
     def _l1_normalise(X: np.ndarray) -> np.ndarray:  # noqa: N803

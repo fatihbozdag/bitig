@@ -124,7 +124,7 @@ class CvConfig(BaseModel):
     model_config = _STRICT_MODEL
     kind: CvKind = "stratified"
     groups_from: str | None = None
-    folds: int | None = None
+    folds: int | None = Field(default=None, ge=2)
 
 
 class MethodConfig(BaseModel):
@@ -155,7 +155,7 @@ class VizConfig(BaseModel):
     format: list[VizFormat] = Field(
         default_factory=lambda: ["pdf", "png"],  # type: ignore[arg-type]
     )
-    dpi: int = 300
+    dpi: int = Field(default=300, ge=1)
     style: str = "default"
     palette: str = "colorblind"
 

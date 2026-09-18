@@ -51,5 +51,12 @@ def test_cross_val_score_with_leave_one_group_out() -> None:
         ]
     )
 
-    scores = cross_val_score(pipe, train, y, cv=LeaveOneGroupOut(), groups=y, scoring="accuracy")
-    assert scores.shape[0] == len(np.unique(y))
+    groups = np.empty(len(y), dtype=int)
+    for label in np.unique(y):
+        positions = np.flatnonzero(y == label)
+        groups[positions] = np.arange(len(positions)) % 2
+    scores = cross_val_score(
+        pipe, train, y, cv=LeaveOneGroupOut(), groups=groups, scoring="accuracy"
+    )
+    assert scores.shape[0] == 2
+    assert np.isfinite(scores).all()

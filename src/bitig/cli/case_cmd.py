@@ -345,6 +345,7 @@ def case_verify(
     cases_dir: Path = typer.Option(  # noqa: B008
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
+    expected_signature_plugin: str | None = typer.Option(None, "--require-signature"),
 ) -> None:
     """Verify a signed Case's chain-of-custody seal (audit P1.1).
 
@@ -353,7 +354,9 @@ def case_verify(
     2 = seal broken (tamper / mismatch). Scriptable in CI.
     """
     case = _resolve_case(cases_dir, id)
-    result = case.verify_seal(signature_key=key)
+    result = case.verify_seal(
+        signature_key=key, expected_signature_plugin=expected_signature_plugin
+    )
 
     if not result.signed:
         console.print(f"[yellow]{id} is not signed — nothing to verify.[/yellow]")
@@ -365,6 +368,8 @@ def case_verify(
 
     if result.ok:
         console.print(f"[green]seal verified[/green] — {case.record.id} is intact")
+        if not result.authenticated:
+            console.print("Hash consistency only; no cryptographic authentication.")
     else:
         console.print(f"[red]SEAL BROKEN[/red] — {case.record.id} failed verification")
         raise typer.Exit(code=2)

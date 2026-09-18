@@ -90,8 +90,10 @@ def perform_run(case: Case) -> RunOutcome:
             methods.append(
                 MethodOutcome(method_dir.name, ok=False, error=detail[-1] if detail else "error")
             )
-        else:
+        elif (method_dir / "result.json").is_file():
             methods.append(MethodOutcome(method_dir.name, ok=True))
+        else:
+            methods.append(MethodOutcome(method_dir.name, ok=False, error="missing result.json"))
 
     n_ok = sum(m.ok for m in methods)
     if not methods or n_ok == 0:

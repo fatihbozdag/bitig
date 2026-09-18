@@ -16,6 +16,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from bitig.corpus import Corpus, Document
+from bitig.plumbing.hashing import hash_mapping
 
 
 def _ensure_corpus(obj: Corpus | list) -> Corpus:
@@ -78,7 +79,9 @@ class FeatureMatrix:
             feature_names=list(self.feature_names) + list(other.feature_names),
             feature_type=f"{self.feature_type}+{other.feature_type}",
             extractor_config={"a": self.extractor_config, "b": other.extractor_config},
-            provenance_hash="",
+            provenance_hash=hash_mapping(
+                {"left": self.provenance_hash, "right": other.provenance_hash}
+            ),
         )
 
 
@@ -104,7 +107,9 @@ class BaseFeatureExtractor(BaseEstimator, TransformerMixin):
         """Return (X, feature_names) for the given corpus."""
 
     def fit(self, corpus: Corpus | list, y: Any = None) -> BaseFeatureExtractor:
-        self._fit(_ensure_corpus(corpus))
+        corpus = _ensure_corpus(corpus)
+        self._fit(corpus)
+        self._training_corpus_hash = corpus.hash()
         return self
 
     def transform(self, corpus: Corpus | list) -> FeatureMatrix:
@@ -116,16 +121,38 @@ class BaseFeatureExtractor(BaseEstimator, TransformerMixin):
             feature_names=feature_names,
             feature_type=self.feature_type,
             extractor_config=self.get_params(),
-            provenance_hash=self._provenance(corpus),
+            provenance_hash=self._provenance(corpus, X, feature_names),
         )
 
     def fit_transform(self, corpus: Corpus | list, y: Any = None) -> FeatureMatrix:
         return self.fit(corpus).transform(corpus)
 
-    def _provenance(self, corpus: Corpus) -> str:
-        from bitig.plumbing.hashing import hash_mapping
+    def _provenance(self, corpus: Corpus, values: np.ndarray, names: list[str]) -> str:
+        from bitig._version import __version__
+        from bitig.plumbing.hashing import hash_bytes, hash_mapping
 
+        pipeline = getattr(self, "_pipeline", None)
+        fitted_state = {}
+        for name in ("_vocabulary", "_words", "_column_means", "_column_stds", "_resolved_indices"):
+            value = getattr(self, name, None)
+            if value is not None:
+                fitted_state[name] = value.tolist() if isinstance(value, np.ndarray) else value
+        vectorizer = getattr(self, "_vectorizer", None)
+        if vectorizer is not None:
+            fitted_state["vectorizer_vocabulary"] = {
+                key: int(value) for key, value in vectorizer.vocabulary_.items()
+            }
         payload = {
+            "fitted_state": fitted_state,
+            "parsing_model_identity": pipeline.model_identity if pipeline is not None else None,
+            "schema": 2,
+            "implementation_version": __version__,
+            "training_corpus_hash": self._training_corpus_hash,
+            "feature_names": names,
+            "document_ids": [d.id for d in corpus],
+            "values": hash_bytes(np.ascontiguousarray(values).tobytes()),
+            "shape": list(values.shape),
+            "dtype": str(values.dtype),
             "extractor": type(self).__name__,
             "config": self.get_params(),
             "corpus_hash": corpus.hash(),

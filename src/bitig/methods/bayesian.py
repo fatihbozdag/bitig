@@ -16,6 +16,7 @@ differ systematically in a stylistic feature (e.g., L2 vs. native function-word 
 
 from __future__ import annotations
 
+from importlib.util import find_spec
 from typing import Any
 
 import numpy as np
@@ -23,12 +24,8 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 
 from bitig.features import FeatureMatrix
 
-try:
-    import pymc  # noqa: F401
-
-    _pymc_available = True
-except ImportError:
-    _pymc_available = False
+# Availability checks must not import PyMC/ArviZ during ordinary package imports.
+_pymc_available = find_spec("pymc") is not None
 
 _INSTALL_HINT_BAYESIAN = (
     "this method requires the optional `bitig[bayesian]` extra — "
@@ -72,7 +69,7 @@ class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
     """Wallace-Mosteller-style Bayesian authorship attribution.
 
     Expects count-valued features (raw word counts or equivalent). If z-scored features are
-    passed, predictions will still work but the "rate" interpretation breaks down — use
+    passed, fitting raises an error — use
     `MFWExtractor(scale="none")` to produce the right input.
     """
 
@@ -91,6 +88,12 @@ class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
         # Reject z-scored / mean-centred input loudly rather than silently
         # clipping negatives to 1e-12 (which yields confident but invalid
         # attributions). Build the feature with scale='none' or scale='l1'.
+        if (
+            not np.isfinite(counts).all()
+            or not np.isfinite(self.prior_alpha)
+            or self.prior_alpha <= 0
+        ):
+            raise ValueError("counts must be finite and prior_alpha must be finite and positive")
         if np.any(counts < 0):
             raise ValueError(
                 "BayesianAuthorshipAttributor requires non-negative count features, but the "
@@ -197,11 +200,11 @@ class HierarchicalGroupComparison:
             observations = X[:, col]
             with pm.Model():
                 mu_group = pm.Normal("mu_group", mu=0, sigma=5, shape=len(unique_groups))
-                pm.HalfNormal("sigma_group", sigma=1, shape=len(unique_groups))
+                sigma_group = pm.HalfNormal("sigma_group", sigma=1, shape=len(unique_groups))
                 theta_author = pm.Normal(
                     "theta_author",
                     mu=mu_group[author_to_group_idx],
-                    sigma=1,
+                    sigma=sigma_group[author_to_group_idx],
                     shape=len(unique_authors),
                 )
                 obs_sigma = pm.HalfNormal("obs_sigma", sigma=1)
@@ -219,11 +222,27 @@ class HierarchicalGroupComparison:
                     progressbar=False,
                     return_inferencedata=True,
                 )
-            summary = az.summary(trace, var_names=["mu_group"])
+            summary = az.summary(trace, var_names=["mu_group", "sigma_group", "obs_sigma"])
+            divergences = int(trace.sample_stats["diverging"].sum())
+            diagnostics = {
+                "divergences": divergences,
+                "max_rhat": float(summary["r_hat"].max()),
+                "min_ess_bulk": float(summary["ess_bulk"].min()),
+            }
+            diagnostics["reliable"] = bool(
+                divergences == 0
+                and np.isfinite(diagnostics["max_rhat"])
+                and diagnostics["max_rhat"] <= 1.01
+                and diagnostics["min_ess_bulk"] >= 100
+            )
             results.append(
                 {
                     "feature": fm.feature_names[col],
-                    "mu_group_summary": summary.to_dict(),
+                    "mu_group_summary": summary.loc[
+                        summary.index.str.startswith("mu_group")
+                    ].to_dict(),
+                    "diagnostics": diagnostics,
+                    "posterior_summary": summary.to_dict(),
                     "groups": list(unique_groups),
                 }
             )

@@ -44,7 +44,6 @@ methods:
 corpus:
   path: corpus                    # directory of .txt files
   metadata: corpus/metadata.tsv   # optional TSV with filename + arbitrary fields
-  strict: true                    # default: raise if any file lacks metadata
   filter:                         # optional: subset the corpus before running
     role: [train]
 ```
@@ -58,10 +57,10 @@ type-specific params.
 
 | type | params |
 |---|---|
-| `mfw` | `n`, `min_df`, `max_df`, `scale` ({none, zscore, l1, l2}), `lowercase` |
+| `mfw` | `n`, `min_df`, `max_df`, `scale` ({none, zscore, l1, l2}), `lowercase`, `frequency_basis` |
 | `word_ngram` | `n` (int or [min, max]), `lowercase`, `scale` |
 | `char_ngram` | `n`, `include_boundaries`, `scale` |
-| `function_word` | `wordlist` (optional list or path), `scale` |
+| `function_word` | `wordlist` (optional list), `language`, `scale` |
 | `punctuation` | (none) |
 | `lexical_diversity` | (none) |
 | `readability` | (none) |
@@ -150,3 +149,51 @@ methods:
       group_a: Hamilton
       group_b: Madison
 ```
+
+## Execution and evaluation contracts
+
+`bitig run` validates feature references, unique safe IDs, estimator parameters, and
+supported settings before creating its output directory. Existing run directories
+are never reused. `run_status.json` records each method's outcome; the CLI exits
+with 0 for success, 1 for failure, and 2 for partial success. Reports include failed
+methods. The Python `run_study()` API retains its Path return value;
+`StudyRunStatus.load(path)` reads the structured outcome.
+
+`preprocess.language` controls the corpus language and default function-word and
+readability features. Lowercasing, punctuation removal, and numeral collapsing are
+supported under `preprocess.normalize`; `expand_contractions` is rejected.
+The runner supports spaCy `auto`/`cpu` device settings. POS, dependency, and
+sentence-length extractors use the configured model/backend/exclusions and
+`cache.dir` / `cache.reuse`. Embedding feature types currently require the Python
+API or dedicated CLI; the study runner rejects them rather than skipping them.
+
+Classification learns vocabulary and scaling separately in each training fold:
+
+```yaml
+methods:
+  - id: classifier
+    kind: classify
+    features: mfw200
+    group_by: author
+    params: {estimator: rf, n_estimators: 200}
+    cv: {kind: group_kfold, groups_from: source_text, folds: 3}
+```
+
+Supported CV kinds are `stratified`, `group_kfold`, `loao` (leave one group out),
+and `leave_one_text_out`. Group by a unit independent of the target labels;
+training folds missing a target class are rejected. Unspecified stratified folds
+use `min(5, smallest_class_size)`, requiring at least two. Fold indices, document
+IDs, training feature hashes, and effective estimator parameters are recorded.
+Bayesian study methods also accept `cv`; without it, they report explicitly
+labelled in-sample `resubstitution_accuracy`. The standalone Bayesian CLI requires
+`--test-filter` for a held-out split and does not perform automatic CV.
+
+`viz.format`, `viz.dpi`, `viz.style`, and `viz.palette` control plot export.
+`report.format` (`html`, `md`, `none`) and `report.title` control report generation.
+HTML figures are embedded, making reports offline by default. Customized
+`report.include` lists are currently rejected. Multiple feature references per
+method are rejected rather than silently selecting only the first.
+Methods that extract their own features (`rolling_delta`, `verify`, `zeta`, and
+`consensus`) reject `features` references. A report-generation failure is recorded
+in `run_status.json` as `report_error` and produces a nonzero CLI exit while
+preserving completed method results.
