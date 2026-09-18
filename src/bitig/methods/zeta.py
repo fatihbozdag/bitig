@@ -16,13 +16,14 @@ from collections import Counter
 import pandas as pd
 
 from bitig.corpus import Corpus
+from bitig.plumbing.textnorm import fold_lower
 from bitig.result import Result
 
 _WORD_RE = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 
 
 def _tokens(text: str) -> list[str]:
-    return [t.lower() for t in _WORD_RE.findall(text)]
+    return [fold_lower(t) for t in _WORD_RE.findall(text)]
 
 
 class _ZetaBase:

@@ -10,6 +10,7 @@ import numpy as np
 
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
+from bitig.plumbing.textnorm import fold_lower
 
 _WORD_RE = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 
@@ -17,7 +18,7 @@ _DEFAULT_INDICES = ("ttr", "yules_k")
 
 
 def _tokens(text: str) -> list[str]:
-    return [t.lower() for t in _WORD_RE.findall(text)]
+    return [fold_lower(t) for t in _WORD_RE.findall(text)]
 
 
 def _ttr(tokens: list[str]) -> float:

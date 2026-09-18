@@ -29,7 +29,7 @@ def classify_command(
         "so the held-out group isn't the classification target). Defaults to --group-by, which "
         "is rejected as degenerate.",
     ),
-    folds: int = typer.Option(5, "--folds"),
+    folds: int | None = typer.Option(None, "--folds"),
     mfw: int = typer.Option(500, "--mfw"),
     seed: int = typer.Option(42, "--seed"),
 ) -> None:
@@ -53,12 +53,13 @@ def classify_command(
             )
             raise typer.Exit(code=1)
 
-    fm = MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True).fit_transform(corpus)
+    extractor = MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True)
     clf = build_classifier(estimator, random_state=seed)
     report = cross_validate_bitig(
         clf,
-        fm,
+        corpus,
         y,
+        extractor=extractor,
         cv_kind=cv_kind,
         groups_from=groups,
         folds=folds,

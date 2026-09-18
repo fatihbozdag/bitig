@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from bitig.corpus.document import Document
-from bitig.plumbing.hashing import hash_mapping, hash_text
+from bitig.plumbing.hashing import hash_mapping
 
 
 @dataclass
@@ -86,10 +86,8 @@ class Corpus:
 
     def hash(self) -> str:
         """Stable hash — sorted document hashes + sorted metadata + language."""
-        doc_hashes = sorted(d.hash for d in self.documents)
-        metadata_summary = sorted((d.id, hash_mapping(d.metadata)) for d in self.documents)
-        payload = "|".join(doc_hashes) + "||" + str(metadata_summary) + "||lang=" + self.language
-        return hash_text(payload)
+        records = sorted((d.id, d.hash, hash_mapping(d.metadata)) for d in self.documents)
+        return hash_mapping({"schema": 2, "documents": records, "language": self.language})
 
     @classmethod
     def from_iterable(cls, docs: Iterable[Document], *, language: str = "en") -> Corpus:

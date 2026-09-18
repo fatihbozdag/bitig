@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -117,12 +118,7 @@ class HmacSignaturePlugin:
         self._key: bytes = key
 
     def sign(self, payload: SignaturePayload, *, case: Case) -> SignaturePayload:
-        message_parts = [
-            str(payload.get("case_state_hash", "")),
-            str(payload.get("report_html_hash") or ""),
-            str(payload.get("signed_at", "")),
-        ]
-        message = "\n".join(message_parts).encode("utf-8")
+        message = _signature_message(payload)
         digest = hmac.new(self._key, message, hashlib.sha256).hexdigest()
         fingerprint = hashlib.sha256(self._key).hexdigest()[:16]
 
@@ -166,6 +162,20 @@ def get_signature_plugin(plugin_id: str | None) -> SignaturePlugin:
     return SIGNATURE_PLUGINS[plugin_id]()
 
 
+def _signature_message(payload: SignaturePayload) -> bytes:
+    if payload.get("seal_schema") == 2:
+        return json.dumps(
+            {k: v for k, v in payload.items() if k != "signature"},
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    # Read-only compatibility for existing signatures; new seals always use schema 2.
+    return "\n".join(
+        str(payload.get(k) or "") for k in ("case_state_hash", "report_html_hash", "signed_at")
+    ).encode("utf-8")
+
+
 def verify_hmac_signature(signed_payload: SignaturePayload, *, key: bytes | str) -> bool:
     """Standalone verifier for HMAC-signed payloads.
 
@@ -179,12 +189,7 @@ def verify_hmac_signature(signed_payload: SignaturePayload, *, key: bytes | str)
         return False
     if isinstance(key, str):
         key = key.encode("utf-8")
-    message_parts = [
-        str(signed_payload.get("case_state_hash", "")),
-        str(signed_payload.get("report_html_hash") or ""),
-        str(signed_payload.get("signed_at", "")),
-    ]
-    message = "\n".join(message_parts).encode("utf-8")
+    message = _signature_message(signed_payload)
     expected = hmac.new(key, message, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, str(sig.get("value", "")))
 

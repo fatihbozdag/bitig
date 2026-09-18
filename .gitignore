@@ -64,3 +64,6 @@ examples/**/.tamga/
 
 # Superpowers brainstorm tool runtime dir (mockups + server state) — not part of the package
 .superpowers/
+
+# Study data (corpus text + analysis)
+study-data/

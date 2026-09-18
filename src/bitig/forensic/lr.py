@@ -80,6 +80,10 @@ def log_lr_from_probs_with_priors(
     prior_target : float
         Prior probability of H1 used when training the calibrator, in (0, 1).
     """
+    if not np.isfinite(base) or base <= 1.0:
+        raise ValueError("base must be finite and > 1")
+    if not 0.0 < eps < 0.5:
+        raise ValueError("eps must lie in (0, 0.5)")
     if not 0.0 < prior_target < 1.0:
         raise ValueError("prior_target must lie in (0, 1)")
     probs = np.asarray(probs, dtype=float)
@@ -115,6 +119,7 @@ class CalibratedScorer:
         self.method: CalibrationMethod = method
         self._model: LogisticRegression | IsotonicRegression | None = None
         self.fitted = False
+        self.prior_target_: float | None = None
 
     def fit(self, scores: np.ndarray, y: np.ndarray) -> CalibratedScorer:
         scores = np.asarray(scores, dtype=float).reshape(-1)
@@ -135,6 +140,7 @@ class CalibratedScorer:
             iso = IsotonicRegression(out_of_bounds="clip")
             iso.fit(scores, y)
             self._model = iso
+        self.prior_target_ = float(np.mean(y))
         self.fitted = True
         return self
 
@@ -152,6 +158,7 @@ class CalibratedScorer:
         return np.clip(probs, 0.0, 1.0)  # type: ignore[no-any-return]
 
     def predict_log_lr(self, scores: np.ndarray, *, base: float = 10.0) -> np.ndarray:
-        """Calibrated posteriors → log-LR (flat-prior). Thin wrapper around
-        ``log_lr_from_probs``."""
-        return log_lr_from_probs(self.predict_proba(scores), base=base)
+        """Convert posteriors to log-LR, removing the fitted calibration prior odds."""
+        probs = self.predict_proba(scores)
+        assert self.prior_target_ is not None
+        return log_lr_from_probs_with_priors(probs, prior_target=self.prior_target_, base=base)

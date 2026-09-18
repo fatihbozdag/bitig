@@ -56,6 +56,15 @@ topic-invariant (MFW is topic-sensitive; see `CategorizedCharNgramExtractor`).
 *Expect:* an `(n_docs, n)` float matrix; rows sum to ~1 under `scale="l1"`,
 zero-centred unit-variance under `scale="zscore"`.
 
+**Numerical compatibility:** MFW z-scoring now divides word counts by the full
+number of word tokens in each document before learning training means and
+standard deviations. Earlier releases divided by counts in the selected
+vocabulary. Set `frequency_basis="vocabulary"` explicitly to reproduce that
+historical definition; the new default is `"document"`. L1/L2 row normalization
+and raw counts retain their previous definitions. Record this setting when
+comparing old and new results. Function-word `scale="zscore"` now uses training
+count means/standard deviations; it previously returned raw counts.
+
 #### CharNgramExtractor
 `CharNgramExtractor(n=3, include_boundaries=True)`
 

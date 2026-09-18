@@ -106,7 +106,7 @@ path = "src/bitig/_version.py"
 packages = ["src/bitig"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/bitig", "tests", "docs", "README.md", "LICENSE", "CITATION.cff"]
+include = ["src/bitig", "tests", "docs", "README.md", "LICENSE", "CITATION.cff", "collect_corpus.py", "review_corpus.py", "discover_news.py", "run_analysis.py"]
 
 [tool.ruff]
 line-length = 100
@@ -139,6 +139,8 @@ ignore = ["E501"]       # handled by formatter
 "tests/languages/test_readability_es.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/languages/test_readability_fr.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/integration/test_turkish_end_to_end.py" = ["RUF001", "RUF002", "RUF003"]
+"src/bitig/plumbing/textnorm.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/plumbing/test_textnorm.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"

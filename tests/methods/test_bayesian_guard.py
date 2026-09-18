@@ -46,5 +46,5 @@ def test_bayesian_zero_prior_empty_class_raises() -> None:
     """With prior_alpha=0 and an all-zero class, the rate vector is undefined."""
     X = np.array([[0.0, 0.0], [2.0, 3.0]])
     y = np.array(["empty", "real"])
-    with pytest.raises(ValueError, match="zero total smoothed count"):
+    with pytest.raises(ValueError, match="prior_alpha"):
         BayesianAuthorshipAttributor(prior_alpha=0.0).fit(_fm(X), y)

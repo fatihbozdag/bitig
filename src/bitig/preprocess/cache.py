@@ -6,6 +6,8 @@ the cache stores raw bytes — Task 13 will wire up `DocBin` serialisation on to
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from bitig.plumbing.hashing import hash_mapping
@@ -52,7 +54,15 @@ class DocBinCache:
         return p.read_bytes()
 
     def put(self, key: str, payload: bytes) -> None:
-        self._path(key).write_bytes(payload)
+        fd, name = tempfile.mkstemp(prefix=".docbin-", dir=self.directory)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(name, self._path(key))
+        finally:
+            Path(name).unlink(missing_ok=True)
 
     def keys(self) -> list[str]:
         return sorted(f.stem for f in self.directory.glob(f"*{self._EXT}"))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from datetime import datetime
 from importlib import resources
@@ -67,19 +68,31 @@ def _collect_results(result_dir: Path) -> Any:
         yield _load_one(result_dir)
         return
     for sub in sorted(result_dir.iterdir()):
-        if sub.is_dir() and (sub / "result.json").is_file():
+        if sub.is_dir() and (sub / "error.txt").is_file():
+            yield {
+                "method_name": sub.name,
+                "params": "",
+                "figures": [],
+                "tables": [],
+                "summary": "FAILED: " + (sub / "error.txt").read_text(),
+                "provenance": None,
+            }
+        elif sub.is_dir() and (sub / "result.json").is_file():
             yield _load_one(sub)
 
 
 def _load_one(result_subdir: Path) -> dict[str, Any]:
     data = json.loads((result_subdir / "result.json").read_text(encoding="utf-8"))
-    figures = [str(p.resolve()) for p in sorted(result_subdir.glob("*.png"))]
+    figures = [
+        "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
+        for p in sorted(result_subdir.glob("*.png"))
+    ]
     return {
         "method_name": data.get("method_name", "unknown"),
         "params": json.dumps(data.get("params", {}), indent=2),
         "figures": figures,
         "tables": [],  # Tables are exported as parquet; embedding in report deferred to Phase 6.
-        "summary": None,
+        "summary": json.dumps(data.get("values", {}), ensure_ascii=False),
         "provenance": data.get("provenance"),
     }
 
