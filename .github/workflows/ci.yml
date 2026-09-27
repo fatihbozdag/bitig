@@ -66,4 +66,7 @@ jobs:
         run: python -m spacy download en_core_web_sm
       - name: Type-check the full surface against its real dependencies
         run: mypy src
-      - run: pytest -n auto -m "not slow"
+      - name: Test the full surface (PDF export must run, not skip)
+        env:
+          BITIG_REQUIRE_PDF: "1"
+        run: pytest -n auto -m "not slow"

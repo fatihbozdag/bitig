@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nicegui import run, ui
+from nicegui import ui
 
+from bitig.gui.background import io_bound
 from bitig.gui.layout import page_shell
 from bitig.gui.state import get_state
 from bitig.runner import run_study
@@ -49,7 +50,7 @@ def run_page() -> None:
             status.set_content("**running…** this can take a while for large corpora.")
             log.value = log.value + f"\n--- running {study_path} ---\n"
             try:
-                run_dir = await run.io_bound(run_study, study_path)
+                run_dir = await io_bound(run_study, study_path)
             except Exception as exc:
                 spinner.classes(add="hidden")
                 status.set_content(f"**failed:** {type(exc).__name__}: {exc}")

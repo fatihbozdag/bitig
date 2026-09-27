@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -295,15 +296,31 @@ def _has_weasyprint() -> bool:
     return True
 
 
-@pytest.mark.skipif(not _has_weasyprint(), reason="WeasyPrint not installed")
-def test_pdf_export_writes_pdf(tmp_path: Path) -> None:
+# CI's extras job sets BITIG_REQUIRE_PDF=1 so a broken WeasyPrint install fails
+# the test instead of silently skipping it (audit P1.19).
+_REQUIRE_PDF = bool(os.environ.get("BITIG_REQUIRE_PDF"))
+
+
+@pytest.mark.skipif(not _has_weasyprint() and not _REQUIRE_PDF, reason="WeasyPrint not installed")
+def test_pdf_export_writes_pdf_with_embedded_figure(tmp_path: Path) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="pdf-test")
-    _attach_run(case, method_name="verify", values={"lr": 5.0})
+    run_id = _attach_run(case, method_name="verify", values={"lr": 5.0})
+    fig, ax = plt.subplots(figsize=(2, 2))
+    ax.plot([0, 1], [0, 1])
+    fig.savefig(case.runs_dir / run_id / "verify" / "plot.png")
+    plt.close(fig)
 
     pdf = build_case_report(case, format="pdf")
     assert pdf.name == "final.pdf"
-    assert pdf.is_file()
-    assert pdf.stat().st_size > 1000  # rough sanity floor
+    data = pdf.read_bytes()
+    assert data.startswith(b"%PDF-")
+    # The figure must resolve against the case root and be embedded (P1.8).
+    assert b"/Image" in data
 
 
 def test_pdf_export_error_when_weasyprint_missing(
