@@ -11,6 +11,7 @@ import numpy as np
 import spacy
 
 from bitig.config import StudyConfig, load_config
+from bitig.corpus import Corpus
 from bitig.features import (
     CharNgramExtractor,
     FeatureMatrix,
@@ -83,13 +84,31 @@ _ZETA_VARIANTS: dict[str, type] = {
 }
 
 
+def _labelled_mask(labels: np.ndarray, group_by: str | None) -> np.ndarray:
+    """Boolean mask of documents carrying a ``group_by`` label; at least two classes required."""
+    if not group_by:
+        raise ValueError("this method requires group_by (e.g. 'author')")
+    mask = np.array([label is not None for label in labels], dtype=bool)
+    n_classes = len(set(labels[mask]))
+    if n_classes < 2:
+        raise ValueError(
+            f"need labelled documents from at least two {group_by!r} values; found {n_classes}"
+        )
+    return mask
+
+
 def run_study(
     config_path: str | Path,
     *,
     output_dir: str | Path | None = None,
     run_name: str | None = None,
+    corpus: Corpus | None = None,
 ) -> Path:
     """Execute a full study from a `study.yaml` file and save all results.
+
+    ``corpus`` supplies the documents directly instead of loading
+    ``cfg.corpus.path`` (a Forensic Lab Case passes its registered,
+    hash-checked evidence this way). ``cfg.corpus.filter`` still applies.
 
     Returns the path to the run directory (e.g., `results/2026-04-17T10-15-30/`).
     """
@@ -97,9 +116,11 @@ def run_study(
     run_dir = _make_run_dir(cfg, output_dir, run_name)
     _log.info("run directory: %s", run_dir)
 
-    corpus = load_corpus(
-        Path(cfg.corpus.path), metadata=Path(cfg.corpus.metadata) if cfg.corpus.metadata else None
-    )
+    if corpus is None:
+        corpus = load_corpus(
+            Path(cfg.corpus.path),
+            metadata=Path(cfg.corpus.metadata) if cfg.corpus.metadata else None,
+        )
     if cfg.corpus.filter:
         corpus = corpus.filter(**cfg.corpus.filter)
     _log.info("loaded %d documents", len(corpus))
@@ -193,15 +214,20 @@ def _dispatch_method(
             method_cfg.features if isinstance(method_cfg.features, str) else method_cfg.features[0]
         )
         fm = features_by_id[feat_id]
-        y = np.array(corpus.metadata_column(method_cfg.group_by))
+        y_all = np.array(corpus.metadata_column(method_cfg.group_by), dtype=object)
+        labelled = _labelled_mask(y_all, method_cfg.group_by)
+        y = y_all[labelled]
         variant = str(method_cfg.params.get("variant", "burrows"))
         cls = _DELTA_VARIANTS.get(variant)
         if cls is None:
             raise ValueError(
                 f"unknown delta variant: {variant!r} (known: {sorted(_DELTA_VARIANTS)})"
             )
-        clf = cls().fit(fm, y)
-        preds = clf.predict(fm)
+        # Centroids come from the labelled documents only; documents without
+        # a label (e.g. questioned texts) are attributed, never trained on.
+        clf = cls().fit(fm.X[labelled], y)
+        all_preds = clf.predict(fm)
+        preds = all_preds[labelled]
         # In-sample (train == test): the centroids were fit on these same
         # documents and `fm` was z-scored over the whole corpus, so this is
         # RESUBSTITUTION accuracy — a separability diagnostic, NOT a held-out
@@ -215,6 +241,13 @@ def _dispatch_method(
                 "predictions": preds,
                 "resubstitution_accuracy": float((preds == y).mean()),
                 "evaluation": "resubstitution (in-sample); use `bitig classify` for held-out CV",
+                "attributions": {
+                    doc_id: str(pred)
+                    for doc_id, pred, is_lab in zip(
+                        fm.document_ids, all_preds, labelled, strict=True
+                    )
+                    if not is_lab
+                },
             },
         )
 
@@ -262,8 +295,15 @@ def _dispatch_method(
             raise ValueError(f"unknown zeta variant: {variant!r} (known: {sorted(_ZETA_VARIANTS)})")
         zeta_kwargs = {k: v for k, v in method_cfg.params.items() if k not in ("variant",)}
         zeta_kwargs.setdefault("top_k", 20)
+        # Zeta contrasts labelled groups; unlabelled documents take no part.
+        labelled_corpus = Corpus(
+            documents=[
+                d for d in corpus.documents if d.metadata.get(str(method_cfg.group_by)) is not None
+            ],
+            language=corpus.language,
+        )
         zeta_result: Result = zeta_cls(group_by=method_cfg.group_by, **zeta_kwargs).fit_transform(
-            corpus
+            labelled_corpus
         )
         return zeta_result
 
@@ -309,10 +349,12 @@ def _dispatch_method(
             method_cfg.features if isinstance(method_cfg.features, str) else method_cfg.features[0]
         )
         fm = features_by_id[feat_id]
-        y = np.array(corpus.metadata_column(method_cfg.group_by))
+        y_all = np.array(corpus.metadata_column(method_cfg.group_by), dtype=object)
+        labelled = _labelled_mask(y_all, method_cfg.group_by)
+        y = y_all[labelled]
         clf = BayesianAuthorshipAttributor(
             prior_alpha=float(method_cfg.params.get("prior_alpha", 1.0))
-        ).fit(fm, y)
+        ).fit(fm.X[labelled], y)
         preds = clf.predict(fm)
         proba = clf.predict_proba(fm)
         return Result(
@@ -320,7 +362,7 @@ def _dispatch_method(
             params=dict(method_cfg.params),
             values={
                 "predictions": preds,
-                "accuracy": float((preds == y).mean()),
+                "accuracy": float((preds[labelled] == y).mean()),
                 "proba": proba,
                 "classes": clf.classes_,
                 "document_ids": list(fm.document_ids),

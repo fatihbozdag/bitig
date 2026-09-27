@@ -57,6 +57,7 @@ from bitig.recipes import (
 )
 
 if TYPE_CHECKING:
+    from bitig.corpus import Corpus
     from bitig.signatures import SignaturePlugin
 
 EvidenceRole = Literal["questioned", "known", "control"]
@@ -245,6 +246,11 @@ def hash_file(path: Path, *, chunk_size: int = 65536) -> str:
         for chunk in iter(lambda: fh.read(chunk_size), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _evidence_doc_id(entry: EvidenceEntry) -> str:
+    """Document id of a registered evidence file in the run corpus: its file stem."""
+    return Path(entry.path).stem
 
 
 def hash_text(text: str) -> str:
@@ -500,12 +506,14 @@ class Case:
     # -- persistence --------------------------------------------------------
 
     def save(self) -> None:
-        """Recompute derived hashes and flush ``case.json``."""
-        # study_hash is refreshed lazily off the on-disk study.yaml so a
-        # hand-edit through the Custom slide-over still produces a fresh
-        # hash next save.
-        if self.study_yaml_path.is_file():
-            self.record.study_hash = hash_file(self.study_yaml_path)
+        """Recompute derived hashes and flush ``case.json``.
+
+        ``study_hash`` is deliberately NOT refreshed from disk here: it is set
+        only by :meth:`regenerate_study_yaml`, so a hand edit of
+        ``study.yaml`` is detected (:meth:`study_yaml_intact`) instead of being
+        silently re-blessed by the next save (audit 2026-09-26 N-P1.1). The
+        Custom editor goes through :meth:`change_recipe`, which regenerates.
+        """
         self.record.corpus_hash = compute_corpus_hash(self.record.evidence)
         payload = json.dumps(self.record.to_dict(), indent=2)
         _atomic_write_text(self.case_json_path, payload)
@@ -547,6 +555,14 @@ class Case:
         _ensure_within(dest, role_dir)
         if dest.exists():
             raise CaseError(f"Destination already exists: {dest}. Pass dest_name= to disambiguate.")
+        # The file stem is the document id in the run corpus, so it must be
+        # unique across roles (questioned/alice.txt vs known/alice.txt).
+        doc_id = Path(name).stem
+        if any(_evidence_doc_id(e) == doc_id for e in self._registered_entries()):
+            raise CaseError(
+                f"Evidence document id {doc_id!r} is already registered under another role. "
+                "Pass dest_name= to disambiguate."
+            )
         shutil.copy2(src, dest)
 
         entry = EvidenceEntry(
@@ -587,20 +603,79 @@ class Case:
                 mismatches.append(entry)
         return mismatches
 
+    def _registered_entries(self) -> list[EvidenceEntry]:
+        return [*self.record.evidence.questioned, *self.record.evidence.known]
+
+    def build_corpus(self, *, language: str = "en") -> Corpus:
+        """Load the run corpus from the registered evidence only (audit 2026-09-26 N-P0.1).
+
+        Every document is read from its registered path and its bytes are
+        re-hashed at read time, so the texts analysed are exactly the texts
+        in the chain of custody: unregistered files under ``evidence/`` are
+        never loaded, and a file altered since registration aborts the load.
+        Each document carries ``role`` and, when registered, ``author`` /
+        ``year`` metadata. The document id is the file stem.
+        """
+        from bitig.corpus import Corpus, Document
+
+        entries = self._registered_entries()
+        if not entries:
+            raise CaseError("No evidence registered; add questioned/known files before running.")
+        documents: list[Document] = []
+        for entry in entries:
+            abs_path = self.root / entry.path
+            _ensure_within(abs_path, self.evidence_dir)
+            data = abs_path.read_bytes()
+            if hashlib.sha256(data).hexdigest() != entry.sha256:
+                raise CaseError(
+                    f"Chain-of-custody mismatch on {entry.path}: file changed since registration."
+                )
+            metadata: dict[str, Any] = {"role": entry.role}
+            if entry.author is not None:
+                metadata["author"] = entry.author
+            if entry.year is not None:
+                metadata["year"] = entry.year
+            documents.append(
+                Document(
+                    id=_evidence_doc_id(entry),
+                    text=data.decode("utf-8"),
+                    metadata=metadata,
+                )
+            )
+        return Corpus(documents=documents, language=language.lower())
+
+    def study_yaml_intact(self) -> bool:
+        """True iff ``study.yaml`` still hashes to the value recorded when it was written."""
+        if not self.study_yaml_path.is_file():
+            return False
+        return hash_file(self.study_yaml_path) == self.record.study_hash
+
     # -- study --------------------------------------------------------------
 
     def resolved_study_dict(self) -> dict[str, Any]:
         """The study.yaml-shaped dict for this Case's recipe + overrides.
 
-        ``corpus.path`` is filled in to point at the Case's evidence dir
-        so ``bitig run study.yaml`` from inside the Case works.
+        ``corpus.path`` is the case-relative ``evidence`` dir, recorded for
+        reference only: a Case run loads its corpus from the registered
+        evidence (:meth:`build_corpus`), never by globbing a directory, so a
+        copied or moved Case analyses its own evidence (audit N-P1.1).
+
+        ``verify`` methods without explicit ``target_ids`` target every
+        registered questioned document.
         """
-        return resolve_recipe(
+        study = resolve_recipe(
             self.record.recipe,
             self.record.overrides,
-            corpus_path=str(self.evidence_dir),
+            corpus_path=_EVIDENCE_DIR,
             name=self.record.id,
         )
+        questioned = [_evidence_doc_id(e) for e in self.record.evidence.questioned]
+        for method in study.get("methods") or []:
+            if isinstance(method, dict) and method.get("kind") == "verify":
+                fields = method["params"] if isinstance(method.get("params"), dict) else method
+                if not fields.get("target_ids"):
+                    fields["target_ids"] = questioned
+        return study
 
     def resolved_study(self) -> StudyConfig:
         return StudyConfig.model_validate(self.resolved_study_dict())

@@ -121,12 +121,24 @@ def _render_role_dropzone(
             ui.space()
             ui.label(f"{len(bucket)} file(s)").classes("bitig-mono bitig-muted text-xs")
 
+        # Known texts need an author label: verification picks the candidate
+        # and the impostors by it (audit 2026-09-26 N-P0.1).
+        author_input = (
+            ui.input("Author label", placeholder="e.g. Alice").classes("w-64")
+            if role == "known"
+            else None
+        )
+
         async def add_files() -> None:
             chosen = await pick_file(f"Select {role} file", file_types=("All files (*.*)",))
             if not chosen:
                 return
             try:
-                case.add_evidence(Path(chosen), role=role)
+                author = (author_input.value or "").strip() if author_input is not None else ""
+                if role == "known" and not author:
+                    ui.notify("Enter an author label for the known file first.", type="warning")
+                    return
+                case.add_evidence(Path(chosen), role=role, author=author or None)
             except (CaseError, FileNotFoundError) as exc:
                 ui.notify(str(exc), type="negative")
                 return

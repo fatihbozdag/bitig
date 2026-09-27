@@ -62,7 +62,8 @@ def test_resolve_recipe_overrides_replace_recipe_defaults():
         overrides={"methods": custom_methods},
         corpus_path="/tmp/x",
     )
-    assert resolved["methods"] == custom_methods
+    # Known recipes fill group_by (and carry the MFW size to GI) on resolve.
+    assert resolved["methods"] == [{**custom_methods[0], "group_by": "author", "mfw_n": 500}]
 
 
 def test_resolve_recipe_unknown_id_raises():
@@ -72,14 +73,52 @@ def test_resolve_recipe_unknown_id_raises():
 
 def test_resolve_custom_recipe_passes_overrides_verbatim():
     overrides = {
-        "features": [{"id": "mfw", "type": "mfw", "top_n": 100}],
+        "features": [{"id": "mfw", "type": "mfw", "n": 100}],
         "methods": [{"id": "delta", "kind": "delta", "features": "mfw"}],
         "seed": 7,
     }
     resolved = resolve_recipe("custom", overrides=overrides, corpus_path="/tmp/x")
     assert resolved["features"] == overrides["features"]
-    assert resolved["methods"] == overrides["methods"]
+    assert resolved["methods"] == overrides["methods"]  # custom: no group_by filled in
     assert resolved["seed"] == 7
+
+
+def test_resolve_recipe_translates_pre_0_3_2_parameter_names():
+    """Overrides stored by bitig <= 0.3.1 cases use keys no runner accepts (N-P0.1)."""
+    legacy = {
+        "features": [{"id": "mfw", "type": "mfw", "top_n": 300}],
+        "methods": [
+            {
+                "id": "verify",
+                "kind": "verify",
+                "features": "mfw",
+                "delta": "argamon",
+                "iterations": 50,
+                "subset_fraction": 0.4,
+            }
+        ],
+    }
+    resolved = resolve_recipe("imposters_lr", overrides=legacy, corpus_path="/x")
+    assert resolved["features"] == [{"id": "mfw", "type": "mfw", "n": 300}]
+    verify = resolved["methods"][0]
+    assert verify["base_delta"] == "argamon_linear"
+    assert verify["n_iter"] == 50
+    assert verify["feature_frac"] == 0.4
+    assert verify["mfw_n"] == 300
+    assert verify["group_by"] == "author"
+    assert not {"delta", "iterations", "subset_fraction"} & verify.keys()
+
+    exploration = resolve_recipe(
+        "exploration",
+        overrides={
+            "methods": [
+                {"id": "pca", "kind": "reduce", "features": "mfw", "algorithm": "pca"},
+                {"id": "zeta", "kind": "zeta", "variant": "craig"},
+            ]
+        },
+    )
+    assert exploration["methods"][0]["variant"] == "pca"
+    assert exploration["methods"][1]["variant"] == "classic"
 
 
 def test_derive_mode_dispatches_on_method_kind():

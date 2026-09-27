@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from bitig.cases import Case
 from bitig.runner import run_study
@@ -61,9 +61,12 @@ def unique_run_id(case: Case, *, now: datetime | None = None) -> str:
 def perform_run(case: Case) -> RunOutcome:
     """Execute the Case's study and classify the outcome. Pure (no GUI).
 
-    Order of guards: signed → chain-of-custody → run. A run is recorded
-    (``register_run``) only when at least one method produced a result, so an
-    all-failed run never becomes ``latest_run`` and never unlocks Findings.
+    Order of guards: signed → chain-of-custody → study.yaml integrity →
+    verify inputs → run. The corpus is built from the registered evidence
+    only (:meth:`Case.build_corpus`), never by globbing ``evidence/``. A run
+    is recorded (``register_run``) only when at least one method produced a
+    result, so an all-failed run never becomes ``latest_run`` and never
+    unlocks Findings.
     """
     if case.record.signed:
         return RunOutcome("blocked", "Case is signed; cannot re-run. Fork it for further work.")
@@ -76,9 +79,35 @@ def perform_run(case: Case) -> RunOutcome:
             "Re-acknowledge on the Evidence step.",
         )
 
+    # A study.yaml edited outside bitig must not be run (audit 2026-09-26 N-P1.1).
+    if case.study_yaml_path.is_file() and not case.study_yaml_intact():
+        return RunOutcome(
+            "blocked",
+            "study.yaml was modified outside bitig (hash differs from the one recorded "
+            "in case.json); aborting run. Re-apply the method settings to regenerate it.",
+        )
+
+    try:
+        study = case.resolved_study()
+    except Exception as exc:
+        return RunOutcome("blocked", f"Invalid study configuration: {exc}")
+    for method in study.methods:
+        if method.kind != "verify":
+            continue
+        problem = _verify_inputs_problem(case, method.params, method.group_by)
+        if problem:
+            return RunOutcome("blocked", problem)
+
     run_id = unique_run_id(case)
     try:
-        run_dir = run_study(case.study_yaml_path, output_dir=case.runs_dir, run_name=run_id)
+        # Rewrite study.yaml from the recipe (translating pre-0.3.2 parameter
+        # names) so the file that is run and hashed is the resolved study.
+        case.regenerate_study_yaml()
+        case.save()
+        corpus = case.build_corpus(language=study.preprocess.language)
+        run_dir = run_study(
+            case.study_yaml_path, output_dir=case.runs_dir, run_name=run_id, corpus=corpus
+        )
     except Exception as exc:
         return RunOutcome("failed", f"{type(exc).__name__}: {exc}", run_id=run_id)
 
@@ -117,6 +146,29 @@ def perform_run(case: Case) -> RunOutcome:
         run_id=run_id,
         methods=methods,
     )
+
+
+def _verify_inputs_problem(case: Case, params: dict[str, Any], group_by: str | None) -> str | None:
+    """Why a verify method cannot run on this Case's evidence, or None if it can."""
+    evidence = case.record.evidence
+    if not evidence.questioned:
+        return "Authorship verification needs at least one questioned document."
+    if (group_by or "author") != "author":
+        return f"Case verification groups known documents by author, not {group_by!r}."
+    if any(e.author is None for e in evidence.known):
+        return "Every known document needs an author label for verification."
+    candidate = str(params.get("candidate") or "").strip()
+    if not candidate:
+        return "Set the 'Candidate author' parameter (the author label of the suspect's texts)."
+    authors = sorted({str(e.author) for e in evidence.known})
+    if candidate not in authors:
+        return f"Candidate {candidate!r} does not match any known-document author {authors}."
+    if len(authors) < 2:
+        return (
+            "Verification needs known documents from the candidate AND at least one other "
+            "author (the impostors)."
+        )
+    return None
 
 
 __all__ = ["MethodOutcome", "RunOutcome", "RunStatus", "perform_run", "unique_run_id"]

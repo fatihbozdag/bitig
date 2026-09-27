@@ -21,6 +21,7 @@ into ``overrides``.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -72,15 +73,10 @@ class Recipe:
 _MFW_FEATURE: dict[str, Any] = {
     "id": "mfw",
     "type": "mfw",
-    "top_n": 500,
+    "n": 500,
 }
 
-_CHAR_NGRAM_FEATURE: dict[str, Any] = {
-    "id": "char3",
-    "type": "char_ngram",
-    "n": 3,
-    "top_n": 1500,
-}
+_DELTA_OPTIONS = ("burrows", "cosine", "eder", "eder_simple", "argamon_linear", "quadratic")
 
 
 _IMPOSTERS_LR = Recipe(
@@ -94,28 +90,38 @@ _IMPOSTERS_LR = Recipe(
             "id": "verify",
             "kind": "verify",
             "features": "mfw",
-            "delta": "cosine",
-            "iterations": 100,
-            "subset_fraction": 0.5,
+            "group_by": "author",
+            "candidate": "",
+            "base_delta": "cosine",
+            "n_iter": 100,
+            "feature_frac": 0.5,
+            "mfw_n": 500,
         },
     ),
     param_schema=(
         ParamField(
+            "Candidate author",
+            "str",
+            "",
+            "methods[verify].candidate",
+            help="Author label of the known texts attributed to the suspect. Required.",
+        ),
+        ParamField(
             "MFW size",
             "int",
             500,
-            "features[mfw].top_n",
+            "methods[verify].mfw_n",
             help="Number of most-frequent words to retain.",
         ),
         ParamField(
-            "Iterations", "int", 100, "methods[verify].iterations", help="Impostor projections."
+            "Iterations", "int", 100, "methods[verify].n_iter", help="Impostor projections."
         ),
         ParamField(
             "Delta",
             "select",
             "cosine",
-            "methods[verify].delta",
-            options=("burrows", "cosine", "eder", "eder_simple", "argamon", "quadratic"),
+            "methods[verify].base_delta",
+            options=_DELTA_OPTIONS,
         ),
         ParamField("Seed", "int", 42, "seed"),
     ),
@@ -133,17 +139,18 @@ _DELTA_ATTRIBUTION = Recipe(
             "id": "delta",
             "kind": "delta",
             "features": "mfw",
+            "group_by": "author",
             "variant": "burrows",
         },
     ),
     param_schema=(
-        ParamField("MFW size", "int", 500, "features[mfw].top_n"),
+        ParamField("MFW size", "int", 500, "features[mfw].n"),
         ParamField(
             "Variant",
             "select",
             "burrows",
             "methods[delta].variant",
-            options=("burrows", "cosine", "eder", "eder_simple", "argamon", "quadratic"),
+            options=_DELTA_OPTIONS,
         ),
         ParamField(
             "Group by",
@@ -168,23 +175,23 @@ _EXPLORATION = Recipe(
             "id": "pca",
             "kind": "reduce",
             "features": "mfw",
-            "algorithm": "pca",
+            "variant": "pca",
             "n_components": 2,
         },
         {
             "id": "hierarchical",
             "kind": "cluster",
             "features": "mfw",
-            "algorithm": "hierarchical",
+            "variant": "hierarchical",
         },
     ),
     param_schema=(
-        ParamField("MFW size", "int", 500, "features[mfw].top_n"),
+        ParamField("MFW size", "int", 500, "features[mfw].n"),
         ParamField(
             "Reduction",
             "select",
             "pca",
-            "methods[pca].algorithm",
+            "methods[pca].variant",
             options=("pca", "umap"),
         ),
         ParamField("Group by", "str", "author", "methods[pca].group_by"),
@@ -198,27 +205,28 @@ _ZETA_CONTRAST = Recipe(
     title="Group contrast (Zeta)",
     question="What distinguishes group A from group B?",
     mode="research",
-    default_features=({"id": "tokens", "type": "word_ngram", "n": 1, "top_n": 5000},),
+    default_features=({"id": "tokens", "type": "word_ngram", "n": 1},),
     default_methods=(
         {
             "id": "zeta",
             "kind": "zeta",
             "features": "tokens",
-            "variant": "craig",
+            "group_by": "author",
+            "variant": "classic",
         },
     ),
     param_schema=(
         ParamField(
             "Variant",
             "select",
-            "craig",
+            "classic",
             "methods[zeta].variant",
-            options=("craig", "eder"),
+            options=("classic", "eder"),
         ),
         ParamField(
             "Group by",
             "str",
-            "group",
+            "author",
             "methods[zeta].group_by",
             help="Metadata column splitting A vs B.",
         ),
@@ -238,6 +246,7 @@ _BAYESIAN = Recipe(
             "id": "bayes",
             "kind": "bayesian",
             "features": "function_words",
+            "group_by": "author",
         },
     ),
     param_schema=(
@@ -307,6 +316,7 @@ def resolve_recipe(
         }
         for key, value in overrides.items():
             base[key] = value
+    base = upgrade_legacy_keys(copy.deepcopy(base), fill_group_by=not is_custom(recipe_id))
 
     base.setdefault("corpus", {"path": corpus_path})
     if name is not None:
@@ -317,6 +327,75 @@ def resolve_recipe(
         base["seed"] = seed
 
     return base
+
+
+# Parameter names written by bitig <= 0.3.1 recipes that no runner / extractor
+# accepts (audit 2026-09-26 N-P0.1). Existing cases store them in
+# ``record.overrides``; translate them on resolve so those cases run.
+_LEGACY_METHOD_KEYS: dict[str, dict[str, str]] = {
+    "verify": {"delta": "base_delta", "iterations": "n_iter", "subset_fraction": "feature_frac"},
+    "reduce": {"algorithm": "variant"},
+    "cluster": {"algorithm": "variant"},
+}
+_LEGACY_VALUES: dict[tuple[str, str], dict[str, str]] = {
+    ("verify", "base_delta"): {"argamon": "argamon_linear"},
+    ("delta", "variant"): {"argamon": "argamon_linear"},
+    ("zeta", "variant"): {"craig": "classic"},
+}
+_LABELLED_KINDS = frozenset({"verify", "delta", "zeta", "bayesian"})
+
+
+def _entry_fields(entry: dict[str, Any]) -> dict[str, Any]:
+    """The dict holding an entry's extra fields (flat, or Pydantic-nested ``params``)."""
+    params = entry.get("params")
+    return params if isinstance(params, dict) else entry
+
+
+def _rename(fields: dict[str, Any], old: str, new: str) -> None:
+    if old in fields:
+        value = fields.pop(old)
+        fields.setdefault(new, value)
+
+
+def upgrade_legacy_keys(study: dict[str, Any], *, fill_group_by: bool = True) -> dict[str, Any]:
+    """Translate pre-0.3.2 recipe parameter names in place and return ``study``.
+
+    ``fill_group_by`` gives the labelled methods (verify / delta / zeta /
+    bayesian) ``group_by: author`` when missing — the old recipes left it
+    unset, so they could never run. Custom studies pass ``False``: there the
+    user owns every key.
+    """
+    mfw_sizes: dict[str, Any] = {}
+    for feat in study.get("features") or []:
+        if not isinstance(feat, dict):
+            continue
+        fields = _entry_fields(feat)
+        if feat.get("type") == "mfw":
+            _rename(fields, "top_n", "n")
+            if "n" in fields:
+                mfw_sizes[str(feat.get("id"))] = fields["n"]
+        elif feat.get("type") in {"word_ngram", "char_ngram"}:
+            # These extractors have no vocabulary cap; the old key was ignored-then-fatal.
+            fields.pop("top_n", None)
+
+    for method in study.get("methods") or []:
+        if not isinstance(method, dict):
+            continue
+        kind = str(method.get("kind"))
+        fields = _entry_fields(method)
+        for old, new in _LEGACY_METHOD_KEYS.get(kind, {}).items():
+            _rename(fields, old, new)
+        for (value_kind, key), mapping in _LEGACY_VALUES.items():
+            if kind == value_kind and fields.get(key) in mapping:
+                fields[key] = mapping[fields[key]]
+        if kind == "verify" and "mfw_n" not in fields:
+            # Old imposters_lr set the MFW size on the feature, which GI ignores.
+            feat_ref = method.get("features")
+            if isinstance(feat_ref, str) and feat_ref in mfw_sizes:
+                fields["mfw_n"] = mfw_sizes[feat_ref]
+        if fill_group_by and kind in _LABELLED_KINDS and not method.get("group_by"):
+            method["group_by"] = "author"
+    return study
 
 
 def derive_mode(study: StudyConfig | dict[str, Any]) -> Mode:
@@ -438,4 +517,5 @@ __all__ = [
     "read_param_target",
     "recipe_mode",
     "resolve_recipe",
+    "upgrade_legacy_keys",
 ]

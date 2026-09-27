@@ -286,9 +286,9 @@ def test_regenerate_study_yaml_writes_validated_study(cases_root: Path):
     case = Case.create(cases_root, id="sy", title="t", examiner="x", recipe="imposters_lr")
     study = yaml.safe_load(case.study_yaml_path.read_text(encoding="utf-8"))
     StudyConfig.model_validate(study)
-    # study.yaml's corpus.path points at the Case's evidence dir, so a
-    # `bitig run study.yaml` from inside the Case works.
-    assert study["corpus"]["path"] == str(case.evidence_dir)
+    # corpus.path is case-relative and informational: Case runs load the
+    # registered evidence, so a moved case never reads another machine's files.
+    assert study["corpus"]["path"] == "evidence"
 
 
 def test_study_hash_changes_when_recipe_changes(cases_root: Path):
