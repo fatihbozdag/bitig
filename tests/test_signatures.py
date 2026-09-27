@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from bitig.cases import Case
+from bitig.cases import Case, hash_file
 from bitig.signatures import (
     DEFAULT_SIGNATURE_PLUGIN,
     SIGNATURE_PLUGINS,
@@ -202,6 +202,71 @@ def test_verify_seal_hmac_unverified_without_key(tmp_path: Path, monkeypatch):
     assert not result.ok  # cannot claim verified without checking the signature
     sig = next(c for c in result.checks if c.name == "signature")
     assert not sig.ok and "no key" in sig.detail.lower()
+
+
+def _forge_signed_report(case: Case, *, payload_edits: dict, drop_signature: bool = True) -> None:
+    """Swap the sealed report, re-hash it and optionally strip the signature."""
+    signed_html = case.report_dir / "signed.html"
+    signed_html.write_text("<html>FORGED</html>", encoding="utf-8")
+    signed_json = case.report_dir / "signed.json"
+    payload = json.loads(signed_json.read_text(encoding="utf-8"))
+    payload["report_html_hash"] = hash_file(signed_html)
+    if drop_signature:
+        payload.pop("signature", None)
+    payload.update(payload_edits)
+    signed_json.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_verify_seal_fails_when_hmac_signature_stripped(tmp_path: Path, monkeypatch):
+    """Deleting the signature block must not downgrade an HMAC seal to 'hashes only'."""
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="strip")
+    case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
+    _forge_signed_report(case, payload_edits={})
+
+    result = Case.load(case.root).verify_seal(signature_key="k")
+    assert not result.ok
+    assert not next(c for c in result.checks if c.name == "signature").ok
+    # Without the key it must not pass either.
+    assert not Case.load(case.root).verify_seal().ok
+
+
+def test_verify_seal_fails_when_signed_json_downgraded_to_null(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="down")
+    case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
+    _forge_signed_report(case, payload_edits={"signature_plugin_id": "null"})
+
+    for key in ("k", None):
+        result = Case.load(case.root).verify_seal(signature_key=key)
+        assert not result.ok
+        assert not next(c for c in result.checks if c.name == "signature").ok
+
+
+def test_verify_seal_with_key_requires_signature_even_if_record_says_null(
+    tmp_path: Path, monkeypatch
+):
+    """case.json is as editable as signed.json: a verifier holding the key demands HMAC."""
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="both")
+    case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
+    _forge_signed_report(case, payload_edits={"signature_plugin_id": "null"})
+    case_json = case.root / "case.json"
+    record = json.loads(case_json.read_text(encoding="utf-8"))
+    record["signature_plugin_id"] = "null"
+    case_json.write_text(json.dumps(record), encoding="utf-8")
+
+    result = Case.load(case.root).verify_seal(signature_key="k")
+    assert not result.ok
+    sig = next(c for c in result.checks if c.name == "signature")
+    assert not sig.ok and "key" in sig.detail.lower()
+
+
+def test_verify_seal_null_case_still_passes_without_key(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="nul")
+    case.mark_signed()
+    assert Case.load(case.root).verify_seal().ok
 
 
 # ---------------------------------------------------------------------------

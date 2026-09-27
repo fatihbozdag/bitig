@@ -878,8 +878,6 @@ class Case:
         ``$BITIG_SIGNATURE_KEY``). Returns a structured result; the overall
         ``.ok`` is True only if *every* check passes. Pure read-only.
         """
-        from bitig.signatures import verify_hmac_signature
-
         if not self.record.signed:
             return SealVerification(
                 signed=False,
@@ -940,42 +938,73 @@ class Case:
             )
         )
 
-        plugin_id = payload.get("signature_plugin_id", "null")
-        sig = payload.get("signature")
-        if plugin_id == "null" or sig is None:
-            checks.append(
-                SealCheck(
-                    "signature",
-                    True,
-                    "no cryptographic signature (Null plugin) — chain-of-custody hashes only",
-                )
-            )
-        elif plugin_id == "hmac":
-            key = signature_key or os.environ.get("BITIG_SIGNATURE_KEY")
-            if not key:
-                checks.append(
-                    SealCheck(
-                        "signature",
-                        False,
-                        "HMAC signature present but no key provided "
-                        "(pass signature_key= or set BITIG_SIGNATURE_KEY)",
-                    )
-                )
-            else:
-                ok = verify_hmac_signature(payload, key=key)
-                checks.append(
-                    SealCheck(
-                        "signature",
-                        ok,
-                        "HMAC signature valid"
-                        if ok
-                        else "HMAC signature INVALID (wrong key or tampered payload)",
-                    )
-                )
-        else:
-            checks.append(SealCheck("signature", False, f"unknown signature plugin {plugin_id!r}"))
+        checks.append(self._signature_check(payload, signature_key))
 
         return SealVerification(signed=True, checks=checks)
+
+    def _signature_check(
+        self, payload: dict[str, Any], signature_key: bytes | str | None
+    ) -> SealCheck:
+        """Check the cryptographic signature without trusting ``signed.json`` (audit N-P0.2).
+
+        ``signed.json`` and ``case.json`` are both editable by anyone with
+        write access, so neither may downgrade the seal on its own:
+
+        * the plugin ids recorded in the two files must agree;
+        * a non-Null plugin id with a missing signature fails;
+        * a verifier holding a key (``signature_key`` or
+          ``$BITIG_SIGNATURE_KEY``) always requires a valid HMAC, whatever
+          plugin id the files claim.
+        """
+        from bitig.signatures import verify_hmac_signature
+
+        payload_plugin = payload.get("signature_plugin_id") or "null"
+        record_plugin = self.record.signature_plugin_id or "null"
+        sig = payload.get("signature")
+        key = signature_key or os.environ.get("BITIG_SIGNATURE_KEY")
+
+        if payload_plugin != record_plugin:
+            return SealCheck(
+                "signature",
+                False,
+                f"plugin mismatch: {_REPORT_SIGNED} says {payload_plugin!r}, "
+                f"case.json says {record_plugin!r}",
+            )
+        if key:
+            ok = verify_hmac_signature(payload, key=key)
+            if ok:
+                return SealCheck("signature", True, "HMAC signature valid")
+            if sig is None:
+                return SealCheck(
+                    "signature",
+                    False,
+                    "a signature key was supplied but the seal carries no signature",
+                )
+            return SealCheck(
+                "signature", False, "HMAC signature INVALID (wrong key or tampered payload)"
+            )
+        if payload_plugin == "null":
+            if sig is not None:
+                return SealCheck(
+                    "signature", False, "Null plugin seal unexpectedly carries a signature"
+                )
+            return SealCheck(
+                "signature",
+                True,
+                "no cryptographic signature (Null plugin) — chain-of-custody hashes only",
+            )
+        if sig is None:
+            return SealCheck(
+                "signature", False, f"plugin {payload_plugin!r} recorded but signature is missing"
+            )
+        if payload_plugin == "hmac":
+            return SealCheck(
+                "signature",
+                False,
+                "HMAC signature present but no key provided "
+                "(pass signature_key= or set BITIG_SIGNATURE_KEY)",
+            )
+        return SealCheck("signature", False, f"unknown signature plugin {payload_plugin!r}")
 
     # -- convenience --------------------------------------------------------
 
