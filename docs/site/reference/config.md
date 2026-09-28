@@ -30,7 +30,7 @@ methods:
 | Key | Type | Required | Description |
 |---|---|---|---|
 | `name` | str | yes | Study name; shows in reports |
-| `seed` | int | no | Default seed (42). Threaded to every stochastic method. |
+| `seed` | int | no | Default seed (42). Passed to every stochastic method unless it sets its own (see [reproducibility](../concepts/results.md)). |
 | `corpus` | object | yes | Corpus config (below) |
 | `features` | list | yes | One or more feature extractors |
 | `methods` | list | yes | One or more methods to run |

@@ -323,6 +323,9 @@ def _dispatch_method(
             )
         kwargs = {k: v for k, v in method_cfg.params.items() if k != "variant"}
         kwargs.setdefault("n_components", 2)
+        # Every reducer is stochastic or solver-seeded; thread the study seed
+        # (audit 2026-09-26 N-P1.15).
+        kwargs.setdefault("random_state", seed)
         result: Result = cls(**kwargs).fit_transform(fm)
         return result
 
@@ -338,14 +341,17 @@ def _dispatch_method(
                 f"unknown cluster variant: {variant!r} (known: {sorted(_CLUSTER_VARIANTS)})"
             )
         kwargs = {k: v for k, v in method_cfg.params.items() if k != "variant"}
+        if cluster_cls is KMeansCluster:
+            kwargs.setdefault("random_state", seed)
         cluster_result: Result = cluster_cls(**kwargs).fit_transform(fm)
         return cluster_result
 
     if kind == "consensus":
-        return BootstrapConsensus(
-            mfw_bands=method_cfg.params.get("mfw_bands", [100, 200, 300]),
-            replicates=int(method_cfg.params.get("replicates", 20)),
-        ).fit_transform(corpus)
+        consensus_kwargs = dict(method_cfg.params)
+        consensus_kwargs.setdefault("mfw_bands", [100, 200, 300])
+        consensus_kwargs.setdefault("replicates", 20)
+        consensus_kwargs.setdefault("seed", seed)
+        return BootstrapConsensus(**consensus_kwargs).fit_transform(corpus)
 
     if kind == "bayesian":
         feat_id = (
@@ -388,7 +394,7 @@ def _dispatch_method(
                     "(a metadata column naming the grouping unit, e.g. 'author')"
                 )
             groups = np.array(corpus.metadata_column(groups_col))
-        clf = build_classifier(method_cfg.params.get("estimator", "logreg"))
+        clf = build_classifier(method_cfg.params.get("estimator", "logreg"), random_state=seed)
         report = cross_validate_bitig(
             clf,
             fm,

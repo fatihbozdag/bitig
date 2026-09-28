@@ -342,8 +342,8 @@ derlemleri en büyük kamuya açık aynı-yazar kıyaslama veri kümeleri arası
 
 - Bu öğreticideki her rastgele seçim tohumlanmıştır (`rng = np.random.default_rng(42)` +
   `GeneralImpostors(seed=42)` + deterministik olan `scorer.method="platt"`).
-- Aynı Python + numpy + scikit-learn sürümleriyle yeniden çalıştırma, bayt düzeyinde özdeş
-  `Result.values` üretir.
+- Aynı Python + numpy + scikit-learn sürümleriyle yeniden çalıştırma, özdeş `Result.values`
+  üretir (kayan nokta yuvarlaması dışında).
 - `Provenance` kaydı tüm sürümleri yakalar; herhangi bir sapma tespit edilebilir.
 
 Her bileşenin daha ayrıntılı belgeleri için bkz. [Adli araç seti](../forensic/index.tr.md).

@@ -342,8 +342,8 @@ corpora are among the largest public same-author benchmarks.
 
 - Every random choice in this tutorial is seeded (`rng = np.random.default_rng(42)` +
   `GeneralImpostors(seed=42)` + `scorer.method="platt"` which is deterministic).
-- A rerun produces byte-identical `Result.values` under matching Python + numpy +
-  scikit-learn versions.
+- A rerun produces identical `Result.values` (up to floating-point rounding) under
+  matching Python + numpy + scikit-learn versions.
 - The `Provenance` record captures all versions; any drift is detectable.
 
 See [Forensic toolkit](../forensic/index.md) for deeper documentation of each component.

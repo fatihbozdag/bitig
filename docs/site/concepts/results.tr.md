@@ -59,14 +59,13 @@ class Provenance:
 
 ### Yeniden üretilebilirlik sözleşmesi
 
-Aynı seed değeriyle aynı corpus üzerinde aynı `study.yaml`'ın iki ayrı çalıştırılması **bayt düzeyinde özdeş** `result.json` üretir. Çalıştırıcı, `cfg.seed` değerini şu bileşenler boyunca iletir:
+Aynı seed değeriyle, aynı ortamda (Python, numpy, scikit-learn sürümleri) aynı corpus üzerinde aynı `study.yaml`'ın iki ayrı çalıştırılması **özdeş sonuç değerleri** üretir — çok iş parçacıklı BLAS'ın değiştirebildiği son basamaklardaki kayan nokta yuvarlaması dışında. `result.json` bayt düzeyinde özdeş değildir: `provenance.timestamp` her çalıştırmanın zamanını kaydeder. Çalıştırıcı, bir yöntem kendi değerini belirtmedikçe `cfg.seed` değerini şunlara iletir:
 
-- herhangi bir örnekleme yönteminde numpy'ın varsayılan RNG'si
-- her stokastik tahmincide scikit-learn'ün `random_state` parametresi (k-means, LogReg çapraz doğrulama, RandomForest, …)
-- her Bayesian `pm.sample()` çağrısında PyMC'nin `random_seed` parametresi
-- Stratified K-Fold karıştırması
+- her indirgeyicinin (PCA, MDS, t-SNE, UMAP) ve k-means'in `random_state` parametresi
+- her `classify` tahmincisinin `random_state` parametresi ve Stratified K-Fold karıştırması
+- `consensus` ve `verify` (General Impostors) yöntemlerinin `seed` parametresi
 
-Belirleyici olmayan bir durum hata sayılır — lütfen bildirin.
+Hiyerarşik kümeleme, HDBSCAN ve Delta deterministiktir. Kayan nokta yuvarlamasının ötesindeki belirleyici olmayan bir durum hata sayılır — lütfen bildirin.
 
 ## Çok yöntemli çalıştırmaları yükleme
 

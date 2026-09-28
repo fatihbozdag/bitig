@@ -30,7 +30,7 @@ methods:
 | Anahtar | Tür | Zorunlu | Açıklama |
 |---|---|---|---|
 | `name` | str | evet | Çalışma adı; raporlarda gösterilir |
-| `seed` | int | hayır | Varsayılan seed değeri (42). Her stokastik yönteme iletilir. |
+| `seed` | int | hayır | Varsayılan seed değeri (42). Kendi değerini belirtmeyen her stokastik yönteme iletilir (bkz. [yeniden üretilebilirlik](../concepts/results.md)). |
 | `corpus` | object | evet | Derlem yapılandırması (aşağıya bakınız) |
 | `features` | list | evet | Bir veya daha fazla öznitelik çıkarıcı |
 | `methods` | list | evet | Çalıştırılacak bir veya daha fazla yöntem |

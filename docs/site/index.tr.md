@@ -23,8 +23,8 @@ hide:
 
 Her katman `sklearn` uyumludur; her `Result` tam köken bilgisi taşır (derlem özeti,
 öznitelik özeti, tohum, spaCy sürümü, zaman damgası, çözümlenmiş yapılandırma); böylece
-`study.yaml` olarak yazılan bir çalışma, yıllar sonra bile tam aynı rastgele çekime
-yeniden üretilebilir.
+`study.yaml` olarak yazılan bir çalışma, aynı tohum ve kütüphane sürümleriyle aynı
+değerlere yeniden üretilebilir (bkz. [Sonuçlar ve köken bilgisi](concepts/results.md)).
 
 ## Hızlı gezinti
 

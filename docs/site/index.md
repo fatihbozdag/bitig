@@ -23,7 +23,8 @@ hide:
 
 Every layer is `sklearn`-compatible; every `Result` carries full provenance (corpus hash,
 feature hash, seed, spaCy version, timestamp, resolved config) so a study written as a
-`study.yaml` is reproducible to the exact random draw years later.
+`study.yaml` re-runs to the same values given the same seed and library versions
+(see [Results & provenance](concepts/results.md)).
 
 ## Quick navigation
 
