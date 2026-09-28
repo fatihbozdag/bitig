@@ -191,3 +191,203 @@ def test_make_signable_helper_still_signs(tmp_path: Path) -> None:
     case = Case.create(tmp_path / "cases", id="h", title="t", examiner="x", recipe="exploration")
     make_signable(case).mark_signed()
     assert case.verify_seal().ok
+
+
+# -- Re-acknowledge (sealed custody log) --------------------------------------
+
+
+def _changed(tmp_path: Path) -> Case:
+    case = _run_case(tmp_path)
+    (case.evidence_dir / "known" / "bob_one.txt").write_text("re-exported text", encoding="utf-8")
+    return case
+
+
+def test_reacknowledge_requires_a_reason(tmp_path: Path) -> None:
+    case = _changed(tmp_path)
+    with pytest.raises(CaseError, match="reason"):
+        case.reacknowledge_evidence("evidence/known/bob_one.txt", reason="  ")
+
+
+def test_reacknowledge_records_log_and_requires_rerun(tmp_path: Path) -> None:
+    case = _changed(tmp_path)
+    old = next(e.sha256 for e in case.record.evidence.known if e.path.endswith("bob_one.txt"))
+    log = case.reacknowledge_evidence(
+        "evidence/known/bob_one.txt", reason="re-exported as UTF-8", by="Examiner B"
+    )
+    assert log["old_sha256"] == old
+    assert log["by"] == "Examiner B"
+    assert case.verify_custody() == []
+
+    reloaded = Case.load(case.root)
+    assert reloaded.record.custody_log == [log]
+    # The case state changed, so the earlier run can no longer be signed.
+    with pytest.raises(CaseError, match="re-run"):
+        reloaded.mark_signed()
+    assert perform_run(reloaded).status == "succeeded"
+    reloaded.mark_signed()
+    assert reloaded.verify_seal().ok
+    html = (reloaded.report_dir / "signed.html").read_text(encoding="utf-8")
+    assert "re-exported as UTF-8" in html and "Examiner B" in html
+
+
+def test_custody_log_is_sealed(tmp_path: Path) -> None:
+    case = _changed(tmp_path)
+    case.reacknowledge_evidence("evidence/known/bob_one.txt", reason="legit")
+    assert perform_run(case).status == "succeeded"
+    case.mark_signed()
+    data = json.loads(case.case_json_path.read_text(encoding="utf-8"))
+    data["custody_log"][0]["reason"] = "edited after signing"
+    case.case_json_path.write_text(json.dumps(data), encoding="utf-8")
+    assert not _check(Case.load(case.root), "case_state_hash").ok
+
+
+def test_reacknowledge_rejects_missing_unchanged_and_unregistered(tmp_path: Path) -> None:
+    case = _run_case(tmp_path)
+    with pytest.raises(CaseError, match="unchanged"):
+        case.reacknowledge_evidence("evidence/known/bob_one.txt", reason="r")
+    with pytest.raises(CaseError, match="registered"):
+        case.reacknowledge_evidence("evidence/known/nope.txt", reason="r")
+    (case.evidence_dir / "known" / "bob_one.txt").unlink()
+    with pytest.raises(CaseError, match="Fork"):
+        case.reacknowledge_evidence("evidence/known/bob_one.txt", reason="r")
+
+
+def test_reacknowledge_refused_on_signed_case(tmp_path: Path) -> None:
+    case = _run_case(tmp_path)
+    case.mark_signed()
+    with pytest.raises(CaseError, match="signed"):
+        case.reacknowledge_evidence("evidence/known/bob_one.txt", reason="r")
+
+
+# -- N-P1.4: fork cannot launder tampered evidence ----------------------------
+
+
+def test_fork_refuses_tampered_source(tmp_path: Path) -> None:
+    from bitig.cases import fork_case
+
+    case = _changed(tmp_path)
+    with pytest.raises(CaseError, match="mismatch"):
+        fork_case(case.root, "f1")
+    assert not (case.root.parent / "f1").exists()
+
+
+def test_acknowledged_fork_records_the_mismatch(tmp_path: Path) -> None:
+    from bitig.cases import fork_case
+
+    case = _changed(tmp_path)
+    fork = fork_case(case.root, "f2", acknowledge_mismatch="source file re-exported by lab")
+    parent = fork.record.forked_from
+    assert parent is not None
+    assert parent["case_id"] == "c"
+    assert parent["custody_mismatches"] == ["evidence/known/bob_one.txt"]
+    assert parent["acknowledged_reason"] == "source file re-exported by lab"
+    registered = {e["path"]: e["sha256"] for e in parent["evidence"]}
+    assert registered["evidence/known/bob_one.txt"] != next(
+        e.sha256 for e in fork.record.evidence.known if e.path.endswith("bob_one.txt")
+    )
+    assert perform_run(fork).status == "succeeded"
+    fork.mark_signed()
+    html = (fork.report_dir / "signed.html").read_text(encoding="utf-8")
+    assert "MISMATCH" in html and "re-exported by lab" in html
+
+
+def test_acknowledged_fork_omits_missing_files(tmp_path: Path) -> None:
+    from bitig.cases import fork_case
+
+    case = _run_case(tmp_path)
+    (case.evidence_dir / "known" / "bob_one.txt").unlink()
+    fork = fork_case(case.root, "f3", acknowledge_mismatch="file lost")
+    assert fork.record.forked_from["omitted_missing"] == ["evidence/known/bob_one.txt"]
+    assert not any(e.path.endswith("bob_one.txt") for e in fork.record.evidence.known)
+
+
+def test_clean_fork_records_parent(tmp_path: Path) -> None:
+    from bitig.cases import fork_case
+
+    case = _run_case(tmp_path)
+    fork = fork_case(case.root, "f4")
+    assert fork.record.forked_from["case_id"] == "c"
+    assert fork.record.forked_from["custody_mismatches"] == []
+
+
+def test_cli_fork_rejects_traversal_source_id(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from bitig.cli import app
+
+    outside = tmp_path / "outside"
+    Case.create(outside, id="victim", title="t", examiner="x", recipe="exploration")
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    result = CliRunner().invoke(
+        app, ["case", "fork", "../outside/victim", "newc", "--cases-dir", str(cases_dir)]
+    )
+    assert result.exit_code == 1
+    assert not (outside / "newc").exists()
+
+
+# -- N-P1.7: evidence must be registered; strays are flagged ------------------
+
+
+def _cli(*args: str):
+    from typer.testing import CliRunner
+
+    from bitig.cli import app
+
+    return CliRunner().invoke(app, list(args))
+
+
+def test_cli_dropped_file_is_flagged_and_case_cannot_be_signed(tmp_path: Path) -> None:
+    cases = str(tmp_path / "cases")
+    assert (
+        _cli("case", "new", "c2", "--title", "T", "--examiner", "E", "--cases-dir", cases).exit_code
+        == 0
+    )
+    dropped = tmp_path / "cases" / "c2" / "evidence" / "questioned" / "fed.txt"
+    dropped.parent.mkdir(parents=True, exist_ok=True)
+    dropped.write_text("dropped by hand", encoding="utf-8")
+
+    status = _cli("case", "status", "c2", "--cases-dir", cases)
+    assert "unregistered" in status.output and "fed.txt" in status.output
+    sign = _cli("case", "sign", "c2", "--cases-dir", cases)
+    assert sign.exit_code == 1 and "No evidence" in sign.output
+
+
+def test_cli_add_evidence_registers_files(tmp_path: Path) -> None:
+    cases = str(tmp_path / "cases")
+    _cli("case", "new", "c3", "--title", "T", "--examiner", "E", "--cases-dir", cases)
+    ok = _cli(
+        "case",
+        "add-evidence",
+        "c3",
+        str(_MINI / "alice_one.txt"),
+        str(_MINI / "alice_two.txt"),
+        "--role",
+        "known",
+        "--author",
+        "Alice",
+        "--cases-dir",
+        cases,
+    )
+    assert ok.exit_code == 0, ok.output
+    case = Case.load(tmp_path / "cases" / "c3")
+    assert [e.author for e in case.record.evidence.known] == ["Alice", "Alice"]
+    no_author = _cli(
+        "case",
+        "add-evidence",
+        "c3",
+        str(_MINI / "bob_one.txt"),
+        "--role",
+        "known",
+        "--cases-dir",
+        cases,
+    )
+    assert no_author.exit_code == 1
+
+
+def test_file_dropped_after_signing_fails_verify(tmp_path: Path) -> None:
+    case = _run_case(tmp_path)
+    case.mark_signed()
+    (case.evidence_dir / "known" / "late.txt").write_text("added later", encoding="utf-8")
+    check = _check(case, "unregistered_files")
+    assert not check.ok and "late.txt" in check.detail

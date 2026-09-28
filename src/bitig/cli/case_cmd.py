@@ -93,9 +93,11 @@ def case_new(
     )
     console.print("  next:")
     console.print(f"    bitig case status {case.record.id}")
-    if case.record.mode == "forensic":
-        console.print("  drop questioned/known files into:")
-        console.print(f"    {case.evidence_dir}/")
+    console.print("  register evidence (only registered files are analysed and sealed):")
+    console.print(f"    bitig case add-evidence {case.record.id} <files…> --role questioned")
+    console.print(
+        f"    bitig case add-evidence {case.record.id} <files…> --role known --author <name>"
+    )
     console.print(f"  resolved study config: {case.study_yaml_path}")
 
 
@@ -240,6 +242,14 @@ def case_status(
                 console.print(f"  - {m.path}  ([yellow]role={m.role}[/yellow])")
             raise typer.Exit(code=2)
         console.print("  [green]custody: OK[/green]")
+        stray = case.unregistered_evidence_files()
+        if stray:
+            console.print(
+                "  [yellow]⚠ unregistered files under evidence/ (not analysed, not sealed; "
+                "use `bitig case add-evidence`):[/yellow]"
+            )
+            for path in stray:
+                console.print(f"    - {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -264,17 +274,97 @@ def case_fork(
         "--examiner",
         help="Examiner for the forked case (default: copy from source).",
     ),
+    acknowledge_mismatch: str | None = typer.Option(
+        None,
+        "--acknowledge-mismatch",
+        help=(
+            "Fork even though the source's evidence fails chain-of-custody; the value is "
+            "the reason, recorded permanently in the fork."
+        ),
+    ),
 ) -> None:
     """Clone a Case into an unsigned descendant for further iteration (spec §6)."""
-    src_dir = cases_dir / id
     try:
-        forked = fork_case(src_dir, new_id, title=title, examiner=examiner)
+        _validate_case_id(id)  # the source id is a path component too (audit P1.3)
+        forked = fork_case(
+            cases_dir / id,
+            new_id,
+            cases_root=cases_dir,
+            title=title,
+            examiner=examiner,
+            acknowledge_mismatch=acknowledge_mismatch,
+        )
     except (CaseError, FileNotFoundError) as exc:
         console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(
         f"[green]forked[/green] {id} → {forked.record.id} at {forked.root} (signed=no, runs=0)"
     )
+
+
+# ---------------------------------------------------------------------------
+# add-evidence / reacknowledge
+# ---------------------------------------------------------------------------
+
+
+@case_app.command("add-evidence")
+def case_add_evidence(
+    id: str = typer.Argument(..., help="Case id."),
+    files: list[Path] = typer.Argument(..., help="Evidence file(s) to register."),  # noqa: B008
+    role: str = typer.Option(..., "--role", help="questioned | known"),
+    author: str | None = typer.Option(
+        None, "--author", help="Author label (required for known files)."
+    ),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Copy file(s) into the case, hash them and register them as evidence.
+
+    Only registered evidence is analysed and covered by the seal; files copied
+    into evidence/ by hand are not.
+    """
+    if role not in {"questioned", "known"}:
+        console.print("[red]error:[/red] --role must be 'questioned' or 'known'")
+        raise typer.Exit(code=1)
+    if role == "known" and not author:
+        console.print("[red]error:[/red] known evidence needs --author")
+        raise typer.Exit(code=1)
+    case = _resolve_case(cases_dir, id)
+    for f in files:
+        try:
+            entry = case.add_evidence(f, role=role, author=author)  # type: ignore[arg-type]
+        except (CaseError, FileNotFoundError) as exc:
+            console.print(f"[red]error:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]registered[/green] {entry.path}  sha256={entry.sha256[:12]}…")
+
+
+@case_app.command("reacknowledge")
+def case_reacknowledge(
+    id: str = typer.Argument(..., help="Case id."),
+    path: str = typer.Argument(..., help="Registered evidence path, e.g. evidence/known/a.txt."),
+    reason: str = typer.Option(..., "--reason", help="Why the changed file is legitimate."),
+    by: str | None = typer.Option(None, "--by", help="Who acknowledges (default: examiner)."),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Accept a changed evidence file's new hash, recorded in the sealed custody log.
+
+    The case must be re-run afterwards before it can be signed.
+    """
+    case = _resolve_case(cases_dir, id)
+    try:
+        log = case.reacknowledge_evidence(path, reason=reason, by=by)
+    except CaseError as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[yellow]re-acknowledged[/yellow] {log['path']}: "
+        f"{log['old_sha256'][:12]}… → {log['new_sha256'][:12]}… by {log['by']}"
+    )
+    console.print("  Re-run the analysis before signing.")
 
 
 # ---------------------------------------------------------------------------

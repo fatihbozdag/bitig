@@ -608,6 +608,65 @@ class Case:
         self.save()
         return ref
 
+    def unregistered_evidence_files(self) -> list[str]:
+        """Files under ``evidence/`` that are not registered (never analysed or sealed)."""
+        if not self.evidence_dir.is_dir():
+            return []
+        registered = {e.path for e in self._registered_entries()}
+        return sorted(
+            p.relative_to(self.root).as_posix()
+            for p in self.evidence_dir.rglob("*")
+            if p.is_file() and p.relative_to(self.root).as_posix() not in registered
+        )
+
+    def reacknowledge_evidence(
+        self, path: str, *, reason: str, by: str | None = None
+    ) -> dict[str, Any]:
+        """Accept the current bytes of a changed evidence file, on the record.
+
+        For a registered file whose hash no longer matches (e.g. a re-export
+        with different line endings), the analyst states *why* the change is
+        legitimate. The old and new hashes, the reason, who and when are
+        appended to ``record.custody_log``. That log is part of the canonical
+        case state, so it is sealed and printed in the report's chain of
+        custody. It also changes the case state, so any earlier run must be
+        re-run before the case can be signed.
+
+        Missing files cannot be re-acknowledged: fork the case instead.
+        Raises :class:`CaseError` on a signed case, an empty reason, an
+        unregistered path, a missing file, or a file that has not changed.
+        """
+        self._require_unsigned("re-acknowledge evidence")
+        reason = (reason or "").strip()
+        if not reason:
+            raise CaseError("A reason is required to re-acknowledge changed evidence.")
+        entry = next((e for e in self._registered_entries() if e.path == path), None)
+        if entry is None:
+            raise CaseError(f"Not a registered evidence path: {path!r}")
+        abs_path = self.root / entry.path
+        _ensure_within(abs_path, self.evidence_dir)
+        if not abs_path.is_file():
+            raise CaseError(
+                f"{entry.path} is missing; a missing file cannot be re-acknowledged. "
+                "Fork the case instead."
+            )
+        new_sha = hash_file(abs_path)
+        if new_sha == entry.sha256:
+            raise CaseError(f"{entry.path} is unchanged; nothing to re-acknowledge.")
+        log_entry = {
+            "at": _utcnow_iso(),
+            "by": by or self.record.examiner,
+            "path": entry.path,
+            "old_sha256": entry.sha256,
+            "new_sha256": new_sha,
+            "reason": reason,
+        }
+        self.record.custody_log.append(log_entry)
+        entry.sha256 = new_sha
+        entry.tokens = _count_tokens(abs_path)
+        self.save()
+        return log_entry
+
     def verify_custody(self) -> list[EvidenceEntry]:
         """Return registered entries whose on-disk SHA-256 no longer matches.
 
@@ -1088,6 +1147,19 @@ class Case:
 
         checks.append(self._run_outputs_check(payload))
 
+        # A file copied into evidence/ by hand is neither analysed nor sealed;
+        # flag it so nobody mistakes it for covered evidence (N-P1.7).
+        stray = self.unregistered_evidence_files()
+        checks.append(
+            SealCheck(
+                "unregistered_files",
+                not stray,
+                "no unregistered files under evidence/"
+                if not stray
+                else "NOT covered by the seal (never registered): " + ", ".join(stray),
+            )
+        )
+
         mismatches = self.verify_custody()
         checks.append(
             SealCheck(
@@ -1218,6 +1290,7 @@ def fork_case(
     cases_root: Path | None = None,
     title: str | None = None,
     examiner: str | None = None,
+    acknowledge_mismatch: str | None = None,
 ) -> Case:
     """Clone an existing Case into an unsigned descendant (spec §6).
 
@@ -1226,11 +1299,40 @@ def fork_case(
     The new Case is created under ``cases_root`` (defaults to the parent of
     ``src_dir``, mirroring the source layout) and is freshly hashed.
 
+    If the source's evidence no longer matches its registered hashes, the
+    fork is refused: copying would re-hash altered files into a clean chain
+    of custody (audit 2026-09-26 N-P1.4). Passing ``acknowledge_mismatch``
+    (the reason) allows it. Every fork records ``forked_from`` — the parent
+    id, its registered hashes and any mismatch with the acknowledgement —
+    which is part of the sealed case state and printed in the report.
+
     Raises :class:`CaseError` if the destination already exists.
     """
     source = Case.load(src_dir)
     if cases_root is None:
         cases_root = source.root.parent
+
+    mismatches = [m.path for m in source.verify_custody()]
+    reason = (acknowledge_mismatch or "").strip()
+    if mismatches and not reason:
+        raise CaseError(
+            f"Source case {source.record.id!r} has a chain-of-custody mismatch on "
+            + ", ".join(mismatches)
+            + ". Forking would register the altered files under fresh hashes; pass an "
+            "acknowledgement reason to fork anyway (it is recorded in the fork)."
+        )
+    forked_from: dict[str, Any] = {
+        "case_id": source.record.id,
+        "at": _utcnow_iso(),
+        "case_state_hash": source._case_state_hash(),
+        "evidence": [
+            {"role": e.role, "path": e.path, "sha256": e.sha256}
+            for e in source.record.evidence.all_files()
+        ],
+        "custody_mismatches": mismatches,
+    }
+    if mismatches:
+        forked_from["acknowledged_reason"] = reason
 
     forked = Case.create(
         cases_root,
@@ -1241,26 +1343,29 @@ def fork_case(
         overrides=dict(source.record.overrides),
     )
 
-    for entry in source.record.evidence.questioned:
+    omitted: list[str] = []
+    for entry in source.record.evidence.all_files():
+        src_file = source.root / entry.path
+        if not src_file.is_file():
+            # Only reachable with an acknowledged mismatch: a missing file
+            # cannot be carried over, so the fork records it as omitted.
+            omitted.append(entry.path)
+            continue
         forked.add_evidence(
-            source.root / entry.path,
-            role="questioned",
+            src_file,
+            role=entry.role,
             author=entry.author,
             year=entry.year,
             dest_name=Path(entry.path).name,
         )
-    for entry in source.record.evidence.known:
-        forked.add_evidence(
-            source.root / entry.path,
-            role="known",
-            author=entry.author,
-            year=entry.year,
-            dest_name=Path(entry.path).name,
-        )
+    if omitted:
+        forked_from["omitted_missing"] = omitted
     if source.record.evidence.control is not None:
         c = source.record.evidence.control
         forked.set_control_corpus(c.corpus_id, n_docs=c.n_docs)
 
+    forked.record.forked_from = forked_from
+    forked.save()
     return forked
 
 

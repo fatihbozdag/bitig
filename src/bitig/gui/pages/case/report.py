@@ -88,7 +88,9 @@ def _sign(case: Case) -> None:
     if mismatches:
         ui.notify(
             f"Cannot sign: {len(mismatches)} evidence file(s) fail chain-of-custody. "
-            "Re-acknowledge on the Evidence step first.",
+            "Re-acknowledge legitimately changed files on the Evidence step (then re-run), "
+            "or fork the case (`bitig case fork`) if a file is missing or should not "
+            "have changed.",
             type="negative",
             multi_line=True,
         )

@@ -134,6 +134,24 @@
     {% else %}
     <p class="muted">No evidence registered yet.</p>
     {% endif %}
+    {% if forked_from %}
+    <p class="muted">{{ forked_from }}</p>
+    {% endif %}
+    {% if custody_log %}
+    <h3>Re-acknowledged evidence changes</h3>
+    <table>
+      <tr><th>when</th><th>by</th><th>document</th><th>old → new sha256</th><th>reason</th></tr>
+      {% for c in custody_log %}
+      <tr>
+        <td>{{ c.at }}</td>
+        <td>{{ c.by }}</td>
+        <td>{{ c.path }}</td>
+        <td class="mono">{{ c.old_sha256[:12] }}… → {{ c.new_sha256[:12] }}…</td>
+        <td>{{ c.reason }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
   </div>
 </div>
 

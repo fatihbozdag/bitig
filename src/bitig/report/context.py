@@ -41,6 +41,17 @@ class ChainOfCustodyEntry(BaseModel):
     n_docs: int | None = None  # control corpus only
 
 
+class CustodyLogEntry(BaseModel):
+    """One re-acknowledged evidence change (``Case.reacknowledge_evidence``)."""
+
+    at: str
+    by: str
+    path: str
+    old_sha256: str
+    new_sha256: str
+    reason: str
+
+
 class ProvenanceFooter(BaseModel):
     """Provenance row at the bottom of every report (spec §5.5a footer)."""
 
@@ -70,6 +81,8 @@ class ReportContext(BaseModel):
     headline_scalars: list[HeadlineScalar] = Field(default_factory=list)
     figures: list[str] = Field(default_factory=list)
     chain_of_custody: list[ChainOfCustodyEntry] = Field(default_factory=list)
+    custody_log: list[CustodyLogEntry] = Field(default_factory=list)
+    forked_from: str | None = None  # one-line description of the parent case
     provenance: ProvenanceFooter | None = None
 
     signed: bool = False

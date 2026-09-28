@@ -30,6 +30,7 @@ from bitig.forensic.verbal_scale import (
 )
 from bitig.report.context import (
     ChainOfCustodyEntry,
+    CustodyLogEntry,
     HeadlineScalar,
     ProvenanceFooter,
     ReportContext,
@@ -124,6 +125,8 @@ def _build_context(case: Case) -> ReportContext:
     result = load_latest_result(case)
     scalars = _build_headline_scalars(case, result)
     coc = _build_chain_of_custody(case)
+    log = [CustodyLogEntry(**e) for e in case.record.custody_log]
+    fork_note = _fork_note(case)
     provenance = _build_provenance_footer(case, result)
     figures = _list_figure_paths(case)
     case_state_hash = case._case_state_hash()
@@ -145,6 +148,8 @@ def _build_context(case: Case) -> ReportContext:
             headline_scalars=scalars,
             figures=figures,
             chain_of_custody=coc,
+            custody_log=log,
+            forked_from=fork_note,
             provenance=provenance,
             signed=case.record.signed,
             signed_at=case.record.signed_at,
@@ -169,6 +174,8 @@ def _build_context(case: Case) -> ReportContext:
         headline_scalars=scalars,
         figures=figures,
         chain_of_custody=coc,
+        custody_log=log,
+        forked_from=fork_note,
         provenance=provenance,
         signed=case.record.signed,
         signed_at=case.record.signed_at,
@@ -213,6 +220,30 @@ def _build_chain_of_custody(case: Case) -> list[ChainOfCustodyEntry]:
         c = case.record.evidence.control
         coc.append(ChainOfCustodyEntry(role="control", label=c.corpus_id, n_docs=c.n_docs))
     return coc
+
+
+def _fork_note(case: Case) -> str | None:
+    parent = case.record.forked_from
+    if not parent:
+        return None
+    note = f"Forked from case {parent.get('case_id')!r} on {parent.get('at')}."
+    mismatches = parent.get("custody_mismatches") or []
+    if mismatches:
+        note += (
+            " The source case had a chain-of-custody MISMATCH on "
+            + ", ".join(str(m) for m in mismatches)
+            + "; the fork was made with that mismatch explicitly acknowledged"
+            + (
+                f" ({parent.get('acknowledged_reason')})"
+                if parent.get("acknowledged_reason")
+                else ""
+            )
+            + "."
+        )
+    omitted = parent.get("omitted_missing") or []
+    if omitted:
+        note += " Missing from the source and not carried over: " + ", ".join(omitted) + "."
+    return note
 
 
 def _build_provenance_footer(case: Case, result: Result | None) -> ProvenanceFooter | None:

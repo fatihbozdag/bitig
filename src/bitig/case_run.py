@@ -76,7 +76,9 @@ def perform_run(case: Case) -> RunOutcome:
         return RunOutcome(
             "blocked",
             f"Chain-of-custody mismatch on {len(mismatches)} file(s); aborting run. "
-            "Re-acknowledge on the Evidence step.",
+            "Re-acknowledge legitimately changed files on the Evidence step (or "
+            "`bitig case reacknowledge`), or fork the case if a file is missing or "
+            "should not have changed.",
         )
 
     # A study.yaml edited outside bitig must not be run (audit 2026-09-26 N-P1.1).
