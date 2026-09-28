@@ -110,8 +110,8 @@ def test_forensic_report_handles_no_run(tmp_path: Path) -> None:
     html = draft.read_text(encoding="utf-8")
     # Headline strip falls back to a placeholder; no LR card.
     assert "no run yet" in html
-    # Hypotheses still present (those are intrinsic to forensic mode).
-    assert "prosecution" in html
+    # No LR, so no Hp/Hd likelihood-ratio framing (audit 2026-09-26 N-P1.8).
+    assert "prosecution" not in html
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ from typing import Any, Literal
 from jinja2 import Environment
 
 from bitig._version import __version__
+from bitig.forensic.verbal_scale import ladder_rows, lr_from_values, lr_verbal_statement
 
 Format = Literal["html", "md"]
 
@@ -91,6 +92,20 @@ def _first_provenance(results: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
+def _summary_lr(summary: dict[str, Any]) -> float | None:
+    """Numeric LR from an ``lr_summaries`` entry (numbers or numeric strings)."""
+    numeric: dict[str, float] = {}
+    for key in ("lr", "log_lr"):
+        try:
+            numeric[key] = float(summary[key])
+        except (KeyError, TypeError, ValueError):
+            continue
+    try:
+        return lr_from_values(numeric)
+    except OverflowError:
+        return None
+
+
 def build_forensic_report(
     result_dir: str | Path,
     *,
@@ -130,6 +145,10 @@ def build_forensic_report(
             summary = lr_summaries.get(r["method_name"])
             if summary:
                 r["lr_summary"] = summary
+                # The statement is computed from the numeric LR with the package's
+                # one verbal scale (audit 2026-09-26 N-P1.12), never hand-written.
+                lr = _summary_lr(summary)
+                r["lr_statement"] = lr_verbal_statement(lr) if lr is not None else None
 
     env = Environment(keep_trailing_newline=True, autoescape=True)
     template = env.from_string(
@@ -146,6 +165,7 @@ def build_forensic_report(
         custody_notes=provenance.get("custody_notes"),
         source_hashes=provenance.get("source_hashes") or {},
         results=results,
+        ladder_rows=ladder_rows(),
         provenance=json.dumps(provenance, indent=2, default=str),
     )
     output.write_text(rendered, encoding="utf-8")

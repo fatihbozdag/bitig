@@ -97,6 +97,11 @@ class ReportContext(BaseModel):
     lr_statement: str | None = None  # full two-sided statement incl. which proposition
     lr_ladder_rows: list[tuple[str, str, str]] = Field(default_factory=list)
     method_paragraph: str | None = None
+    # General Impostors result when no calibrated LR exists (N-P1.8 / N-P1.9):
+    # one (document id, score) row per questioned document, never aggregated.
+    verification_question: str | None = None
+    gi_rows: list[tuple[str, str]] = Field(default_factory=list)
+    gi_chance: str | None = None
 
     # ---- research-only ----
     research_question: str | None = None

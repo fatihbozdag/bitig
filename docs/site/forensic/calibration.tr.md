@@ -80,14 +80,16 @@ Kalibrasyon kümesi dengeli değilse `log_lr_from_probs_with_priors` kullanın; 
 
 Log-LR büyüklüklerini altı bantlı Nordgaard et al. (2012) / ENFSI (2015) sözel ölçeği (verbal scale) ile birlikte raporlayın:
 
-| log₁₀(LR) | Sözel destek |
+| \|log₁₀(LR)\| | Sözel destek |
 |---|---|
 | 0 – 1 | zayıf |
 | 1 – 2 | ılımlı |
 | 2 – 3 | ılımlı güçlü |
 | 3 – 4 | güçlü |
-| 4 – 5 | çok güçlü |
-| > 5 | son derece güçlü |
+| 4 – 6 | çok güçlü |
+| ≥ 6 | son derece güçlü |
+
+LR > 1 aynı yazar önermesini, LR < 1 farklı yazar önermesini destekler; bir LR ile tersi için destek gücü aynıdır (`bitig.forensic.verbal_scale`).
 
 `build_forensic_report` şablonu, bu ölçeği her yöntemin LR değerinin yanında otomatik olarak oluşturur. Bkz. [Raporlama](reporting.md).
 

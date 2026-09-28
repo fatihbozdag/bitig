@@ -100,14 +100,17 @@ function corrects the reported LR back to prior-free magnitudes.
 Report log-LR magnitudes alongside the six-band Nordgaard et al. (2012) / ENFSI (2015)
 scale:
 
-| log₁₀(LR) | Verbal support |
+| \|log₁₀(LR)\| | Verbal support |
 |---|---|
 | 0 – 1 | weak |
 | 1 – 2 | moderate |
 | 2 – 3 | moderately strong |
 | 3 – 4 | strong |
-| 4 – 5 | very strong |
-| > 5 | extremely strong |
+| 4 – 6 | very strong |
+| ≥ 6 | extremely strong |
+
+LR > 1 supports the same-author proposition, LR < 1 the different-author proposition;
+the strength is the same for an LR and its reciprocal (`bitig.forensic.verbal_scale`).
 
 The `build_forensic_report` template renders this scale automatically beside each
 method's LR value. See [Reporting](reporting.md).

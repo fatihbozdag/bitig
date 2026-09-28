@@ -35,7 +35,7 @@ from bitig.report.context import (
     ProvenanceFooter,
     ReportContext,
 )
-from bitig.report.scalars import fmt_scalar, headline_scalars, load_latest_result
+from bitig.report.scalars import fmt_scalar, gi_scores, headline_scalars, load_latest_result
 from bitig.result import Result
 
 Format = Literal["html", "pdf"]
@@ -137,6 +137,10 @@ def _build_context(case: Case) -> ReportContext:
         # display-rounded string (audit P1.11). lr_value/ladder are populated
         # only when a calibrated LR actually exists (audit P1.10).
         lr = lr_from_values(result.values) if result is not None else None
+        values = result.values if result is not None else {}
+        gi_rows = [] if lr is not None else gi_scores(values)
+        candidate = values.get("candidate")
+        chance = values.get("chance")
         return ReportContext(
             mode="forensic",
             title=case.record.title,
@@ -154,13 +158,30 @@ def _build_context(case: Case) -> ReportContext:
             signed=case.record.signed,
             signed_at=case.record.signed_at,
             signed_by=case.record.signed_by,
-            hypothesis_p="The questioned text and the known texts share an author.",
-            hypothesis_d="The questioned text and the known texts do not share an author.",
+            # Hp/Hd framing only accompanies an actual likelihood ratio.
+            hypothesis_p=(
+                "The questioned text and the known texts share an author."
+                if lr is not None
+                else None
+            ),
+            hypothesis_d=(
+                "The questioned text and the known texts do not share an author."
+                if lr is not None
+                else None
+            ),
+            verification_question=(
+                f"Whether the questioned document(s) were written by the candidate author "
+                f"{candidate!r}."
+                if lr is None and candidate
+                else None
+            ),
+            gi_rows=[(doc_id, fmt_scalar(score)) for doc_id, score in gi_rows],
+            gi_chance=fmt_scalar(chance) if gi_rows and chance is not None else None,
             lr_value=fmt_scalar(lr) if lr is not None else None,
             lr_verbal_rung=lr_verbal_rung(lr) if lr is not None else None,
             lr_statement=lr_verbal_statement(lr) if lr is not None else None,
             lr_ladder_rows=ladder_rows() if lr is not None else [],
-            method_paragraph=_forensic_method_paragraph(result),
+            method_paragraph=forensic_method_paragraph(result, has_lr=lr is not None),
         )
 
     return ReportContext(
@@ -323,13 +344,22 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
         raise ReportRendererError(f"PDF rendering failed: {exc}") from exc
 
 
-def _forensic_method_paragraph(result: Result | None) -> str:
+def forensic_method_paragraph(result: Result | None, *, has_lr: bool) -> str:
     if result is None:
-        return "(no run yet — execute Step 3 to populate the LR.)"
+        return "(no run yet — execute the analysis to populate the findings.)"
+    if has_lr:
+        return (
+            f"Authorship verification was performed via {result.method_name}. "
+            "The likelihood ratio above expresses how much more probable the observed "
+            "evidence is under H_p than under H_d, under the model's assumptions."
+        )
     return (
-        f"Authorship verification was performed via {result.method_name}. "
-        "The likelihood ratio above expresses how much more probable the observed "
-        "evidence is under H_p than under H_d, under the model's assumptions."
+        f"Authorship verification was performed via {result.method_name} "
+        "(General Impostors; Koppel & Winter 2014). For each questioned document the "
+        "score is the fraction of randomised iterations in which the candidate's known "
+        "texts were closer to it than every sampled impostor author. The chance level is "
+        "the score expected when style carries no authorship signal. This score is "
+        "uncalibrated: it is not a likelihood ratio and no verbal (ENFSI) scale applies to it."
     )
 
 

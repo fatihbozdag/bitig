@@ -35,7 +35,9 @@ from bitig.gui.state import get_state
 from bitig.report.case_report import (
     ReportRendererError,
     build_case_report,
+    forensic_method_paragraph,
 )
+from bitig.report.scalars import fmt_scalar, gi_scores
 
 
 @ui.page("/case/{case_id}/report")
@@ -155,16 +157,25 @@ def _render_forensic_body(case: Case) -> None:
 
     ui.html("<hr style='border-color: #ddd;'>")
 
-    # Hypotheses
-    ui.label("Hypotheses").classes("text-lg font-semibold")
-    ui.label("H_p (prosecution): the questioned text and the known texts share an author.")
-    ui.label("H_d (defence):   the questioned text and the known texts do not share an author.")
+    lr = lr_from_values(result.values) if result is not None else None
+    values = result.values if result is not None else {}
+
+    # Hp/Hd framing only accompanies an actual likelihood ratio (N-P1.8).
+    if lr is not None:
+        ui.label("Hypotheses").classes("text-lg font-semibold")
+        ui.label("H_p (prosecution): the questioned text and the known texts share an author.")
+        ui.label("H_d (defence):   the questioned text and the known texts do not share an author.")
+    elif values.get("candidate"):
+        ui.label("Question").classes("text-lg font-semibold")
+        ui.label(
+            "Whether the questioned document(s) were written by the candidate author "
+            f"{values['candidate']!r}."
+        )
 
     # Headline card: LR when a calibrated LR exists, else the GI verification
     # score — never the candidate's name (audit P1.10). The verbal rung is
     # classified from the RAW LR float, never the display string (audit P1.11).
     headline_label, headline_value = scalars[0] if scalars else ("score", "—")
-    lr = lr_from_values(result.values) if result is not None else None
     with ui.row().classes("w-full items-center gap-4 mt-2"):
         with (
             ui.column()
@@ -192,10 +203,13 @@ def _render_forensic_body(case: Case) -> None:
                     )
                     ui.label(f"  {label_}  ({lo}-{hi})").style(style)
         elif headline_label == "GI score":
-            ui.label(
-                "Uncalibrated General-Impostors verification score in [0, 1] — not a "
-                "likelihood ratio; no ENFSI rung applies until calibration is configured."
-            ).style("font-size: 12px; color: #555; max-width: 320px;")
+            with ui.column().classes("gap-1"):
+                for doc_id, score in gi_scores(values):
+                    ui.label(f"{doc_id}: {fmt_scalar(score)}").classes("bitig-mono")
+                ui.label(
+                    "Uncalibrated General-Impostors verification score in [0, 1] — not a "
+                    "likelihood ratio; no ENFSI rung applies until calibration is configured."
+                ).style("font-size: 12px; color: #555; max-width: 320px;")
 
     if lr is not None:
         ui.label(f"Interpretation: {lr_verbal_statement(lr)}.").style(
@@ -206,12 +220,7 @@ def _render_forensic_body(case: Case) -> None:
     with ui.row().classes("w-full gap-6 mt-2"):
         with ui.column().classes("flex-1 gap-1"):
             ui.label("Method").classes("text-lg font-semibold")
-            method_text = result.method_name if result else "(no run yet)"
-            ui.label(
-                f"Authorship verification was performed via {method_text}. The likelihood "
-                "ratio above expresses how much more probable the observed evidence is "
-                "under H_p than under H_d."
-            )
+            ui.label(forensic_method_paragraph(result, has_lr=lr is not None))
         with ui.column().classes("w-96 gap-1"):
             ui.label("Chain of custody").classes("text-lg font-semibold")
             for e in case.record.evidence.questioned + case.record.evidence.known:

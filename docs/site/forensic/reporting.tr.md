@@ -2,15 +2,15 @@
 
 *Şu durumda kullanın:* kalibre edilmiş bir doğrulama `Result` nesneniz varsa ve mahkemeye hazır bir rapora ihtiyacınız varsa — delil zinciri meta verisi, ENFSI sözel ölçeğine dayalı olabilirlik oranı (LR) ifadesi ve denetlenebilir bir HTML artefaktı.
 *Şu durumda kullanmayın:* keşifsel bir araştırma şekli istiyorsanız — `concepts/results.md` içindeki standart raporlama yolunu kullanın.
-*Beklenen sonuç:* sabit bölümlere sahip oluşturulmuş bir HTML raporu: dava meta verisi, hipotez çifti, öznitelik hattı, kalibre edilmiş LR, sözel ölçek ifadesi ve bir Tippett grafiği.
+*Beklenen sonuç:* sabit bölümlere sahip oluşturulmuş bir HTML raporu: dava meta verisi, hipotez çifti, öznitelik hattı, kalibre edilmiş LR ve sözel ölçek ifadesi.
 
 Adli raporlar bir puandan fazlasını gerektirir: test edilen **hipotez çifti (hypothesis pair)**, tanımlanan **bilinen ve sorgulanan** materyal, kaynak dosyalara uzanan **delil zinciri (chain of custody)** izi ve metriklerin analiz koşullarına bağlı olduğunu belirten **kanıtsal sorumluluk reddi**.
 
 ## build_forensic_report
 
-*Şu durumda kullanın:* `Result` nesnesinden mahkemeye hazır HTML'e tek çağrıyla ulaşmak istiyorsanız — delil zinciri alanlarını, kalibre edilmiş skorları, sözel ölçeği ve Tippett grafiğini bir Jinja2 şablonuna aktarır.
+*Şu durumda kullanın:* `Result` nesnesinden mahkemeye hazır HTML'e tek çağrıyla ulaşmak istiyorsanız — delil zinciri alanlarını, kalibre edilmiş LR'leri ve sözel ölçek ifadelerini bir Jinja2 şablonuna aktarır.
 *Şu durumda kullanmayın:* araştırma makalesi şekli üretiyorsanız — standart `bitig report` CLI'yı veya `concepts/methods.md` içindeki çizim yardımcılarını kullanın.
-*Beklenen sonuç:* oluşturulan HTML dosyasının yolu; isteğe bağlı PDF dışa aktarma `bitig[reports]` gerektirir.
+*Beklenen sonuç:* oluşturulan HTML dosyasının yolu (yalnızca HTML; Tippett grafiği için PAN-CLEF eğitimindeki gibi `bitig.forensic.tippett` ile kendi çiziminizi kullanın).
 
 ```python
 from bitig.report import build_forensic_report
