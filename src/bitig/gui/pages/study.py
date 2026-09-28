@@ -184,8 +184,13 @@ def study_page() -> None:
             if method_kind == "classify":
                 method_params["estimator"] = "logreg"
             if method_kind == "cluster":
-                method_params["n_clusters"] = int(n_clusters_input.value)
-                method_params["linkage"] = "ward"
+                # Only the params each clusterer accepts: the runner now rejects
+                # unknown ones (k-means has no linkage; HDBSCAN no n_clusters).
+                cluster_variant = method_params.get("variant", "hierarchical")
+                if cluster_variant in {"hierarchical", "kmeans"}:
+                    method_params["n_clusters"] = int(n_clusters_input.value)
+                if cluster_variant == "hierarchical":
+                    method_params["linkage"] = "ward"
             if method_kind == "reduce":
                 method_params["n_components"] = int(n_components_input.value)
             if method_kind == "zeta":

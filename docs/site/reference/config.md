@@ -20,7 +20,7 @@ features:
 methods:
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 ```
@@ -75,12 +75,18 @@ Each method is a dict with an `id`, a `kind`, an optional `features` (feature id
 
 | kind | Description |
 |---|---|
-| `delta` | Nearest-centroid attribution (`method: burrows` by default) |
+| `delta` | Nearest-centroid attribution (`variant: burrows` by default; also `cosine`, `eder`, `eder_simple`, `argamon_linear`, `quadratic`) |
 | `zeta` | Craig's Zeta; requires `group_by` and either inferred or specified `params.group_a` / `group_b` |
 | `reduce` | Dim-reduction (default PCA); `params.n_components` |
 | `cluster` | Hierarchical (default Ward); `params.n_clusters`, `params.linkage` |
 | `consensus` | Bootstrap consensus tree; `params.mfw_bands`, `params.replicates` |
 | `classify` | sklearn classifier; `params.estimator`, `cv.kind`, `cv.folds` |
+
+`bitig run` checks every feature and method parameter against the constructor it is
+passed to and refuses the study if any is unknown, so a typo or a stale key fails at load
+time instead of being silently ignored. Feature types the runner does not implement
+(`pos_ngram`, `dependency_bigram`, `sentence_length`, the embedding types) are refused
+the same way. `method:` on a `delta` method is a deprecated alias for `variant:`.
 
 ## output
 
@@ -128,7 +134,7 @@ features:
 methods:
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 

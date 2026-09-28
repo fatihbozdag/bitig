@@ -20,7 +20,7 @@ features:
 methods:
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 ```
@@ -75,12 +75,14 @@ Her yöntem, bir `id`, bir `kind`, isteğe bağlı bir `features` (öznitelik id
 
 | kind | Açıklama |
 |---|---|
-| `delta` | En yakın-centroid yazar tespiti (varsayılan olarak `method: burrows`) |
+| `delta` | En yakın-centroid yazar tespiti (varsayılan olarak `variant: burrows`; ayrıca `cosine`, `eder`, `eder_simple`, `argamon_linear`, `quadratic`) |
 | `zeta` | Craig's Zeta; `group_by` ve çıkarılan ya da belirtilen `params.group_a` / `group_b` gerektirir |
 | `reduce` | Boyut indirgeme (varsayılan PCA); `params.n_components` |
 | `cluster` | Hiyerarşik kümeleme (varsayılan Ward); `params.n_clusters`, `params.linkage` |
 | `consensus` | Önyükleme fikir birliği ağacı; `params.mfw_bands`, `params.replicates` |
 | `classify` | sklearn sınıflandırıcısı; `params.estimator`, `cv.kind`, `cv.folds` |
+
+`bitig run`, her öznitelik ve yöntem parametresini aktarıldığı kurucuya göre denetler ve bilinmeyen bir parametre varsa çalışmayı reddeder; böylece bir yazım hatası ya da eskimiş bir anahtar sessizce yok sayılmak yerine yükleme sırasında hata verir. Çalıştırıcının uygulamadığı öznitelik türleri (`pos_ngram`, `dependency_bigram`, `sentence_length`, gömme türleri) de aynı şekilde reddedilir. Bir `delta` yöntemindeki `method:` anahtarı, `variant:` için kullanımdan kaldırılmış bir takma addır.
 
 ## output
 
@@ -128,7 +130,7 @@ features:
 methods:
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 

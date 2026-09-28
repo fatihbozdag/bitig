@@ -70,7 +70,7 @@ features:
 methods:
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 

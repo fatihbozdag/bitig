@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -84,6 +86,105 @@ _ZETA_VARIANTS: dict[str, type] = {
 }
 
 
+def _accepted_kwargs(cls: Any) -> set[str] | None:
+    """Keyword names ``cls`` accepts, or ``None`` if it takes ``**kwargs``."""
+    params = inspect.signature(cls).parameters.values()
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params):
+        return None
+    return {p.name for p in params if p.name != "self"}
+
+
+def _reducer_impl(variant: str) -> Any:
+    cls = _REDUCER_VARIANTS.get(variant)
+    if cls is None:
+        return None
+    if variant == "umap":
+        try:
+            import umap
+        except ImportError:
+            return None  # the run itself reports the missing extra
+        return umap.UMAP
+    return getattr(cls, "_impl", None)
+
+
+def validate_study_params(cfg: StudyConfig) -> None:
+    """Reject feature/method params the runner would ignore or crash on.
+
+    Checked against the constructor signatures the runner actually calls, so a
+    typo or a stale key fails loudly at load time instead of being silently
+    dropped (audit 2026-09-26 N-P1.14). ``method:`` on a delta method is a
+    deprecated alias for ``variant:`` and is translated with a warning.
+    Mutates ``cfg`` only for that alias.
+    """
+    errors: list[str] = []
+    for feat in cfg.features:
+        extractor_cls = _FEATURE_BUILDERS.get(feat.type)
+        if extractor_cls is None:
+            errors.append(
+                f"feature {feat.id!r}: type {feat.type!r} is not supported by `bitig run` "
+                f"(supported: {sorted(_FEATURE_BUILDERS)})"
+            )
+            continue
+        _check_keys(errors, f"feature {feat.id!r}", feat.params, _accepted_kwargs(extractor_cls))
+
+    for method in cfg.methods:
+        params = method.params
+        kind = method.kind
+        where = f"method {method.id!r} ({kind})"
+        if kind == "delta" and "method" in params:
+            if "variant" in params:
+                errors.append(
+                    f"{where}: give either 'variant' or the deprecated 'method', not both"
+                )
+            else:
+                warnings.warn(
+                    f"{where}: 'method:' is deprecated; use 'variant: {params['method']}'",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                params["variant"] = params.pop("method")
+        allowed: set[str] | None
+        if kind == "delta":
+            allowed = {"variant"}
+        elif kind == "rolling_delta":
+            allowed = (_accepted_kwargs(RollingDelta) or set()) - {"group_by"}
+        elif kind == "verify":
+            allowed = (_accepted_kwargs(GeneralImposters) or set()) - {"group_by"}
+        elif kind == "zeta":
+            zeta_cls = _ZETA_VARIANTS.get(str(params.get("variant", "classic")), ZetaClassic)
+            allowed = {"variant"} | ((_accepted_kwargs(zeta_cls) or set()) - {"group_by"})
+        elif kind == "reduce":
+            impl = _reducer_impl(str(params.get("variant", "pca")))
+            impl_kwargs = _accepted_kwargs(impl) if impl is not None else None
+            allowed = None if impl_kwargs is None else {"variant"} | impl_kwargs
+        elif kind == "cluster":
+            cluster_cls = _CLUSTER_VARIANTS.get(str(params.get("variant", "hierarchical")))
+            cluster_kwargs = _accepted_kwargs(cluster_cls) if cluster_cls is not None else None
+            allowed = None if cluster_kwargs is None else {"variant"} | cluster_kwargs
+        elif kind == "consensus":
+            allowed = _accepted_kwargs(BootstrapConsensus)
+        elif kind == "bayesian":
+            allowed = {"prior_alpha"}
+        elif kind == "classify":
+            allowed = {"estimator"}
+        else:  # pragma: no cover - MethodKind is a closed Literal
+            allowed = None
+        _check_keys(errors, where, params, allowed)
+
+    if errors:
+        raise ValueError("invalid study configuration:\n  - " + "\n  - ".join(errors))
+
+
+def _check_keys(
+    errors: list[str], where: str, params: dict[str, Any], allowed: set[str] | None
+) -> None:
+    if allowed is None:
+        return
+    unknown = sorted(set(params) - allowed)
+    if unknown:
+        errors.append(f"{where}: unknown parameter(s) {unknown} (accepted: {sorted(allowed)})")
+
+
 def _labelled_mask(labels: np.ndarray, group_by: str | None) -> np.ndarray:
     """Boolean mask of documents carrying a ``group_by`` label; at least two classes required."""
     if not group_by:
@@ -113,6 +214,7 @@ def run_study(
     Returns the path to the run directory (e.g., `results/2026-04-17T10-15-30/`).
     """
     cfg: StudyConfig = load_config(Path(config_path))
+    validate_study_params(cfg)
     run_dir = _make_run_dir(cfg, output_dir, run_name)
     _log.info("run directory: %s", run_dir)
 
