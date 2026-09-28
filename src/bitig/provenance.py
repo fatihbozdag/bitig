@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bitig._version import __version__
+from bitig.corpus.corpus import CORPUS_HASH_SCHEME
 
 
 @dataclass
@@ -39,6 +40,9 @@ class Provenance:
     acquisition_notes: str | None = None
     custody_notes: str | None = None
     source_hashes: dict[str, str] = field(default_factory=dict)
+    # Which Corpus.hash scheme produced corpus_hash; records written before the
+    # field existed used scheme 1, whose hash is not comparable (N-P1.16).
+    corpus_hash_scheme: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -65,6 +69,7 @@ class Provenance:
             acquisition_notes=data.get("acquisition_notes"),
             custody_notes=data.get("custody_notes"),
             source_hashes=dict(data.get("source_hashes") or {}),
+            corpus_hash_scheme=int(data.get("corpus_hash_scheme", 1)),
         )
 
     @classmethod
@@ -102,6 +107,7 @@ class Provenance:
             acquisition_notes=acquisition_notes,
             custody_notes=custody_notes,
             source_hashes=dict(source_hashes) if source_hashes else {},
+            corpus_hash_scheme=CORPUS_HASH_SCHEME,
         )
 
     @property

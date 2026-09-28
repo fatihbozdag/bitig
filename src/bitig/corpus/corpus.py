@@ -11,6 +11,9 @@ import numpy as np
 from bitig.corpus.document import Document
 from bitig.plumbing.hashing import hash_mapping, hash_text
 
+CORPUS_HASH_SCHEME = 2
+"""Version of :meth:`Corpus.hash`; recorded in ``Provenance.corpus_hash_scheme``."""
+
 
 @dataclass
 class Corpus:
@@ -85,10 +88,20 @@ class Corpus:
         return [d.metadata.get(field_name) for d in self.documents]
 
     def hash(self) -> str:
-        """Stable hash — sorted document hashes + sorted metadata + language."""
-        doc_hashes = sorted(d.hash for d in self.documents)
-        metadata_summary = sorted((d.id, hash_mapping(d.metadata)) for d in self.documents)
-        payload = "|".join(doc_hashes) + "||" + str(metadata_summary) + "||lang=" + self.language
+        """Stable, order-independent hash binding each text to its id and metadata.
+
+        Scheme 2 (``CORPUS_HASH_SCHEME``) hashes sorted ``(id, text hash,
+        metadata hash)`` triples. Scheme 1 hashed the text hashes and the
+        ``(id, metadata)`` pairs as two independently sorted lists, so swapping
+        two documents' texts left the hash unchanged (audit 2026-09-26 N-P1.16).
+        """
+        triples = sorted((d.id, d.hash, hash_mapping(d.metadata)) for d in self.documents)
+        payload = (
+            f"scheme={CORPUS_HASH_SCHEME}||"
+            + "|".join(f"{i}:{t}:{m}" for i, t, m in triples)
+            + "||lang="
+            + self.language
+        )
         return hash_text(payload)
 
     @classmethod

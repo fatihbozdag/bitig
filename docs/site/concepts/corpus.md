@@ -68,10 +68,15 @@ grouped = corpus.groupby("author")
 
 ## Hashing
 
-`Corpus.hash()` produces a stable SHA-256 derived from the sorted SHA-256 hashes of each
-document's text plus sorted metadata entries. This hash ends up on every `Provenance`
+`Corpus.hash()` produces a stable SHA-256 over the sorted `(document id, text hash,
+metadata hash)` triples plus the language, so each text is bound to its id and labels:
+swapping two documents' texts changes the hash. This hash ends up on every `Provenance`
 record, so two studies with the same corpus share a hash regardless of filesystem path,
 run time, or document ordering in the input directory.
+
+`Provenance.corpus_hash_scheme` records which hashing scheme produced the value. Scheme 2
+(bitig 0.3.2+) replaced scheme 1, which hashed texts and ids as two independent lists and
+did not bind them; hashes from different schemes are not comparable.
 
 !!! note "Order sensitivity"
     `Corpus.hash()` is order-invariant by design (same texts + metadata = same hash). If

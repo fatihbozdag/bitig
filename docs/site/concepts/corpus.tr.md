@@ -65,7 +65,9 @@ grouped = corpus.groupby("author")
 
 ## Özetleme
 
-`Corpus.hash()`, her belgenin metninin sıralanmış SHA-256 özetlerinden ve sıralanmış üst veri girişlerinden türetilen kararlı bir SHA-256 özeti üretir. Bu özet, her `Provenance` kaydına eklenir; böylece aynı derlemle çalışan iki çalışma, dosya sistemi yolundan, çalışma zamanından veya giriş dizinindeki belge sıralamasından bağımsız olarak aynı özeti paylaşır.
+`Corpus.hash()`, sıralanmış `(belge kimliği, metin özeti, üst veri özeti)` üçlülerinden ve dilden türetilen kararlı bir SHA-256 özeti üretir; böylece her metin kendi kimliğine ve etiketlerine bağlanır: iki belgenin metinlerini yer değiştirmek özeti değiştirir. Bu özet, her `Provenance` kaydına eklenir; böylece aynı derlemle çalışan iki çalışma, dosya sistemi yolundan, çalışma zamanından veya giriş dizinindeki belge sıralamasından bağımsız olarak aynı özeti paylaşır.
+
+`Provenance.corpus_hash_scheme`, değeri hangi özetleme şemasının ürettiğini kaydeder. Şema 2 (bitig 0.3.2+), metinleri ve kimlikleri birbirinden bağımsız iki liste olarak özetleyen ve onları birbirine bağlamayan şema 1'in yerini almıştır; farklı şemalardan gelen özetler karşılaştırılamaz.
 
 !!! note "Sıra duyarlılığı"
     `Corpus.hash()` tasarım gereği sıra-değişmezdir (aynı metinler + üst veri = aynı özet). Öznitelik matrisi düzenini etkileyen satır yeniden sıralamalarını tespit etmek gibi sıra-duyarlı bir özete ihtiyaç duyarsanız, `[d.id for d in corpus.documents]` listesini ayrıca özetleyin.
