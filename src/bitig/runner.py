@@ -117,9 +117,12 @@ def run_study(
     _log.info("run directory: %s", run_dir)
 
     if corpus is None:
+        # The study language selects function-word lists, readability formulas
+        # etc.; it defaulted to English here (audit 2026-09-26 N-P1.13).
         corpus = load_corpus(
             Path(cfg.corpus.path),
             metadata=Path(cfg.corpus.metadata) if cfg.corpus.metadata else None,
+            language=cfg.preprocess.language,
         )
     if cfg.corpus.filter:
         corpus = corpus.filter(**cfg.corpus.filter)
