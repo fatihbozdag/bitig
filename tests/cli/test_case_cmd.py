@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from bitig.cases import Case
 from bitig.cli import app
+from tests._signable import make_signable
 
 # Rich wraps long lines at the detected terminal width and CliRunner emulates
 # a narrow terminal; force a wide one so paths and table rows survive intact.
@@ -61,9 +62,7 @@ def _make_text_file(path: Path, content: str = "alpha beta gamma") -> Path:
 
 def _stub_report(cases_dir: Path, case_id: str) -> None:
     """Write a draft.html so `case sign` succeeds (mark_signed needs a report — audit P1.5)."""
-    report_dir = cases_dir / case_id / "report"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    (report_dir / "draft.html").write_text("<html>stub</html>", encoding="utf-8")
+    make_signable(Case.load(cases_dir / case_id))
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +245,7 @@ def test_case_fork_creates_unsigned_descendant(tmp_path: Path) -> None:
     case.add_evidence(_make_text_file(tmp_path / "q.txt", "q"), role="questioned")
     case.add_evidence(_make_text_file(tmp_path / "k.txt", "k"), role="known")
     case.set_control_corpus("BUMR", n_docs=10)
-    _stub_report(cases_dir, "source")
+    make_signable(case)
     case.mark_signed()
 
     result = runner.invoke(app, ["case", "fork", "source", "iter1", "--cases-dir", str(cases_dir)])

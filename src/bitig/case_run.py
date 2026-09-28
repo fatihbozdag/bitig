@@ -105,6 +105,9 @@ def perform_run(case: Case) -> RunOutcome:
         case.regenerate_study_yaml()
         case.save()
         corpus = case.build_corpus(language=study.preprocess.language)
+        # The state this run is computed on; signing refuses it once the case
+        # changes (audit 2026-09-26 N-P1.2).
+        state_hash = case._case_state_hash()
         run_dir = run_study(
             case.study_yaml_path, output_dir=case.runs_dir, run_name=run_id, corpus=corpus
         )
@@ -132,7 +135,7 @@ def perform_run(case: Case) -> RunOutcome:
         )
 
     # Only record a run that produced at least one result.
-    case.register_run(run_id)
+    case.register_run(run_id, case_state_hash=state_hash)
     if n_ok < len(methods):
         return RunOutcome(
             "partial",

@@ -21,6 +21,7 @@ from bitig.cases import (
     list_cases,
 )
 from bitig.config.schema import StudyConfig
+from tests._signable import make_signable
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,10 +53,7 @@ def _render_stub_report(case: Case) -> None:
     these tests exercise signing semantics, not report rendering, so a stub
     draft.html stands in for the real bitig.report.build_case_report output.
     """
-    case.report_dir.mkdir(parents=True, exist_ok=True)
-    (case.report_dir / "draft.html").write_text(
-        "<html><body>stub report</body></html>", encoding="utf-8"
-    )
+    make_signable(case)
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +369,7 @@ def test_mark_signed_always_binds_a_report(cases_root: Path):
     """A signed case always binds a rendered report — mark_signed renders and
     freezes signed.html itself, so report_html_hash is never null (audit P1.5)."""
     case = Case.create(cases_root, id="noreport", title="t", examiner="x", recipe="exploration")
+    make_signable(case)
     payload = case.mark_signed()
     assert payload["report_html_hash"]  # non-null
     assert (case.report_dir / "signed.html").is_file()

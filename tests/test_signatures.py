@@ -17,6 +17,7 @@ from bitig.signatures import (
     get_signature_plugin,
     verify_hmac_signature,
 )
+from tests._signable import make_signable
 
 
 def _signable_case(
@@ -24,8 +25,7 @@ def _signable_case(
 ) -> Case:
     """Create a case with a stub report so it can be signed (audit P1.5)."""
     case = Case.create(tmp_path / "cases", id=id, title=title, examiner=examiner, recipe=recipe)
-    (case.report_dir / "draft.html").write_text("<html>stub</html>", encoding="utf-8")
-    return case
+    return make_signable(case)
 
 
 # ---------------------------------------------------------------------------

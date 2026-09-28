@@ -15,6 +15,7 @@ import pytest
 from bitig.case_run import perform_run, unique_run_id
 from bitig.cases import Case
 from bitig.result import Result
+from tests._signable import make_signable
 
 _MINI = Path(__file__).parent / "fixtures" / "mini_corpus"
 
@@ -85,6 +86,7 @@ def test_perform_run_all_failed_is_not_recorded(tmp_path, monkeypatch) -> None:
 
 def test_perform_run_blocked_when_signed(tmp_path, monkeypatch) -> None:
     case = _case(tmp_path)
+    make_signable(case)
     case.mark_signed()  # renders + freezes its own report
     called = {"ran": False}
     monkeypatch.setattr(

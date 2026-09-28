@@ -16,6 +16,7 @@ from bitig.report.case_report import (
 )
 from bitig.report.context import ReportContext
 from bitig.result import Result
+from tests._signable import make_signable
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -157,6 +158,7 @@ def test_research_report_falls_back_when_no_run(tmp_path: Path) -> None:
 def test_signed_case_toolbar_shows_signed_badge(tmp_path: Path) -> None:
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="signed-forensic")
     _attach_run(case, method_name="verify", values={"lr": 5.0})
+    make_signable(case)
     case.mark_signed()
 
     draft = build_case_report(case, format="html")
@@ -182,17 +184,19 @@ def test_build_on_signed_case_serves_frozen_snapshot(tmp_path: Path) -> None:
     never rewrites draft.html (audit P1.7)."""
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="frozen")
     _attach_run(case, method_name="verify", values={"lr": 5.0})
+    make_signable(case)
     case.mark_signed()
 
     signed_html = case.report_dir / "signed.html"
     frozen_bytes = signed_html.read_bytes()
-    draft_before = (case.report_dir / "draft.html").read_bytes()
+    draft = case.report_dir / "draft.html"
+    draft_before = draft.read_bytes() if draft.is_file() else None
 
     out = build_case_report(case, format="html")
     assert out == signed_html
     # Serving the frozen report must not mutate either artefact.
     assert signed_html.read_bytes() == frozen_bytes
-    assert (case.report_dir / "draft.html").read_bytes() == draft_before
+    assert (draft.read_bytes() if draft.is_file() else None) == draft_before
     # And the seal still verifies.
     assert case.verify_seal().ok
 

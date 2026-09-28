@@ -75,25 +75,46 @@ def build_case_report(
     signed_html = case.report_dir / "signed.html"
     draft_path = case.report_dir / "draft.html"
 
-    if signed_html.is_file():
-        # Sealed — serve the immutable snapshot verbatim, never re-render.
+    if case.record.signed:
+        # Sealed — serve the immutable snapshot verbatim, never re-render, and
+        # only while the seal still holds (audit 2026-09-26 N-P1.6). The
+        # signature check is skipped here: exporting must not need the HMAC
+        # key; `bitig case verify` covers it.
+        if not signed_html.is_file():
+            raise ReportRendererError(
+                "Case is signed but report/signed.html is missing; refusing to render a "
+                "replacement for a sealed report."
+            )
+        failed = [
+            c for c in case.verify_seal().checks if c.name != "signature" and not c.ok
+        ]
+        if failed:
+            raise ReportRendererError(
+                "Seal verification failed; refusing to export: "
+                + "; ".join(f"{c.name}: {c.detail}" for c in failed)
+            )
         html = signed_html.read_text(encoding="utf-8")
         report_path = signed_html
     else:
-        context = _build_context(case)
-        html = _render_html(context)
+        # Unsigned: always render fresh. A stray signed.html (e.g. left by an
+        # interrupted sign) is never served for an unsigned case (N-P1.3).
+        html = render_case_report_html(case)
         draft_path.write_text(html, encoding="utf-8")
         report_path = draft_path
 
     if format == "html":
         return report_path
 
-    # PDF path. base_url is the CASE ROOT because _list_figure_paths emits
-    # figure src paths relative to the case root (runs/<ts>/.../fig.png), not
-    # relative to report_dir (audit P1.8).
+    # PDF path. Figure src paths are relative to report/ (../runs/<ts>/...),
+    # where draft.html / signed.html live, so base_url is report_dir.
     out_pdf = output_path if output_path is not None else case.report_dir / "final.pdf"
-    _export_pdf(html, out_pdf, base_url=case.root)
+    _export_pdf(html, out_pdf, base_url=case.report_dir)
     return out_pdf
+
+
+def render_case_report_html(case: Case) -> str:
+    """Render ``case``'s report to an HTML string without writing any file."""
+    return _render_html(_build_context(case))
 
 
 # ---------------------------------------------------------------------------
@@ -227,16 +248,16 @@ def _list_figure_paths(case: Case) -> list[str]:
     figures: list[Path] = []
     for ext in (".png", ".svg"):
         figures.extend(sorted(run_dir.rglob(f"*{ext}")))
-    # Emit <img src=...> paths relative to the CASE ROOT (e.g.
-    # runs/<ts>/<method>/fig.png). build_case_report passes base_url=case.root
-    # so WeasyPrint and a browser opening the HTML both resolve them (P1.8).
+    # Emit <img src=...> paths relative to report/ (../runs/<ts>/<method>/fig.png),
+    # the directory draft.html / signed.html live in, so a browser opening the
+    # HTML and WeasyPrint (base_url=report_dir) both resolve them (P1.8).
+    # Figures must lie inside the run dir: latest_run comes from case.json.
     out: list[str] = []
     for fig in figures:
-        try:
-            rel = fig.relative_to(case.root)
-        except ValueError:
-            rel = fig
-        out.append(rel.as_posix() if isinstance(rel, Path) else str(rel))
+        resolved = fig.resolve()
+        if not resolved.is_relative_to(run_dir.resolve()):
+            continue
+        out.append("../" + resolved.relative_to(case.root.resolve()).as_posix())
     return out
 
 
@@ -257,6 +278,8 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
     """Render ``html`` to PDF via WeasyPrint, or surface a clear error."""
     try:
         from weasyprint import HTML  # type: ignore[import-not-found]
+    except OSError as exc:  # native libs (pango/cairo) missing at import time
+        raise ReportRendererError(f"WeasyPrint cannot load its system libraries: {exc}") from exc
     except ImportError as exc:
         raise ReportRendererError(
             "PDF export requires WeasyPrint. Install with: uv pip install 'bitig[reports]'"
