@@ -288,7 +288,11 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 def _validate_case_id(case_id: str) -> str:
     """Reject case ids that aren't a single safe path component (P1.3)."""
-    if not isinstance(case_id, str) or case_id in {"", ".", ".."} or not _SAFE_ID_RE.fullmatch(case_id):
+    if (
+        not isinstance(case_id, str)
+        or case_id in {"", ".", ".."}
+        or not _SAFE_ID_RE.fullmatch(case_id)
+    ):
         raise CaseError(
             f"Invalid case id {case_id!r}: must match [A-Za-z0-9._-]+ and not be '.' or '..' "
             "(no path separators, no parent-directory traversal, not absolute)."

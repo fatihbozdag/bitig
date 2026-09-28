@@ -85,9 +85,7 @@ def build_case_report(
                 "Case is signed but report/signed.html is missing; refusing to render a "
                 "replacement for a sealed report."
             )
-        failed = [
-            c for c in case.verify_seal().checks if c.name != "signature" and not c.ok
-        ]
+        failed = [c for c in case.verify_seal().checks if c.name != "signature" and not c.ok]
         if failed:
             raise ReportRendererError(
                 "Seal verification failed; refusing to export: "
