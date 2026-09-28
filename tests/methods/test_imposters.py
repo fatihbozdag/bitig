@@ -114,8 +114,7 @@ def test_imposters_single_author_corpus_raises() -> None:
 
 
 def test_imposters_reports_chance_half_for_pairwise(synth_corpus: Corpus) -> None:
-    """Default impostor_n=1 → candidate-vs-one-impostor, so chance is exactly
-    0.5 and the 0.5 threshold sits at chance (audit P2 #2)."""
+    """Explicit impostor_n=1 → candidate-vs-one-impostor, so chance is exactly 0.5."""
     gi = GeneralImposters(
         target_ids=["alice_target"],
         candidate="Alice",
@@ -198,3 +197,55 @@ def test_imposters_table_round_trips(synth_corpus: Corpus, tmp_path) -> None:
     reloaded = pd.read_parquet(parquet)
     assert list(reloaded["target_id"]) == ["alice_target", "bob_target"]
     assert reloaded["score"].between(0.0, 1.0).all()
+
+
+def _three_author_corpus() -> Corpus:
+    def _doc(i: int, author: str, toks: list[str]) -> Document:
+        rng = np.random.default_rng(i)
+        return Document(
+            id=f"{author}_{i}",
+            text=" ".join(rng.choice(toks, size=300).tolist()),
+            metadata={"author": author},
+        )
+
+    a = ["the", "of", "and", "alice", "garden"]
+    return Corpus(
+        documents=[
+            _doc(0, "A", a),
+            _doc(1, "A", a),
+            _doc(2, "B", ["but", "with", "from", "bob", "office"]),
+            _doc(3, "B", ["but", "with", "from", "bob", "office"]),
+            _doc(4, "C", ["yet", "upon", "into", "carol", "studio"]),
+            _doc(5, "C", ["yet", "upon", "into", "carol", "studio"]),
+            Document(id="target", text=_doc(6, "A", a).text, metadata={}),
+        ]
+    )
+
+
+def test_imposters_default_samples_sqrt_pool_and_thresholds_above_chance() -> None:
+    """Defaults: m = ceil(sqrt(pool)) impostors, threshold halfway from chance to 1
+    (audit 2026-09-26 N-P1.10: m=1 with threshold 0.5 sat exactly on chance)."""
+    gi = GeneralImposters(
+        target_ids=["target"], candidate="A", group_by="author", n_iter=10, mfw_n=12, seed=1
+    )
+    result = gi.fit_transform(_three_author_corpus())
+    assert result.values["impostors_per_iter"] == 2  # ceil(sqrt(2))
+    assert result.values["chance"] == pytest.approx(1 / 3)
+    assert result.values["threshold"] == pytest.approx(1 / 3 + 0.5 * (2 / 3))
+    assert result.params["impostor_n"] == 2
+
+
+@pytest.mark.parametrize("threshold", [0.5, 1 / 3])
+def test_imposters_rejects_threshold_at_or_below_chance(threshold: float) -> None:
+    gi = GeneralImposters(
+        target_ids=["target"],
+        candidate="A",
+        group_by="author",
+        n_iter=5,
+        mfw_n=12,
+        impostor_n=1,  # chance 0.5
+        threshold=min(threshold, 0.5),
+        seed=1,
+    )
+    with pytest.raises(ValueError, match="chance"):
+        gi.fit_transform(_three_author_corpus())

@@ -43,9 +43,9 @@ log_lrs = scorer.predict_log_lr(test_scores, base=10.0)
 | Yöntem | Ne zaman kullanılır |
 |---|---|
 | `"platt"` | Küçük kalibrasyon kümeleri (sınıf başına < 100). Parametrik; sigmoid eşleme varsayar. Sağlamdır. |
-| `"isotonic"` | Daha büyük kalibrasyon kümeleri (sınıf başına ≥ 100). Parametrik olmayan; esnek. |
+| `"isotonic"` | Daha büyük kalibrasyon kümeleri (sınıf başına ≥ 100 önerilir; ≥ 20 zorunludur). Parametrik olmayan; esnek. |
 
-Her ikisi de monotondur — girdilerin sıra düzeni korunur, dolayısıyla AUC değişmez.
+Platt kesin monotondur; sıra düzenini ve AUC'yi korur. İzotonik yalnızca azalmayandır: puanları eşit basamaklarda birleştirir ve AUC'yi biraz düşürebilir.
 
 ### Platt kalibrasyonu
 
@@ -55,9 +55,11 @@ Her ikisi de monotondur — girdilerin sıra düzeni korunur, dolayısıyla AUC 
 
 ### Izotonik kalibrasyon
 
-*Şu durumda kullanın:* puanlayıcınızın karar sınırı doğrusal değilse ve parametrik olmayan bir eğri uydurmak için yeterli etiketli denemeniz varsa (≥500).
-*Şu durumda kullanmayın:* geliştirme kümeniz küçükse — izotonik kalibrasyon az nokta ile aşırı uyum sağlar.
-*Beklenen sonuç:* parçalı sabit kalibrasyon işlevi; `predict_proba` monoton artan adım fonksiyonu üretir.
+*Şu durumda kullanın:* puanlayıcınızın karar sınırı doğrusal değilse ve parametrik olmayan bir eğri uydurmak için yeterli etiketli denemeniz varsa (sınıf başına ≥ 100 önerilir).
+*Şu durumda kullanmayın:* geliştirme kümeniz küçükse — sınıf başına 20'den az deneme reddedilir.
+*Beklenen sonuç:* parçalı sabit kalibrasyon işlevi; `predict_proba` monoton azalmayan adım fonksiyonu üretir.
+
+Güvenlik önlemleri: her sınıf için karşı uca bir sahte deneme eklenir, böylece kalibre edilmiş olasılık hiçbir zaman tam 0 veya 1 olmaz; `n` denemelik bir kalibrasyon kümesi için `|log₁₀ LR|`, `log₁₀(n)` ile sınırlanır (`scorer.log_lr_cap_`) ve sınıra ulaşan çıktılar için `predict_log_lr` uyarı verir. Bu önlemler olmadan küçük, ayrılabilir bir kalibrasyon kümesi log₁₀ LR = ±12 ("son derece güçlü destek") üretiyordu. İzotonik LR'lerin uç değerlerde temkinli olmasını bekleyin.
 
 ## Log-LR dönüşümü
 

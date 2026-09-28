@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -161,3 +163,51 @@ class TestCalibratedScorerContract:
             probs = scorer.predict_proba(scores)
             assert probs.shape == scores.shape
             assert ((probs >= 0) & (probs <= 1)).all()
+
+
+class TestIsotonicSafeguards:
+    """Audit 2026-09-26 N-P1.11: isotonic output saturated at log10 LR = +/-12."""
+
+    def test_tiny_calibration_set_is_refused(self) -> None:
+        scores = np.array([0.1, 0.2, 0.3, 0.6, 0.7, 0.8])
+        y = np.array([0, 0, 0, 1, 1, 1])
+        with pytest.raises(ValueError, match="at least 20"):
+            CalibratedScorer(method="isotonic").fit(scores, y)
+
+    def test_separable_set_does_not_saturate_and_is_capped(self) -> None:
+        rng = np.random.default_rng(0)
+        scores = np.r_[rng.normal(1, 0.3, 30), rng.normal(-1, 0.3, 30)]
+        y = np.r_[np.ones(30), np.zeros(30)]  # perfectly separable in practice
+        scorer = CalibratedScorer(method="isotonic").fit(scores, y)
+        probs = scorer.predict_proba(np.array([-5.0, 5.0]))
+        assert probs[0] > 0.0 and probs[1] < 1.0  # pseudo-counts keep bins mixed
+        assert scorer.log_lr_cap_ == pytest.approx(np.log10(60))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            log_lr = scorer.predict_log_lr(np.array([-5.0, 5.0]))
+        assert np.all(np.abs(log_lr) <= np.log10(60) + 1e-12)
+        assert np.all(np.abs(log_lr) < 12)
+
+    def test_cap_hit_warns(self) -> None:
+        scores = np.r_[np.full(20, 1.0), np.full(20, 0.0)]
+        y = np.r_[np.ones(20), np.zeros(20)]
+        scorer = CalibratedScorer(method="isotonic").fit(scores, y)
+        scorer.log_lr_cap_ = 0.5  # force the cap below the calibrated value
+        with pytest.warns(UserWarning, match="cap"):
+            out = scorer.predict_log_lr(np.array([1.0]))
+        assert out[0] == pytest.approx(0.5)
+
+    def test_cap_respects_log_base(self) -> None:
+        scores = np.r_[np.full(20, 1.0), np.full(20, 0.0)]
+        y = np.r_[np.ones(20), np.zeros(20)]
+        scorer = CalibratedScorer(method="isotonic").fit(scores, y)
+        scorer.log_lr_cap_ = 0.5
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            out = scorer.predict_log_lr(np.array([1.0]), base=np.e)
+        assert out[0] == pytest.approx(0.5 * np.log(10))
+
+    def test_platt_is_uncapped(self) -> None:
+        scores = np.array([0.1, 0.2, 0.3, 0.6, 0.7, 0.8])
+        y = np.array([0, 0, 0, 1, 1, 1])
+        assert CalibratedScorer(method="platt").fit(scores, y).log_lr_cap_ is None
