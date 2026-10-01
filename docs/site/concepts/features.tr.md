@@ -144,7 +144,11 @@ Yule'ün K/I'sı, Herdan'ın C'si, Simpson'ın D'si — istediğinizde. Sekiz in
 duyarlılıkları karşılaştırmanıza olanak tanır.
 *Şu durumda kullanmayın:* belgeler çok kısaysa (<200 belirteç); çoğu indeks kararsız
 hale gelir.
-*Beklenen sonuç:* `(n_docs, 8)` matris; sütunlar 8 indekse karşılık gelir.
+*Beklenen sonuç:* istenen her indeks için bir sütun içeren `(n_docs, k)` matris (varsayılan
+`indices=("ttr", "yules_k")`; örneğin `["ttr", "mattr", "mtld", "hdd"]` verin). Bir ölçünün
+tanımsız olduğu yerde değer NaN olur ve uyarı verilir: 42 belirteçten kısa metinlerde HD-D,
+hiçbir tam faktör tamamlanmadığında MTLD, her belirteç tekil olduğunda Yule'ün I'sı
+(`V²/(M2 − V)`). `bitig run` NaN öznitelikleri bir yönteme aktarmak yerine reddeder.
 
 #### SentenceEmbeddingExtractor
 `SentenceEmbeddingExtractor(model="paraphrase-MiniLM-L6-v2")`

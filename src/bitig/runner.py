@@ -242,7 +242,19 @@ def run_study(
             )
             continue
         extractor = extractor_cls(**feat_cfg.params)
-        features_by_id[feat_cfg.id] = extractor.fit_transform(corpus)
+        fm = extractor.fit_transform(corpus)
+        bad = np.isnan(fm.X)
+        if bad.any():
+            rows, cols = np.nonzero(bad)
+            cells = ", ".join(
+                f"{fm.document_ids[r]}:{fm.feature_names[c]}"
+                for r, c in zip(rows, cols, strict=True)
+            )
+            raise ValueError(
+                f"feature {feat_cfg.id!r} has undefined (NaN) values for {cells}; drop those "
+                "measures or documents (e.g. lexical-diversity indices need longer texts)"
+            )
+        features_by_id[feat_cfg.id] = fm
         _log.info("built features %s: %s", feat_cfg.id, features_by_id[feat_cfg.id].X.shape)
 
     # SpacyPipeline resolves `language` → default model/backend via the languages registry.

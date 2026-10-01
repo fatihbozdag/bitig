@@ -44,6 +44,10 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   returned raw counts); English contractions and French elided forms in the bundled lists
   now match. Character/word n-gram `zscore` uses relative frequencies; new
   `max_features` caps their vocabulary.
+- **[results]** Lexical diversity: undefined values are NaN with a warning (HD-D below 42
+  tokens, MTLD without a complete factor, Yule's I for all-unique text) instead of 0 or a
+  token-count floor; Yule's I uses the canonical `V²/(M2 − V)`. `bitig run` refuses NaN
+  features.
 - **[results]** Classification CV refits the feature extractor inside each training
   fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
   is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`

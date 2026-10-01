@@ -139,7 +139,11 @@ CAPS legal text breaks most sentencizers).
 K/I, Herdan's C, Simpson's D. Eight indices let you compare sensitivities.
 *Don't use when:* your documents are very short (<200 tokens); most indices become
 unstable.
-*Expect:* `(n_docs, 8)` matrix; columns are the 8 indices.
+*Expect:* `(n_docs, k)` matrix, one column per requested index (default
+`indices=("ttr", "yules_k")`; pass e.g. `["ttr", "mattr", "mtld", "hdd"]`). Where a
+measure is undefined it is NaN with a warning: HD-D below 42 tokens, MTLD when no full
+factor completes, Yule's I (`V²/(M2 − V)`) when every token is unique. `bitig run`
+refuses NaN features rather than passing them to a method.
 
 #### SentenceEmbeddingExtractor
 `SentenceEmbeddingExtractor(model="paraphrase-MiniLM-L6-v2")`

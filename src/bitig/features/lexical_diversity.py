@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import re
+import warnings
 from collections import Counter
 from collections.abc import Callable
 
@@ -35,14 +37,18 @@ def _yules_k(tokens: list[str]) -> float:
 
 
 def _yules_i(tokens: list[str]) -> float:
+    """Yule's I = V^2 / (M2 - V) (as in quanteda / koRpus).
+
+    Undefined (NaN) when every token is a hapax (M2 == V); the earlier hybrid
+    V^2 / (M2 - N) also returned 0, the *minimum*, for that maximally diverse case.
+    """
     if not tokens:
-        return 0.0
-    n = len(tokens)
+        return math.nan
     freq = Counter(tokens)
     freq_of_freq = Counter(freq.values())
-    s2 = sum(r * r * f for r, f in freq_of_freq.items())
+    m2 = sum(r * r * f for r, f in freq_of_freq.items())
     v = len(freq)
-    return (v * v) / (s2 - n) if (s2 - n) > 0 else 0.0
+    return (v * v) / (m2 - v) if m2 > v else math.nan
 
 
 def _herdans_c(tokens: list[str]) -> float:
@@ -92,13 +98,12 @@ def _mtld(tokens: list[str], ttr_threshold: float = 0.72) -> float:
             # Partial factor: scale by how close to the threshold it got.
             partial = (1 - (len(seen) / count)) / (1 - ttr_threshold) if ttr_threshold < 1 else 0
             factor_count += partial
-        if factor_count > 0:
-            return len(toks) / factor_count
-        # factor_count == 0 means TTR never fell to the threshold — the text is
-        # maximally diverse over its whole length. MTLD is the token count by
-        # the McCarthy & Jarvis (2010) floor, NOT 0.0 (returning 0 inverts the
-        # measure, scoring maximal diversity as minimal).
-        return float(len(toks))
+        # Without one complete factor MTLD rests on the partial factor alone and
+        # explodes (100 unique tokens -> 100, one repeat -> 2800); report it as
+        # undefined rather than as a number (audit 2026-09-26 P2).
+        if factor_count < 1:
+            return math.nan
+        return len(toks) / factor_count
 
     forward = _one_direction(tokens)
     backward = _one_direction(list(reversed(tokens)))
@@ -114,7 +119,7 @@ def _hdd(tokens: list[str], sample_size: int = 42) -> float:
     from math import comb
 
     if len(tokens) < sample_size:
-        return 0.0
+        return math.nan  # undefined below the sample size (0.0 read as "no diversity")
     n = len(tokens)
     freq = Counter(tokens)
     total = 0.0
@@ -151,8 +156,19 @@ class LexicalDiversityExtractor(BaseFeatureExtractor):
 
     def _transform(self, corpus: Corpus) -> tuple[np.ndarray, list[str]]:
         X = np.zeros((len(corpus), len(self.indices)), dtype=float)  # noqa: N806
+        undefined: list[str] = []
         for row, doc in enumerate(corpus.documents):
             tokens = _tokens(doc.text)
             for col, index in enumerate(self.indices):
                 X[row, col] = _INDEX_FN[index](tokens)
+                if math.isnan(X[row, col]):
+                    undefined.append(f"{doc.id}:{index}")
+        if undefined:
+            warnings.warn(
+                "lexical diversity undefined (NaN) for "
+                + ", ".join(undefined)
+                + " — text too short or every token unique for that measure",
+                UserWarning,
+                stacklevel=2,
+            )
         return X, list(self.indices)
