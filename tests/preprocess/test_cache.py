@@ -66,3 +66,23 @@ def test_cache_clear_removes_all_entries(tmp_path: Path) -> None:
     c.clear()
     assert c.keys() == []
     assert c.size_bytes() == 0
+
+
+def test_corrupt_entry_is_a_miss_and_is_dropped(tmp_path) -> None:
+    """A truncated / altered DocBin file is never returned (audit 2026-09-26 P2)."""
+    from bitig.preprocess.cache import DocBinCache
+
+    cache = DocBinCache(tmp_path)
+    cache.put("k", b"payload-bytes")
+    assert cache.get("k") == b"payload-bytes"
+    (tmp_path / "k.docbin").write_bytes(b"tampered")
+    assert cache.get("k") is None
+    assert not (tmp_path / "k.docbin").exists()
+    assert cache.keys() == []
+
+
+def test_entry_without_checksum_is_a_miss(tmp_path) -> None:
+    from bitig.preprocess.cache import DocBinCache
+
+    (tmp_path / "old.docbin").write_bytes(b"written by an older bitig")
+    assert DocBinCache(tmp_path).get("old") is None

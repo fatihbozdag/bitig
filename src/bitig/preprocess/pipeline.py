@@ -110,11 +110,17 @@ class SpacyPipeline:
         Stanza backend: ``'spacy_stanza=<v>;stanza=<v>'`` — structurally distinct from native, so
         cross-backend cache collisions are impossible.
         """
-        if self.backend == "spacy_stanza":
-            from importlib.metadata import version
+        from importlib.metadata import PackageNotFoundError, version
 
+        if self.backend == "spacy_stanza":
             return f"spacy_stanza={version('spacy_stanza')};stanza={version('stanza')}"
-        return f"spacy={self.spacy_version}"
+        # The model package version is part of the key: an upgraded model must not
+        # reuse parses from the old one (audit 2026-09-26 P3).
+        try:
+            model_version = version(self.model)
+        except (PackageNotFoundError, ValueError):
+            model_version = "unknown"
+        return f"spacy={self.spacy_version};model={model_version}"
 
     def _key(self, doc: Document) -> str:
         return cache_key(doc.hash, self.model, self.backend_version, self.exclude)

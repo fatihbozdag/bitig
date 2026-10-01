@@ -88,12 +88,13 @@ def test_pipeline_unknown_language_raises(tmp_path: Path) -> None:
 def test_pipeline_backend_version_native_matches_prior_format(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """English native-spaCy backend_version is 'spacy=<version>' — preserves cache keys."""
+    """Native backend_version is 'spacy=<version>;model=<model package version>': an
+    upgraded model must not reuse old parses (audit 2026-09-26; invalidates older caches)."""
     import spacy
 
     monkeypatch.setattr(spacy, "__version__", "3.7.2")
     pipe = SpacyPipeline(language="en", cache_dir=tmp_path)
-    assert pipe.backend_version == "spacy=3.7.2"
+    assert pipe.backend_version.startswith("spacy=3.7.2;model=")
 
 
 def test_pipeline_backend_version_stanza_format(
