@@ -211,3 +211,32 @@ class TestIsotonicSafeguards:
         scores = np.array([0.1, 0.2, 0.3, 0.6, 0.7, 0.8])
         y = np.array([0, 0, 0, 1, 1, 1])
         assert CalibratedScorer(method="platt").fit(scores, y).log_lr_cap_ is None
+
+
+class TestPriorCorrection:
+    """Audit 2026-09-26 P2: LRs must not depend on the calibration set's class balance."""
+
+    @pytest.mark.parametrize("method", ["platt", "isotonic"])
+    def test_uninformative_imbalanced_set_gives_lr_near_one(self, method: str) -> None:
+        rng = np.random.default_rng(0)
+        scores = rng.normal(size=1000)
+        y = (rng.random(1000) < 0.1).astype(int)
+        scorer = CalibratedScorer(method=method).fit(scores, y)
+        assert scorer.prior_target_ == pytest.approx(y.mean(), abs=0.01)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            assert abs(float(np.mean(scorer.predict_log_lr(scores)))) < 0.05
+
+    def test_class_balance_does_not_shift_the_lr(self) -> None:
+        rng = np.random.default_rng(1)
+        tgt, non = rng.normal(1, 1, 2000), rng.normal(-1, 1, 2000)
+        balanced = CalibratedScorer(method="platt").fit(
+            np.r_[tgt[:500], non[:500]], np.r_[np.ones(500), np.zeros(500)]
+        )
+        skewed = CalibratedScorer(method="platt").fit(
+            np.r_[tgt[:100], non[:900]], np.r_[np.ones(100), np.zeros(900)]
+        )
+        probe = np.array([-1.0, 0.0, 1.0])
+        np.testing.assert_allclose(
+            balanced.predict_log_lr(probe), skewed.predict_log_lr(probe), atol=0.1
+        )

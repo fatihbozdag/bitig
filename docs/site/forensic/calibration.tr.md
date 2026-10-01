@@ -76,7 +76,7 @@ log_lrs = log_lr_from_probs(probs)                                # düz önsel 
 log_lrs = log_lr_from_probs_with_priors(probs, prior_target=0.3)  # düz olmayan
 ```
 
-Kalibrasyon kümesi dengeli değilse `log_lr_from_probs_with_priors` kullanın; bu işlev bildirilen LR'yi önsel olasılık etkisinden arındırır.
+`CalibratedScorer.predict_log_lr` bunu sizin için yapar: `fit`, kalibrasyon kümesindeki hedef deneme oranını (`scorer.prior_target_`) kaydeder ve LR bu önsel oranı bölerek çıkarır; böylece LR, her sınıftan kaç deneme ile kalibrasyon yaptığınıza bağlı olmaz. Yukarıdaki iki işlevi doğrudan yalnızca başka bir kaynaktan gelen sonsal olasılıklar için kullanın.
 
 ## Sözel ölçek
 

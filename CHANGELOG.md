@@ -28,6 +28,8 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   (was 1) and its `verified` threshold must exceed chance.
 - **[results]** Isotonic calibration adds one pseudo-trial per class, caps
   `|log10 LR|` at `log10(n)` and needs >= 20 trials per class.
+- **[results]** `CalibratedScorer.predict_log_lr` divides out the calibration set's prior
+  odds (`prior_target_`), so LRs no longer depend on its class balance.
 - **[results]** `c@1` and `F0.5u` follow the PAN evaluator: only `p == 0.5` is a
   non-answer, and every non-answer counts in F0.5u.
 - **[results]** MFW z-scores use `count / document token count` (was: counts

@@ -100,8 +100,10 @@ log_lrs = log_lr_from_probs(probs)                                # flat priors
 log_lrs = log_lr_from_probs_with_priors(probs, prior_target=0.3)  # non-flat
 ```
 
-Use `log_lr_from_probs_with_priors` when the calibration set was NOT balanced — the
-function corrects the reported LR back to prior-free magnitudes.
+`CalibratedScorer.predict_log_lr` does this for you: `fit` records the calibration set's
+share of target trials (`scorer.prior_target_`) and the LR divides out its prior odds, so
+it does not depend on how many trials of each class you calibrated on. Call the two
+functions above directly only when you have posteriors from elsewhere.
 
 ## Verbal scale
 

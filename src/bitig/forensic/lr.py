@@ -127,6 +127,11 @@ class CalibratedScorer:
     fitted : bool
     log_lr_cap_ : float | None
         Cap on |log10 LR| (isotonic only; ``None`` for Platt).
+    prior_target_ : float
+        Share of target trials the calibrator was fitted on. The calibrated
+        posteriors carry this prior, so ``predict_log_lr`` divides out its odds:
+        the LR then does not depend on how many trials of each class were used
+        (audit 2026-09-26 P2; a 1:9 uninformative set gave log10 LR ~ -0.9).
     """
 
     def __init__(self, *, method: CalibrationMethod = "platt") -> None:
@@ -136,6 +141,7 @@ class CalibratedScorer:
         self._model: LogisticRegression | IsotonicRegression | None = None
         self.fitted = False
         self.log_lr_cap_: float | None = None
+        self.prior_target_: float | None = None
 
     def fit(self, scores: np.ndarray, y: np.ndarray) -> CalibratedScorer:
         scores = np.asarray(scores, dtype=float).reshape(-1)
@@ -152,6 +158,7 @@ class CalibratedScorer:
             lr = LogisticRegression(solver="lbfgs", max_iter=1000)
             lr.fit(scores.reshape(-1, 1), y)
             self._model = lr
+            self.prior_target_ = float(np.mean(y.astype(int)))
         else:
             y_int = y.astype(int)
             n_target = int(y_int.sum())
@@ -169,6 +176,7 @@ class CalibratedScorer:
             iso = IsotonicRegression(out_of_bounds="clip")
             iso.fit(fit_scores, fit_y)
             self._model = iso
+            self.prior_target_ = float(np.mean(fit_y))
             self.log_lr_cap_ = float(np.log10(scores.size))
         self.fitted = True
         return self
@@ -187,12 +195,16 @@ class CalibratedScorer:
         return np.clip(probs, 0.0, 1.0)  # type: ignore[no-any-return]
 
     def predict_log_lr(self, scores: np.ndarray, *, base: float = 10.0) -> np.ndarray:
-        """Calibrated posteriors → log-LR (flat-prior), via ``log_lr_from_probs``.
+        """Calibrated posteriors → log-LR, with the calibration set's prior odds divided out.
 
         For isotonic calibration the result is capped at ``±log_lr_cap_``
         (expressed in ``base``); a ``UserWarning`` names how many outputs hit it.
         """
-        log_lr = log_lr_from_probs(self.predict_proba(scores), base=base)
+        if self.prior_target_ is None:
+            raise RuntimeError("CalibratedScorer not yet fit; call fit(scores, y) first")
+        log_lr = log_lr_from_probs_with_priors(
+            self.predict_proba(scores), prior_target=self.prior_target_, base=base
+        )
         if self.log_lr_cap_ is None:
             return log_lr
         cap = self.log_lr_cap_ * np.log(10.0) / np.log(base)
