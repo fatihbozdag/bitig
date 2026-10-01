@@ -87,6 +87,7 @@ These land in the rendered forensic report under a dedicated *Chain of custody* 
 
 ## Read next
 
+- [Forensic Lab: the Case workflow](case-workflow.md) — evidence custody, runs, sealed reports
 - [Verification](verification.md) — GI + Unmasking
 - [Calibration & LR output](calibration.md)
 - [Topic-invariant features](topic-invariance.md)

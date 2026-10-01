@@ -9,7 +9,7 @@ hide:
   <img src="assets/bitig-banner.svg" alt="bitig — computational stylometry" style="max-width: 100%;">
 </p>
 
-**Computational stylometry for authorship attribution, author-group comparison, and forensic-linguistic analysis.** A Python replacement for R's `Stylo`, with a modern NLP pipeline (spaCy, transformer embeddings), a Bayesian layer (PyMC), and a full forensic-evidential toolkit on top.
+**Computational stylometry for authorship attribution, author-group comparison, and forensic-linguistic analysis.** A Python alternative to R's `Stylo`, with a modern NLP pipeline (spaCy, transformer embeddings), a Bayesian layer (PyMC), and a full forensic-evidential toolkit on top.
 
 > Named after the **bitig** — the Turkic word for *writing* / *inscription*, the kind
 > chiselled into the 8th-century Orkhon stelae. A bitig was a recorded text bearing a
@@ -92,12 +92,14 @@ Spanish, Kandel–Moles + LIX for French). Function-word lists generated reprodu
 UD closed-class tokens.
 
 **Docs site landed** — this MkDocs Material site with Concepts, Forensic toolkit, Federalist +
-PAN-CLEF + Turkish tutorials, and CLI/API reference. **417 tests passing.**
+PAN-CLEF + Turkish tutorials, and CLI/API reference.
 
 **Docs site is multilingual** — English (default) and Turkish (`/tr/`) launched via
 `mkdocs-static-i18n`; DE/ES/FR infrastructure ready, translation content deferred.
 
-**Remaining** — PyPI publish.
+**Forensic Lab** — the case workflow (evidence custody, recipe runs, sealed reports) is documented in [Forensic Lab (cases)](forensic/case-workflow.md).
+
+**Released on PyPI** — `pip install bitig`.
 
 ## License & citation
 

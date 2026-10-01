@@ -17,7 +17,8 @@ Built-in plugins:
 * :class:`NullSignaturePlugin` — default. Passes the payload through
   untouched. ``mark_signed`` behaves exactly as before.
 * :class:`HmacSignaturePlugin` — pure-stdlib demonstration. Computes an
-  HMAC-SHA256 over ``case_state_hash + report_html_hash`` with a shared
+  HMAC-SHA256 over the canonical JSON of the whole seal payload (scheme 2;
+  scheme-1 seals over the two hashes still verify) with a shared
   secret loaded from ``BITIG_SIGNATURE_KEY`` (or passed at construction).
   Useful for CI / internal audit pipelines; not a substitute for an
   HSM-backed signature in adversarial settings.
@@ -84,7 +85,7 @@ class NullSignaturePlugin:
 
 
 class HmacSignaturePlugin:
-    """HMAC-SHA256 signature over the case state hash + report HTML hash.
+    """HMAC-SHA256 signature over the canonical JSON of the seal payload.
 
     The key may be passed at construction or read from the
     ``BITIG_SIGNATURE_KEY`` environment variable. The signed payload

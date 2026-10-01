@@ -76,6 +76,7 @@ Bu bilgiler, oluşturulan adli raporda ayrılmış bir *Delil zinciri* bloğuna 
 
 ## Sırada ne var
 
+- [Adli Laboratuvar: vaka iş akışı](case-workflow.md) — delil zinciri, çalıştırmalar, mühürlü raporlar
 - [Doğrulama](verification.md) — GI + Unmasking
 - [Kalibrasyon ve LR çıktısı](calibration.md)
 - [Konudan bağımsız öznitelikler](topic-invariance.md)
