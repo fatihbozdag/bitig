@@ -225,9 +225,10 @@ See [Topic-invariant features](../forensic/topic-invariance.md).
 Most extractors accept `scale ∈ {"none", "zscore", "l1", "l2"}`:
 
 - `none` — raw counts. Use for Bayesian Wallace–Mosteller.
-- `l1` — relative frequencies (row sums to 1). Use for Zeta-like contrast methods.
+- `l1` — rows normalised to sum to 1 over the retained features. Use for Zeta-like contrast methods.
 - `l2` — unit-norm rows. Use for cosine-based distances.
-- `zscore` — per-column z-score on training means / SDs (Stylo convention). **Required for
+- `zscore` — per-column z-score on training means / SDs (Stylo convention). For MFW the
+  z-scored values are relative frequencies, `count / document token count`. **Required for
   Burrows Delta.**
 
 The z-score mean / SD are learned at `fit` time and applied at `transform` — so scores on

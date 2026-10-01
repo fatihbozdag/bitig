@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from bitig.corpus import Corpus
-from bitig.features.mfw import MFWExtractor, _tokenise
+from bitig.features.mfw import MFWExtractor
 from bitig.methods.delta import (
     ArgamonLinearDelta,
     BurrowsDelta,
@@ -161,23 +161,9 @@ class GeneralImposters:
                 "general_imposters needs at least 2 distinct authors in the training corpus"
             )
 
-        # Project each target into the same MFW space (counts -> l1 -> z-score).
-        # Direct internal-state access is intentional -- both classes ship in this package.
-        vocab_index = {tok: i for i, tok in enumerate(mfw._vocabulary)}
-        means = mfw._column_means
-        stds = mfw._column_stds
-        if means is None or stds is None:
-            raise RuntimeError("MFW fit did not produce z-score statistics")
-        target_vectors: list[np.ndarray] = []
-        for doc in target_docs:
-            counts = np.zeros(len(vocab_index), dtype=float)
-            for tok in _tokenise(doc.text, self.lowercase):
-                j = vocab_index.get(tok)
-                if j is not None:
-                    counts[j] += 1
-            row_sum = counts.sum() or 1.0
-            rel = counts / row_sum
-            target_vectors.append((rel - means) / stds)
+        # Project each target into the training MFW space (relative frequency
+        # by document length, z-scored with training statistics).
+        target_vectors = [mfw.project_tokens(mfw.tokenise(doc.text)) for doc in target_docs]
 
         delta_cls = _BASE_DELTA[self.base_delta]
         rng = np.random.default_rng(self.seed)

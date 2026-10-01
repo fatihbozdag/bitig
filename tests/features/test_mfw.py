@@ -105,3 +105,39 @@ def test_mfw_case_folding_when_enabled():
     assert "the" in fm.feature_names
     assert "The" not in fm.feature_names
     assert "THE" not in fm.feature_names
+
+
+def test_zscore_uses_relative_frequency_by_document_length() -> None:
+    """rel_freq = count / document token count (Burrows / stylo), so a word's value does
+    not depend on how many other words are retained (audit 2026-09-26 P2)."""
+    from bitig.corpus import Corpus, Document
+
+    corpus = Corpus(
+        documents=[
+            Document(id="a", text="the the cat sat on a mat"),
+            Document(id="b", text="the dog ran far and the cat sat"),
+            Document(id="c", text="a b c d e f the"),
+        ]
+    )
+    small = MFWExtractor(n=1, scale="zscore").fit(corpus)
+    large = MFWExtractor(n=5, scale="zscore").fit(corpus)
+    assert small._vocabulary[0] == large._vocabulary[0] == "the"
+    rel = np.array([2 / 7, 2 / 8, 1 / 7])
+    expected = (rel - rel.mean()) / rel.std()
+    np.testing.assert_allclose(small.transform(corpus).X[:, 0], expected)
+    np.testing.assert_allclose(large.transform(corpus).X[:, 0], expected)
+
+
+def test_project_tokens_matches_transform() -> None:
+    from bitig.corpus import Corpus, Document
+
+    corpus = Corpus(
+        documents=[
+            Document(id="a", text="one two two three three three"),
+            Document(id="b", text="three two one one"),
+        ]
+    )
+    mfw = MFWExtractor(n=3, scale="zscore").fit(corpus)
+    fm = mfw.transform(corpus)
+    for row, doc in enumerate(corpus.documents):
+        np.testing.assert_allclose(mfw.project_tokens(mfw.tokenise(doc.text)), fm.X[row])

@@ -230,9 +230,9 @@ Bkz. [Konu-değişmez öznitelikler](../forensic/topic-invariance.md).
 Çoğu çıkarıcı `scale ∈ {"none", "zscore", "l1", "l2"}` parametresini kabul eder:
 
 - `none` — ham sayımlar. Bayesian Wallace–Mosteller için kullanın.
-- `l1` — göreli frekanslar (satır toplamı 1'e eşit). Zeta-benzeri karşıtlık yöntemleri için kullanın.
+- `l1` — satırlar, tutulan öznitelikler üzerinde toplamı 1 olacak şekilde normalize edilir. Zeta-benzeri karşıtlık yöntemleri için kullanın.
 - `l2` — birim normlu satırlar. Kosinüs tabanlı uzaklıklar için kullanın.
-- `zscore` — eğitim ortalamaları / standart sapmalarına göre sütun bazında z-puanı (Stylo kuralı). **Burrows Delta için zorunludur.**
+- `zscore` — eğitim ortalamaları / standart sapmalarına göre sütun bazında z-puanı (Stylo kuralı). MFW için z-puanlanan değerler göreli frekanslardır: `sayım / belgedeki toplam sözcük sayısı`. **Burrows Delta için zorunludur.**
 
 Z-puanı ortalaması / standart sapması `fit` aşamasında öğrenilir ve `transform` sırasında uygulanır; dolayısıyla görülmemiş belgeler üzerindeki puanlar eğitim dağılımını kullanır.
 

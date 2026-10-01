@@ -39,9 +39,9 @@ class MFWExtractor(BaseFeatureExtractor):
         Drop words appearing in more than `max_df` fraction of documents (1.0 disables).
     scale : {"none", "zscore", "l1", "l2"}
         Per-feature scaling applied at transform-time. Burrows Delta requires "zscore", which
-        z-scores the *relative frequencies* (per-document rates) — the classical Mosteller &
-        Wallace / Burrows formulation. "l1" normalises rows to sum to 1 (relative frequencies);
-        "l2" normalises rows to unit length.
+        z-scores the *relative frequencies* ``count / document token count`` — the classical
+        Mosteller & Wallace / Burrows formulation, as in stylo. "l1" normalises rows to sum
+        to 1 over the retained vocabulary; "l2" normalises rows to unit length.
     lowercase : bool
         If True, case-fold before counting.
     """
@@ -89,7 +89,8 @@ class MFWExtractor(BaseFeatureExtractor):
 
         if self.scale == "zscore":
             # Burrows Delta z-scores *relative frequencies* (rel_freq = count / doc_length),
-            # not raw counts. Normalising first ensures longer documents do not dominate.
+            # not raw counts, and not counts renormalised over the retained vocabulary
+            # (which made the values depend on n; audit 2026-09-26 P2).
             X_rel = self._relative_frequencies(corpus)  # noqa: N806 (sklearn convention)
             self._column_means = X_rel.mean(axis=0)
             # Population SD (ddof=0) to match Stylo's convention. Replace zero-stds with 1 to avoid
@@ -99,12 +100,12 @@ class MFWExtractor(BaseFeatureExtractor):
             self._column_stds = stds
 
     def _transform(self, corpus: Corpus) -> tuple[np.ndarray, list[str]]:
-        X = self._raw_counts(corpus)  # noqa: N806 (sklearn convention)
         if self.scale == "zscore":
-            assert self._column_means is not None and self._column_stds is not None
-            X_rel = self._l1_normalise(X)  # noqa: N806
-            X = (X_rel - self._column_means) / self._column_stds  # noqa: N806
-        elif self.scale == "l1":
+            rows = [self.project_tokens(self.tokenise(doc.text)) for doc in corpus.documents]
+            X = np.vstack(rows) if rows else np.zeros((0, len(self._vocabulary)))  # noqa: N806
+            return X, list(self._vocabulary)
+        X = self._raw_counts(corpus)  # noqa: N806 (sklearn convention)
+        if self.scale == "l1":
             X = self._l1_normalise(X)  # noqa: N806
         elif self.scale == "l2":
             row_norms = np.linalg.norm(X, axis=1, keepdims=True)
@@ -112,6 +113,29 @@ class MFWExtractor(BaseFeatureExtractor):
             X = X / row_norms  # noqa: N806
         # "none" → raw counts, no change.
         return X, list(self._vocabulary)
+
+    # --- projection helpers (shared with GeneralImposters / RollingDelta) ---
+
+    def tokenise(self, text: str) -> list[str]:
+        """Tokenise ``text`` exactly as the extractor does."""
+        return _tokenise(text, self.lowercase)
+
+    def project_tokens(self, tokens: list[str]) -> np.ndarray:
+        """Z-scored relative-frequency vector for a token sequence (fitted, scale="zscore").
+
+        ``count / len(tokens)`` for each vocabulary word, standardised with the
+        fitted column means and SDs. Used for documents and for text windows.
+        """
+        if self.scale != "zscore" or self._column_means is None or self._column_stds is None:
+            raise RuntimeError("project_tokens needs a fitted extractor with scale='zscore'")
+        index = {tok: i for i, tok in enumerate(self._vocabulary)}
+        counts = np.zeros(len(index), dtype=float)
+        for tok in tokens:
+            j = index.get(tok)
+            if j is not None:
+                counts[j] += 1
+        rel = counts / (len(tokens) or 1)
+        return (rel - self._column_means) / self._column_stds  # type: ignore[no-any-return]
 
     # --- internals ---
 
@@ -125,8 +149,12 @@ class MFWExtractor(BaseFeatureExtractor):
         return X
 
     def _relative_frequencies(self, corpus: Corpus) -> np.ndarray:
-        """Raw counts normalised to per-document rates (each row sums to ~1 over the MFW vocab)."""
-        return self._l1_normalise(self._raw_counts(corpus))
+        """Raw counts divided by each document's total token count."""
+        lengths = np.array(
+            [len(_tokenise(doc.text, self.lowercase)) for doc in corpus.documents], dtype=float
+        )
+        lengths[lengths == 0] = 1.0
+        return self._raw_counts(corpus) / lengths[:, None]  # type: ignore[no-any-return]
 
     @staticmethod
     def _l1_normalise(X: np.ndarray) -> np.ndarray:  # noqa: N803
