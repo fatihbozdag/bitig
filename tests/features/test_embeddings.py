@@ -6,20 +6,16 @@ import pytest
 
 from bitig.corpus import Corpus, Document
 
-try:
-    from bitig.features.embeddings import (
-        ContextualEmbeddingExtractor,
-        SentenceEmbeddingExtractor,
-    )
+# bitig.features.embeddings imports without the extra (the heavy deps load lazily), so
+# guard on the optional dependency itself (audit 2026-09-26: the old guard never skipped).
+pytest.importorskip("sentence_transformers", reason="requires bitig[embeddings]")
 
-    _HAS_EMBEDDINGS = True
-except ImportError:
-    _HAS_EMBEDDINGS = False
+from bitig.features.embeddings import (
+    ContextualEmbeddingExtractor,
+    SentenceEmbeddingExtractor,
+)
 
-pytestmark = [
-    pytest.mark.slow,  # Model loading is slow.
-    pytest.mark.skipif(not _HAS_EMBEDDINGS, reason="requires bitig[embeddings]"),
-]
+pytestmark = pytest.mark.slow  # Model loading is slow.
 
 _MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 

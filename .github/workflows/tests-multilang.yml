@@ -33,6 +33,8 @@ jobs:
         run: uv pip install --system -e ".[turkish,embeddings,dev]"
       - name: Download Stanza Turkish model
         run: python -c "import stanza; stanza.download('tr')"
+      - name: Fail if the Turkish pipeline cannot load
+        run: python -c "import spacy_stanza; nlp = spacy_stanza.load_pipeline('tr'); assert len(nlp('Bir deneme cümlesi.')) > 0"
       - name: Run Turkish integration tests
         run: pytest -m slow tests/integration -v
 
@@ -51,5 +53,17 @@ jobs:
           python -m spacy download de_dep_news_trf
           python -m spacy download es_dep_news_trf
           python -m spacy download fr_dep_news_trf
+      - name: Parse a sentence with each pipeline (fails if any cannot load)
+        run: |
+          python - <<'PY'
+          import spacy
+          for model, text in [
+              ("de_dep_news_trf", "Das ist ein kurzer Satz."),
+              ("es_dep_news_trf", "Esta es una frase corta."),
+              ("fr_dep_news_trf", "Ceci est une phrase courte."),
+          ]:
+              doc = spacy.load(model)(text)
+              assert len(doc) > 0 and any(t.pos_ for t in doc), model
+          PY
       - name: Run language readability unit tests
         run: pytest tests/languages -v

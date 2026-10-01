@@ -65,5 +65,9 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - `bitig run` exits 1 if any method failed (listing them; `error.txt` holds the
   traceback) and refuses a run directory holding a previous run unless `--overwrite`.
   **[breaking]**
+- English readability never triggers an NLTK download; a missing cmudict raises with the
+  install command (`python -m nltk.downloader cmudict`). Provenance records library
+  versions and a cmudict checksum, and no longer claims a spaCy model for runs that
+  parse nothing. **[breaking]**
 - Unknown study parameters and unsupported feature types are refused at load time;
   `method:` on a Delta method is a deprecated alias for `variant:`. **[breaking]**

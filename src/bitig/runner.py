@@ -44,7 +44,6 @@ from bitig.methods.reduce import MDSReducer, PCAReducer, TSNEReducer, UMAPReduce
 from bitig.methods.rolling_delta import RollingDelta
 from bitig.methods.zeta import ZetaClassic, ZetaEder
 from bitig.plumbing.logging import get_logger
-from bitig.preprocess.pipeline import SpacyPipeline
 from bitig.provenance import Provenance
 from bitig.result import Result
 
@@ -264,14 +263,9 @@ def run_study(
         features_by_id[feat_cfg.id] = fm
         _log.info("built features %s: %s", feat_cfg.id, features_by_id[feat_cfg.id].X.shape)
 
-    # SpacyPipeline resolves `language` → default model/backend via the languages registry.
-    # Explicit model/backend on SpacyConfig override the registry defaults.
-    pipe = SpacyPipeline(
-        language=cfg.preprocess.language,
-        model=cfg.preprocess.spacy.model,
-        backend=cfg.preprocess.spacy.backend,
-        exclude=list(cfg.preprocess.spacy.exclude),
-    )
+    # No feature the runner builds parses with spaCy, so none is recorded: the
+    # earlier SpacyPipeline-for-provenance stamped e.g. en_core_web_trf on runs
+    # where no model was loaded or even installed (audit 2026-09-26 P2).
 
     # Execute each method.
     for method_cfg in cfg.methods:
@@ -296,7 +290,7 @@ def run_study(
                 if fm_primary is not None:
                     feat_hash = fm_primary.provenance_hash or None
             result.provenance = Provenance.current(
-                spacy_model=pipe.model,
+                spacy_model="none (no spaCy parsing in this run)",
                 spacy_version=spacy.__version__,
                 corpus_hash=corpus.hash(),
                 feature_hash=feat_hash,

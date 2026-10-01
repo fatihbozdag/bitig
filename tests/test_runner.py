@@ -71,3 +71,5 @@ def test_runner_records_spacy_version_in_provenance(tmp_path: Path) -> None:
         recorded = data["provenance"]["spacy_version"]
         assert recorded == spacy.__version__
         assert re.match(r"^\d+\.\d+\.\d+", recorded)
+        # No spaCy model is loaded by the runner, so none may be claimed (audit 2026-09-26).
+        assert data["provenance"]["spacy_model"].startswith("none")

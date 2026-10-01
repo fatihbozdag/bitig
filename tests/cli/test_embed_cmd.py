@@ -11,6 +11,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures" / "mini_corpus"
 
 
 pytestmark = pytest.mark.slow
+pytest.importorskip("sentence_transformers", reason="requires bitig[embeddings]")
 
 
 def test_embed_writes_parquet(tmp_path: Path) -> None:

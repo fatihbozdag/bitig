@@ -6,6 +6,11 @@ on:
   pull_request:
   schedule:
     - cron: "0 6 * * 1"   # weekly Monday 06:00 UTC — catch upstream spaCy breakage
+  workflow_call:          # publish.yml runs the full suite before releasing
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,6 +46,8 @@ jobs:
       - run: uv pip install --system -e ".[dev]"
       - name: Download small spaCy model
         run: python -m spacy download en_core_web_sm
+      - name: Install NLTK cmudict (English syllables; bitig never downloads it itself)
+        run: python -m nltk.downloader cmudict
       - run: pytest -n auto --cov=bitig --cov-report=term-missing -m "not slow"
 
   # The base matrix installs only [dev], so the GUI / report / plotly / PDF
@@ -64,9 +71,31 @@ jobs:
       - run: uv pip install --system -e ".[dev,gui,reports,interactive,bayesian]"
       - name: Download small spaCy model
         run: python -m spacy download en_core_web_sm
+      - name: Install NLTK cmudict (English syllables; bitig never downloads it itself)
+        run: python -m nltk.downloader cmudict
       - name: Type-check the full surface against its real dependencies
         run: mypy src
       - name: Test the full surface (PDF export must run, not skip)
         env:
           BITIG_REQUIRE_PDF: "1"
         run: pytest -n auto -m "not slow"
+
+  # Slow tests (consensus, the Bayesian model, slow CLI paths) are excluded from the
+  # jobs above and previously ran nowhere (audit 2026-09-26). Embedding tests skip
+  # unless bitig[embeddings] is installed.
+  slow:
+    name: slow tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv pip install --system -e ".[dev,bayesian]"
+      - name: Download small spaCy model
+        run: python -m spacy download en_core_web_sm
+      - name: Install NLTK cmudict
+        run: python -m nltk.downloader cmudict
+      - run: pytest -n auto -m slow

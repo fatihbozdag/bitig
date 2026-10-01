@@ -13,13 +13,41 @@ and the record is unchanged from its pre-forensic form.
 from __future__ import annotations
 
 import copy
+import functools
+import hashlib
 import platform
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from bitig._version import __version__
 from bitig.corpus.corpus import CORPUS_HASH_SCHEME
+
+_TRACKED_LIBRARIES = ("numpy", "scipy", "scikit-learn", "pandas", "textstat", "nltk", "pyphen")
+
+
+@functools.lru_cache(maxsize=1)
+def library_versions() -> dict[str, str]:
+    """Installed versions of result-shaping libraries, plus a cmudict checksum if present."""
+    from importlib import metadata
+
+    out: dict[str, str] = {}
+    for name in _TRACKED_LIBRARIES:
+        try:
+            out[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            continue
+    try:
+        import nltk
+    except ImportError:
+        return dict(out)
+    for root in nltk.data.path:
+        zip_path = Path(root) / "corpora" / "cmudict.zip"
+        if zip_path.is_file():
+            out["nltk_data:cmudict.zip sha256"] = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+            break
+    return dict(out)
 
 
 @dataclass
@@ -43,6 +71,9 @@ class Provenance:
     # Which Corpus.hash scheme produced corpus_hash; records written before the
     # field existed used scheme 1, whose hash is not comparable (N-P1.16).
     corpus_hash_scheme: int = 1
+    # Versions of the libraries whose behaviour shapes results, and checksums of
+    # data they load (e.g. NLTK's cmudict for English syllables).
+    library_versions: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -70,6 +101,7 @@ class Provenance:
             custody_notes=data.get("custody_notes"),
             source_hashes=dict(data.get("source_hashes") or {}),
             corpus_hash_scheme=int(data.get("corpus_hash_scheme", 1)),
+            library_versions=dict(data.get("library_versions") or {}),
         )
 
     @classmethod
@@ -108,6 +140,7 @@ class Provenance:
             custody_notes=custody_notes,
             source_hashes=dict(source_hashes) if source_hashes else {},
             corpus_hash_scheme=CORPUS_HASH_SCHEME,
+            library_versions=library_versions(),
         )
 
     @property
