@@ -4,24 +4,18 @@ Kandel, L., & Moles, A. (1958). Application de l'indice de Flesch à la langue f
 Cahiers d'études de radio-télévision, 19, 253-274.
 Björnsson, C. H. (1968). Läsbarhet. Stockholm: Liber.
 
-Syllable count uses pyphen's French hyphenation dictionary (fr_FR).
+Syllables are counted as spoken vowel nuclei (``bitig.languages._syllables``); hyphenation
+dictionaries undercount them.
 """
 
 from __future__ import annotations
 
 import re
 
-import pyphen
+from bitig.languages._syllables import count_syllables_fr
 
 _WORD_RE = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 _SENTENCE_RE = re.compile(r"[.!?…]+")
-_PYPHEN_FR = pyphen.Pyphen(lang="fr_FR")
-
-
-def count_syllables_fr(word: str) -> int:
-    if not word:
-        return 0
-    return len(_PYPHEN_FR.inserted(word).split("-"))
 
 
 def _words(text: str) -> list[str]:

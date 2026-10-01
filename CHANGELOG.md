@@ -48,6 +48,9 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   tokens, MTLD without a complete factor, Yule's I for all-unique text) instead of 0 or a
   token-count floor; Yule's I uses the canonical `V²/(M2 − V)`. `bitig run` refuses NaN
   features.
+- **[results]** German and French readability count syllables as vowel nuclei instead of
+  hyphenation points, which undercounted (Abend, Oma, ami, école = 1). On gold lists of
+  ~100 words each: German 96%, French 98% correct.
 - **[results]** Classification CV refits the feature extractor inside each training
   fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
   is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`
