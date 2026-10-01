@@ -108,19 +108,6 @@ class CalibratedScorer:
           requires more calibration data: at least ``ISOTONIC_MIN_PER_CLASS`` (20) trials
           per class are enforced; >= 100 per class is advisable.
 
-    Isotonic safeguards (audit 2026-09-26 N-P1.11). Plain isotonic regression outputs
-    exactly 0 or 1 wherever the extreme calibration bins are pure, which the log-LR
-    clip then turned into log10 LR = +/-12 ("extremely strong support") from as few
-    as six trials. Here:
-
-    * one pseudo-trial per class is added at the opposite extreme (a target at the
-      lowest score, a non-target at the highest), so no bin is pure and calibrated
-      probabilities stay strictly inside (0, 1);
-    * ``|log10 LR|`` is capped at ``log10(n)`` for a calibration set of ``n`` trials
-      (a simple empirical bound in the spirit of Vergeer et al. 2016's ELUB: a set
-      of ``n`` trials cannot support an LR beyond about ``n``). ``predict_log_lr``
-      warns when any output hits the cap; ``log_lr_cap_`` holds it.
-
     Attributes
     ----------
     method : str
@@ -132,6 +119,18 @@ class CalibratedScorer:
         posteriors carry this prior, so ``predict_log_lr`` divides out its odds:
         the LR then does not depend on how many trials of each class were used
         (audit 2026-09-26 P2; a 1:9 uninformative set gave log10 LR ~ -0.9).
+
+    Notes
+    -----
+    Isotonic safeguards (audit 2026-09-26 N-P1.11). Plain isotonic regression outputs
+    exactly 0 or 1 wherever the extreme calibration bins are pure, which the log-LR
+    clip then turned into log10 LR = +/-12 ("extremely strong support") from as few
+    as six trials. Here one pseudo-trial per class is added at the opposite extreme
+    (a target at the lowest score, a non-target at the highest), so calibrated
+    probabilities stay strictly inside (0, 1); and ``|log10 LR|`` is capped at
+    ``log10(n)`` for a calibration set of ``n`` trials, a simple empirical bound in
+    the spirit of Vergeer et al. (2016)'s ELUB. ``predict_log_lr`` warns when any
+    output hits the cap; ``log_lr_cap_`` holds it.
     """
 
     def __init__(self, *, method: CalibrationMethod = "platt") -> None:
