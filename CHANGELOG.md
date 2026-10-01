@@ -53,6 +53,9 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - **[results]** German and French readability count syllables as vowel nuclei instead of
   hyphenation points, which undercounted (Abend, Oma, ami, école = 1). On gold lists of
   ~100 words each: German 96%, French 98% correct.
+- **[results]** `HierarchicalGroupComparison` uses `sigma_group` for the author spread (it
+  was created but unused) and standardises each feature, returning the mean/SD used.
+  `BayesianAuthorshipAttributor` rejects negative or NaN input at predict time too.
 - **[results]** Classification CV refits the feature extractor inside each training
   fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
   is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`

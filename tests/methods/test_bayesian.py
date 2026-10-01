@@ -105,3 +105,45 @@ class TestAuthorToGroupIdx:
         unique_groups = np.unique(groups)  # ["G1", "G2"]
         idx = _build_author_to_group_idx(y, groups, unique_authors, unique_groups)
         assert idx.tolist() == [1, 0]  # alice→G2(idx 1), bob→G1(idx 0)
+
+
+def test_attributor_rejects_negative_or_nan_input_at_predict_time() -> None:
+    """The fit-time guard (audit P1.15) now also covers predict (audit 2026-09-26)."""
+    import pytest
+
+    from bitig.methods.bayesian import BayesianAuthorshipAttributor
+
+    clf = BayesianAuthorshipAttributor().fit(
+        np.array([[3.0, 1.0], [0.0, 4.0]]), np.array(["a", "b"])
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        clf.predict(np.array([[-0.5, 1.2]]))
+    with pytest.raises(ValueError, match="NaN"):
+        clf.predict_proba(np.array([[np.nan, 1.0]]))
+
+
+@pytest.mark.slow
+def test_hierarchical_model_uses_sigma_group_and_standardises() -> None:
+    pytest.importorskip("pymc")
+    from bitig.features import FeatureMatrix
+    from bitig.methods.bayesian import HierarchicalGroupComparison
+
+    rng = np.random.default_rng(0)
+    values = np.r_[rng.normal(100, 5, 6), rng.normal(130, 5, 6)]  # Yule's-K-like scale
+    fm = FeatureMatrix(
+        X=values[:, None],
+        document_ids=[f"d{i}" for i in range(12)],
+        feature_names=["yules_k"],
+        feature_type="lexical_diversity",
+    )
+    authors = np.array([f"a{i // 2}" for i in range(12)])
+    groups = np.array(["L1"] * 6 + ["L2"] * 6)
+    out = HierarchicalGroupComparison(
+        group_by="g", chains=1, samples=200, tune=200, seed=1
+    ).fit_transform(fm, authors, groups)
+    res = out["results"][0]
+    assert res["standardisation"]["mean"] == pytest.approx(values.mean())
+    summary_rows = res["mu_group_summary"]["mean"]
+    assert any(str(k).startswith("sigma_group") for k in summary_rows)
+    mu = [v for k, v in summary_rows.items() if str(k).startswith("mu_group")]
+    assert mu[0] < 0 < mu[1]  # L1 below the mean, L2 above, in SD units
