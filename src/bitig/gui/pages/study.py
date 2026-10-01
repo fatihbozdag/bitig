@@ -164,6 +164,10 @@ def study_page() -> None:
                 feat_params["n"] = int(ngram_n_input.value)
 
             method_kind = method_select.value
+            if method_kind == "bayesian" and feat_type in ("mfw", "char_ngram", "word_ngram"):
+                # The Bayesian attributor models counts; MFW defaults to z-scores,
+                # which it rejects (audit 2026-09-26 P2).
+                feat_params["scale"] = "none"
             method_params: dict[str, object] = {}
             if _VARIANTS.get(method_kind) and variant_select.value:
                 method_params["variant"] = variant_select.value

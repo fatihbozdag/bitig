@@ -589,6 +589,7 @@ def _dispatch_method(
             y,
             cv_kind=cv_kind,
             groups_from=groups,
+            folds=(method_cfg.cv.folds if method_cfg.cv and method_cfg.cv.folds else 5),
             seed=seed,
             extractor=extractor,
             corpus=corpus if extractor is not None else None,

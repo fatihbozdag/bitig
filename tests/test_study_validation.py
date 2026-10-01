@@ -97,3 +97,44 @@ def test_valid_params_pass() -> None:
 )
 def test_shipped_examples_validate(study: str) -> None:
     validate_study_params(load_config(_EXAMPLES / study))
+
+
+def test_cv_folds_reaches_the_classifier(tmp_path: Path) -> None:
+    """cv.folds was documented but ignored (always 5) (audit 2026-09-26 P2)."""
+    import json
+
+    import yaml
+
+    from bitig.runner import run_study
+
+    mini = Path(__file__).parent / "fixtures" / "mini_corpus"
+    study = {
+        "name": "t",
+        "corpus": {"path": str(mini), "metadata": str(mini / "metadata.tsv")},
+        "features": [{"id": "mfw", "type": "mfw", "n": 20}],
+        "methods": [
+            {
+                "id": "c",
+                "kind": "classify",
+                "features": "mfw",
+                "group_by": "author",
+                "cv": {"kind": "stratified", "folds": 2},
+            },
+        ],
+        "output": {"dir": str(tmp_path / "out"), "timestamp": False},
+    }
+    path = tmp_path / "s.yaml"
+    path.write_text(yaml.safe_dump(study), encoding="utf-8")
+    run_dir = run_study(path)
+    assert not (run_dir / "c" / "error.txt").exists()  # 5 folds would fail on 2 docs/class
+    assert json.loads((run_dir / "c" / "result.json").read_text())["values"]["accuracy"] >= 0
+
+
+def test_group_kfold_is_rejected_at_load() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _cfg(
+            _MFW,
+            [{"id": "c", "kind": "classify", "features": "mfw", "cv": {"kind": "group_kfold"}}],
+        )
