@@ -151,15 +151,20 @@ def _research_scalars(method: str, v: dict[str, Any]) -> list[tuple[str, str, bo
                 scalars.append(("PC2 var", fmt_scalar(evr[1]), False))
                 scalars.append(("cum.", fmt_scalar(sum(evr[:2])), False))
             return scalars
-    if method in {"classify", "classification"}:
+    # The runner names these classify_<estimator> and bayesian_authorship; exact
+    # matching never fired (audit 2026-09-26 P3).
+    if method.startswith("classify") or method == "classification":
         out: list[tuple[str, str, bool]] = []
-        for key, label in (("accuracy", "accuracy"), ("macro_f1", "macro-F1"), ("ece", "ECE")):
+        for key, label in (("accuracy", "CV accuracy"), ("macro_f1", "macro-F1"), ("ece", "ECE")):
             if key in v:
                 out.append((label, fmt_scalar(v[key]), not out))
         if out:
             return out
-    if method in {"bayesian", "bayes"} and "posterior_mode" in v:
-        return [("posterior mode", str(v["posterior_mode"]), True)]
+    if method.startswith(("bayesian", "bayes")):
+        if "resubstitution_accuracy" in v:
+            return [("resubstitution accuracy", fmt_scalar(v["resubstitution_accuracy"]), True)]
+        if "posterior_mode" in v:
+            return [("posterior mode", str(v["posterior_mode"]), True)]
     return [("method", method, True)]
 
 

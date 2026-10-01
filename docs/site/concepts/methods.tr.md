@@ -169,7 +169,7 @@ Herhangi bir sklearn sınıflandırıcı (Lojistik Regresyon, lineer / RBF SVM, 
 *Beklenen sonuç:* kat başına tahminler, ortalama doğruluk / makro F1 ve aşağı akış grafikleri için kat düzeyinde `Result` nesneleri.
 
 - `stratified` — StratifiedKFold; `seed` karıştırmayı denetler
-- `loao` — Leave-One-Author-Out (yazar grup olarak LeaveOneGroupOut)
+- `loao` — hedef olmayan bir sütun (ör. konu ya da kaynak) olan `groups_from` üzerinde LeaveOneGroupOut. Hedefin kendisine (ya da onun bire bir yeniden etiketlenmesine) göre gruplamak, görülmemiş sınıfları dışarıda bırakır ve reddedilir. `cross_validate_bitig(clf, None, y, extractor=..., corpus=...)`, öznitelik çıkarıcıyı her eğitim katmanında yeniden uydurur; böylece dışarıda tutulan belgeler sözcük dağarcığını ya da z-puanlarını etkilemez.
 - `leave_one_text_out` — LeaveOneOut
 
 ## Bayesian

@@ -40,5 +40,9 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   stochastic method.
 - **[results]** `Corpus.hash` binds texts to ids and metadata (scheme 2, recorded as
   `Provenance.corpus_hash_scheme`).
+- **[results]** Classification CV refits the feature extractor inside each training
+  fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
+  is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`
+  (was `accuracy`).
 - Unknown study parameters and unsupported feature types are refused at load time;
   `method:` on a Delta method is a deprecated alias for `variant:`. **[breaking]**

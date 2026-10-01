@@ -55,3 +55,12 @@ def test_research_headline_pca(tmp_path: Path) -> None:
 def test_headline_no_result_placeholder(tmp_path: Path) -> None:
     case = _research_case(tmp_path)
     assert headline_scalars(case, None) == [("status", "no run yet", True)]
+
+
+def test_research_scalars_match_runner_method_names(tmp_path: Path) -> None:
+    """The runner emits classify_<estimator> / bayesian_authorship (audit 2026-09-26 P3)."""
+    case = _research_case(tmp_path)
+    clf = Result(method_name="classify_logreg", values={"accuracy": 0.8, "ece": 0.1})
+    assert headline_scalars(case, clf)[0] == ("CV accuracy", "0.8", True)
+    bayes = Result(method_name="bayesian_authorship", values={"resubstitution_accuracy": 1.0})
+    assert headline_scalars(case, bayes)[0] == ("resubstitution accuracy", "1", True)

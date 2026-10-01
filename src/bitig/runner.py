@@ -259,7 +259,13 @@ def run_study(
         method_dir = run_dir / method_cfg.id
         method_dir.mkdir(parents=True, exist_ok=True)
         try:
-            result = _dispatch_method(method_cfg, corpus, features_by_id, seed=cfg.seed)
+            result = _dispatch_method(
+                method_cfg,
+                corpus,
+                features_by_id,
+                seed=cfg.seed,
+                feature_cfgs={f.id: f for f in cfg.features},
+            )
             # Derive feature_hash from the primary feature id used by this method (if any).
             feat_hash: str | None = None
             features_attr = getattr(method_cfg, "features", None)
@@ -311,6 +317,7 @@ def _dispatch_method(
     features_by_id: dict[str, FeatureMatrix],
     *,
     seed: int,
+    feature_cfgs: dict[str, Any] | None = None,
 ) -> Result:
     kind = method_cfg.kind
 
@@ -473,7 +480,10 @@ def _dispatch_method(
             params=dict(method_cfg.params),
             values={
                 "predictions": preds,
-                "accuracy": float((preds[labelled] == y).mean()),
+                # In-sample, like the delta branch: a separability diagnostic, not a
+                # held-out estimate (audit 2026-09-26 P2).
+                "resubstitution_accuracy": float((preds[labelled] == y).mean()),
+                "evaluation": "resubstitution (in-sample); use kind: classify for held-out CV",
                 "proba": proba,
                 "classes": clf.classes_,
                 "document_ids": list(fm.document_ids),
@@ -497,13 +507,21 @@ def _dispatch_method(
                 )
             groups = np.array(corpus.metadata_column(groups_col))
         clf = build_classifier(method_cfg.params.get("estimator", "logreg"), random_state=seed)
+        # Refit the feature extractor inside each training fold so held-out
+        # documents never shape the vocabulary or z-scores (audit 2026-09-26 P2).
+        feat_cfg = (feature_cfgs or {}).get(feat_id)
+        extractor = (
+            _FEATURE_BUILDERS[feat_cfg.type](**feat_cfg.params) if feat_cfg is not None else None
+        )
         report = cross_validate_bitig(
             clf,
-            fm,
+            None if extractor is not None else fm,
             y,
             cv_kind=cv_kind,
             groups_from=groups,
             seed=seed,
+            extractor=extractor,
+            corpus=corpus if extractor is not None else None,
         )
         from bitig.metrics.calibration import brier_score, expected_calibration_error
 

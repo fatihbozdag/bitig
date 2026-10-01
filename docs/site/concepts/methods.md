@@ -210,8 +210,11 @@ Eder's method does not.
 ## Classification + CV
 
 Any sklearn classifier (Logistic Regression, linear / RBF SVM, Random Forest, HistGBM)
-via `build_classifier(name)`, plus `cross_validate_bitig(fm, y, cv_kind=...)` with three
-stylometry-aware CV strategies:
+via `build_classifier(name)`, plus `cross_validate_bitig(clf, None, y, extractor=..., corpus=...,
+cv_kind=...)`, which refits the feature extractor inside each training fold so held-out
+documents never shape the vocabulary or z-scores. (Passing a precomputed `fm` instead
+is allowed but leaks test documents into the features if `fm` was fit on all of them.)
+Three CV strategies:
 
 *Use when:* you have labelled documents (author or group) and want standard ML
 performance numbers — accuracy, F1, confusion matrices — with stylometry-aware CV that
@@ -222,7 +225,9 @@ meaningless. Also don't use for single-case verification (use `GeneralImpostors`
 objects for downstream plots.
 
 - `stratified` — StratifiedKFold, `seed` controls the shuffle
-- `loao` — Leave-One-Author-Out (LeaveOneGroupOut with author as group)
+- `loao` — LeaveOneGroupOut over `groups_from`, a column that is **not** the target (e.g.
+  topic or source). Grouping by the target itself (or a one-to-one relabelling of it)
+  holds out unseen classes and is refused.
 - `leave_one_text_out` — LeaveOneOut
 
 ## Bayesian

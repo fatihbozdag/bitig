@@ -53,12 +53,14 @@ def classify_command(
             )
             raise typer.Exit(code=1)
 
-    fm = MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True).fit_transform(corpus)
     clf = build_classifier(estimator, random_state=seed)
+    # The MFW extractor is refit inside every training fold (no test-fold leakage).
     report = cross_validate_bitig(
         clf,
-        fm,
+        None,
         y,
+        extractor=MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True),
+        corpus=corpus,
         cv_kind=cv_kind,
         groups_from=groups,
         folds=folds,

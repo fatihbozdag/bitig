@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from sklearn.base import is_classifier
 
 from bitig.corpus import Corpus, Document
-from bitig.features import MFWExtractor
+from bitig.features import FeatureMatrix, MFWExtractor
 from bitig.methods.classify import build_classifier, cross_validate_bitig
 
 
@@ -111,3 +112,44 @@ def test_cross_validate_seed_controls_stratified_folds() -> None:
     # Different seeds must produce different fold assignments (and thus different
     # cross_val_predict output on this dataset).
     assert not np.array_equal(report_a["predictions"], report_b["predictions"])
+
+
+def test_extractor_is_refit_inside_each_fold() -> None:
+    """Held-out documents must not shape the MFW vocabulary (audit 2026-09-26 P2)."""
+    from bitig.corpus import Corpus, Document
+    from bitig.features.mfw import MFWExtractor
+
+    seen_fits: list[set[str]] = []
+
+    class Spy(MFWExtractor):
+        def _fit(self, corpus):  # type: ignore[no-untyped-def]
+            seen_fits.append({d.id for d in corpus.documents})
+            super()._fit(corpus)
+
+    docs = [
+        Document(id=f"{a}{i}", text=f"{a} " * 5 + "the of and " * 3)
+        for a in ("x", "y")
+        for i in range(4)
+    ]
+    y = np.array([d.id[0] for d in docs])
+    cross_validate_bitig(
+        build_classifier("logreg"),
+        None,
+        y,
+        cv_kind="stratified",
+        folds=4,
+        extractor=Spy(n=5, scale="zscore"),
+        corpus=Corpus(documents=docs),
+    )
+    assert seen_fits and all(len(ids) == 6 for ids in seen_fits)  # 8 docs, 4 folds
+
+
+@pytest.mark.parametrize("groups", ["same", "relabelled"])
+def test_loao_rejects_groups_that_relabel_the_target(groups: str) -> None:
+    y = np.array(["a", "a", "b", "b", "c", "c"])
+    g = y if groups == "same" else np.array(["1", "1", "2", "2", "3", "3"])
+    fm = FeatureMatrix(
+        X=np.eye(6), document_ids=list("123456"), feature_names=list("abcdef"), feature_type="t"
+    )
+    with pytest.raises(ValueError, match="relabelling"):
+        cross_validate_bitig(build_classifier("logreg"), fm, y, cv_kind="loao", groups_from=g)
