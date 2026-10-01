@@ -112,13 +112,15 @@ Each dot is one essay. Blue = Hamilton, orange = Madison. The axes have no
 real-world meaning — they're just the two directions along which the eight
 essays differ most. What matters is **which essays sit near each other**.
 
-Hamilton's four essays land on the **left** half of the map. Madison's four
-essays land on the **right** half. Two different writing styles, two different
-neighbourhoods. That's already strong evidence there *is* a measurable style
-difference we can exploit for the mystery.
+With only eight essays the two authors do **not** separate cleanly. Hamilton's
+four essays sit fairly close together on the left of the map. Madison's are
+spread out: fed_14 sits right next to Hamilton's fed_01, while fed_47 is far
+off to the right. The two components explain only about 21% and 19% of the
+variance. Read this map as an exploratory picture, not as evidence. The
+mystery essay is not on it, because the study only uses the eight `train` essays.
 
-> **In plain English:** PCA is like sorting books by smell. You can't describe
-> the axes, but books by the same author end up in the same corner of the shelf.
+> **In plain English:** PCA squeezes 200 word counts into a flat map. On a
+> sample this small, the map is noisy. Step 6 makes the actual attribution.
 
 ---
 

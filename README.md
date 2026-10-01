@@ -8,7 +8,7 @@
   <a href="https://fatihbozdag.github.io/bitig/"><img alt="docs" src="https://img.shields.io/badge/docs-mkdocs%20material-0F1A2B?style=flat-square"></a>
   <a href="https://pypi.org/project/bitig/"><img alt="PyPI" src="https://img.shields.io/pypi/v/bitig?style=flat-square&color=0F1A2B"></a>
   <img alt="status" src="https://img.shields.io/badge/status-multi--language%20%7C%20forensic%20%7C%20phase%205-C9A34A?style=flat-square">
-  <img alt="tests" src="https://img.shields.io/badge/tests-700%20passing-0F1A2B?style=flat-square">
+  <a href="https://github.com/fatihbozdag/bitig/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fatihbozdag/bitig/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="languages" src="https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20DE%20%7C%20ES%20%7C%20FR-0F1A2B?style=flat-square">
 </p>
 
@@ -90,11 +90,13 @@ view results — figures, parquet tables, and `result.json` scalars — in one p
 
 ### Example output
 
-PCA on 200 MFW, trained on known-author Federalist Papers; the disputed #50 is projected
-into the same space and lands among the Madison cluster — matching the historical consensus.
+PCA on 200 MFW over the eight known-author Federalist Papers in the quickstart. With
+this few essays the authors do not separate cleanly. The map is exploratory; the
+attribution of the disputed #50 (Madison, matching the historical consensus) comes from
+Burrows Delta in [step 6 of the quickstart](examples/quickstart/README.md).
 
 <p align="center">
-  <img src="examples/quickstart/results/demo/pca/pca.png" alt="PCA of Hamilton vs Madison Federalist papers; disputed paper #50 projected as &quot;Unknown&quot;" width="82%">
+  <img src="examples/quickstart/results/demo/pca/pca.png" alt="PCA of four Hamilton and four Madison Federalist papers on 200 most frequent words" width="82%">
 </p>
 
 ## Capabilities at a glance
@@ -142,7 +144,7 @@ methods:
 from bitig.forensic import (
     GeneralImpostors, Unmasking,        # verification
     CategorizedCharNgramExtractor,      # Sapkota 2015 topic-invariant features
-    distort_corpus,                     # Stamatatos 2013 content masking
+    distort_corpus,                     # Stamatatos 2017 content masking
     CalibratedScorer,                   # Platt / isotonic calibration
     compute_pan_report,                 # AUC + c@1 + F0.5u + Brier + ECE + (cllr)
 )
@@ -154,6 +156,30 @@ Delta / Zeta / classify method. Every `Result` can carry six optional chain-of-c
 metadata fields (`questioned_description`, `known_description`, `hypothesis_pair`,
 `acquisition_notes`, `custody_notes`, `source_hashes`) so a report traces back to its source
 material. See [`src/bitig/forensic/`](src/bitig/forensic/) for the full surface.
+
+## Forensic Lab: case workflow
+
+For casework, `bitig case` keeps one directory per case: registered evidence with SHA-256
+custody hashes, a recipe-driven analysis run, an HTML report, and a seal over the case
+state, the report and the run outputs.
+
+```bash
+bitig case new …            # create a case directory
+bitig case add-evidence …   # register questioned / known texts (hashed on entry)
+bitig gui                   # run the case recipe (Case → Run); refuses if custody fails
+bitig case sign …           # render the report and seal the case
+bitig case verify …         # re-check custody, report, run outputs and seal
+```
+
+Running the analysis for a case is currently only available in the GUI; the other steps
+work from both the CLI and the GUI.
+
+The default seal (Null plugin) is an integrity record, not tamper-evidence: anyone with
+write access to the case can recompute it, so `bitig case verify` reports such cases as
+UNSIGNED. An HMAC seal needs a secret key. General Impostors scores are not likelihood
+ratios, and the report says so. See the
+[Forensic Lab page](https://fatihbozdag.github.io/bitig/forensic/case-workflow/) for the full
+workflow (evidence re-acknowledgement, forking, verification output).
 
 ## Documentation
 
@@ -196,13 +222,13 @@ for Spanish, Kandel–Moles + LIX for French). Function-word lists generated rep
 UD closed-class tokens.
 
 **Docs site landed** — MkDocs Material site with Concepts, Forensic toolkit, Federalist +
-PAN-CLEF + Turkish tutorials, and CLI/API reference, backed by a comprehensive automated
-test suite (see the badge above).
+PAN-CLEF + Turkish tutorials, and CLI/API reference, backed by an automated test suite
+(see the CI badge above).
 
 **Docs site is multilingual** — English (default) and Turkish (`/tr/`) launched via
 `mkdocs-static-i18n`; DE/ES/FR infrastructure ready, translation content deferred.
 
-**Remaining** — PyPI publish.
+**Released on PyPI** — `pip install bitig`. See [`CHANGELOG.md`](CHANGELOG.md) for unreleased changes.
 
 See [`docs/superpowers/specs/2026-04-17-bitig-stylometry-package-design.md`](docs/superpowers/specs/2026-04-17-bitig-stylometry-package-design.md) for the full design.
 
@@ -226,6 +252,8 @@ The forensic toolkit implements methods from the following peer-reviewed sources
   n-grams are created equal. *Proceedings of NAACL-HLT 2015*, 93–102.
 - Stamatatos, E. (2013). On the robustness of authorship attribution based on character
   n-gram features. *Journal of Law and Policy*, 21(2), 421–439.
+- Stamatatos, E. (2017). Authorship attribution using text distortion. *Proceedings of
+  EACL 2017*, 1138–1149.
 - Brümmer, N., & du Preez, J. (2006). Application-independent evaluation of speaker
   detection. *Computer Speech & Language*, 20(2–3), 230–275.
 - Peñas, A., & Rodrigo, A. (2011). A simple measure to assess non-response. *Proceedings of
