@@ -49,13 +49,23 @@ result.values["wins"]        # raw winning-iteration count
 | `feature_subsample_rate` | 0.5 | Fraction of features sampled per iteration |
 | `impostor_sample_size` | `ceil(sqrt(pool_size))` | Impostors per iteration — scales sub-linearly so large pools don't trivialise the test |
 | `similarity` | `"cosine"` | `"cosine"` (real-valued) or `"minmax"` (non-negative features only) |
-| `aggregate` | `"centroid"` | `"centroid"` (mean of K) or `"nearest"` (most-similar known — conservative under within-author style heterogeneity) |
+| `aggregate` | `"centroid"` | `"centroid"` (mean of K) or `"nearest"` (most-similar known; gives the candidate its best of k chances per iteration, so it biases scores toward same-author — calibrate under the same setting) |
 | `seed` | 42 | RNG seed (feature + impostor sampling) |
 
 ### Ties
 
 Ties break **toward the impostors** (strict `>`). If Q is equally close to K and an
 impostor, the iteration counts as a loss — the forensically conservative choice.
+
+### Two implementations
+
+`bitig.forensic.GeneralImpostors` (this page) compares Q with individual impostor
+**documents** in feature matrices you build. `bitig.methods.imposters.GeneralImposters`,
+used by `bitig run` (`kind: verify`) and Forensic Lab Cases, fits its own MFW space and
+compares Q with author **centroids**. Both sample `ceil(sqrt(pool))` impostors per
+iteration by default and return an uncalibrated win fraction in [0, 1] — read it against
+its chance level, never as a likelihood ratio. Their scores differ; a parity test checks
+they reach the same verdict on unambiguous cases.
 
 ## Unmasking
 

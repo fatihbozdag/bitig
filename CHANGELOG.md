@@ -56,6 +56,8 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - **[results]** `HierarchicalGroupComparison` uses `sigma_group` for the author spread (it
   was created but unused) and standardises each feature, returning the mean/SD used.
   `BayesianAuthorshipAttributor` rejects negative or NaN input at predict time too.
+- **[results]** Unmasking merges a trailing chunk shorter than half `chunk_size` into the
+  previous chunk instead of counting it as a sample.
 - **[results]** Classification CV refits the feature extractor inside each training
   fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
   is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`

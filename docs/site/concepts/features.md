@@ -214,7 +214,7 @@ recipe that generalises best across topics.
 #### distort_corpus
 `distort_corpus(corpus, mode="dv_ma")`
 
-*Use when:* you want Stamatatos (2013) topic masking — replaces content words with
+*Use when:* you want Stamatatos (2017) topic masking — replaces content words with
 placeholders while keeping function words and punctuation. Pair with any
 extractor for a topic-invariant pipeline.
 *Don't use when:* your analysis needs content-word signal (e.g., Zeta looking for

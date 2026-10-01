@@ -18,7 +18,7 @@ from bitig.forensic import (
 
     # Topic-invariant features
     CategorizedCharNgramExtractor,   # Sapkota et al. 2015
-    distort_corpus, distort_text,    # Stamatatos 2013
+    distort_corpus, distort_text,    # Stamatatos 2017
 
     # Calibration + LR output
     CalibratedScorer,                # Platt / isotonic

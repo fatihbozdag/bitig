@@ -219,7 +219,7 @@ genellemeyi sağlayan ek odaklı tariftir.
 #### distort_corpus
 `distort_corpus(corpus, mode="dv_ma")`
 
-*Şu durumda kullanın:* Stamatatos (2013) konu maskeleme istediğinizde — içerik sözcüklerini
+*Şu durumda kullanın:* Stamatatos (2017) konu maskeleme istediğinizde — içerik sözcüklerini
 yer tutucularla değiştirirken işlev sözcüklerini ve noktalamayı korur. Konudan bağımsız
 bir ardışık düzen için herhangi bir çıkarıcıyla eşleştirin.
 *Şu durumda kullanmayın:* analiziniz içerik sözcüğü sinyaline ihtiyaç duyuyorsa (örn.

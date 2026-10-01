@@ -17,6 +17,11 @@ chance at 0.5 and the 0.5 threshold exactly on it, so unrelated authors were
 reported on the Result so the score is always read against it, and the
 ``verified`` threshold must lie above it (default: halfway from chance to 1).
 
+This is the corpus-level variant (author centroids, its own MFW fit);
+:class:`bitig.forensic.verify.GeneralImpostors` is the document-level variant for
+precomputed feature matrices. ``tests/forensic/test_gi_parity.py`` checks that
+they agree on clear same-author / different-author cases.
+
 The score is an uncalibrated similarity statistic, NOT a likelihood ratio —
 turning it into an LR requires a calibration set (see the forensic-domain
 pass). This is a *verification* method (one candidate per config), the

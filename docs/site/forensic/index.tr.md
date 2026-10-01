@@ -14,7 +14,7 @@ from bitig.forensic import (
 
     # Konudan bağımsız öznitelikler
     CategorizedCharNgramExtractor,   # Sapkota et al. 2015
-    distort_corpus, distort_text,    # Stamatatos 2013
+    distort_corpus, distort_text,    # Stamatatos 2017
 
     # Kalibrasyon + LR çıktısı
     CalibratedScorer,                # Platt / isotonic

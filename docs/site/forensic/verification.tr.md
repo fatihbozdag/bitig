@@ -43,12 +43,16 @@ result.values["wins"]        # ham kazanma sayısı
 | `feature_subsample_rate` | 0.5 | Her yinelemede örneklenen öznitelik oranı |
 | `impostor_sample_size` | `ceil(sqrt(pool_size))` | Yineleme başına sahte yazar sayısı — büyük havuzların testi önemsizleştirmemesi için alt-doğrusal ölçeklenir |
 | `similarity` | `"cosine"` | `"cosine"` (gerçek değerli) veya `"minmax"` (yalnızca negatif olmayan öznitelikler) |
-| `aggregate` | `"centroid"` | `"centroid"` (K'nın ortalaması) veya `"nearest"` (en benzer bilinen belge — yazar içi stil heterojenliğinde tutucu seçenek) |
+| `aggregate` | `"centroid"` | `"centroid"` (K'nın ortalaması) veya `"nearest"` (en benzer bilinen belge; adaya her yinelemede k şanstan en iyisini verir, bu yüzden puanları aynı yazar yönünde yanlı kılar — aynı ayarda kalibre edin) |
 | `seed` | 42 | RNG seed değeri (öznitelik + sahte yazar örnekleme) |
 
 ### Berabere durumlar
 
 Berabere durumlar **sahte yazarlar lehine** bozulur (katı `>`). Q, K'ya ve bir sahte yazara eşit derecede yakınsa, yineleme kayıp olarak sayılır — adli açıdan tutucu seçim.
+
+### İki uygulama
+
+`bitig.forensic.GeneralImpostors` (bu sayfa), Q'yu sizin oluşturduğunuz öznitelik matrislerindeki tek tek sahte yazar **belgeleriyle** karşılaştırır. `bitig run` (`kind: verify`) ve Adli Laboratuvar Vakaları tarafından kullanılan `bitig.methods.imposters.GeneralImposters` ise kendi MFW uzayını kurar ve Q'yu yazar **merkezleriyle** karşılaştırır. İkisi de varsayılan olarak her yinelemede `ceil(sqrt(havuz))` sahte yazar örnekler ve [0, 1] aralığında kalibre edilmemiş bir kazanma oranı döndürür — bunu şans düzeyine göre okuyun, asla olabilirlik oranı olarak değil. Puanları farklıdır; bir eşleşme testi, belirsiz olmayan durumlarda aynı sonuca vardıklarını denetler.
 
 ## Unmasking
 

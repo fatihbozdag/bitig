@@ -185,3 +185,21 @@ class TestUnmaskingInputFormats:
         result = unmasking.verify(questioned=corpus, known=long_known, extractor=extractor)
         # Each 2000-word doc yields 4 chunks -> 8 total.
         assert result.values["n_q_chunks"] == 8
+
+
+def test_short_tail_is_merged_not_a_sample() -> None:
+    """1001 words / chunk 500 gave chunks [500, 500, 1]; the 1-word tail counted
+    toward min_chunks_per_class (audit 2026-09-26 P2)."""
+    from bitig.forensic.unmasking import _chunk_text
+
+    text = " ".join(f"w{i}" for i in range(1001))
+    assert [len(d.text.split()) for d in _chunk_text(text, chunk_size=500, id_prefix="Q")] == [
+        500,
+        501,
+    ]
+    text = " ".join(f"w{i}" for i in range(1300))  # tail of 300 >= half a chunk: kept
+    assert [len(d.text.split()) for d in _chunk_text(text, chunk_size=500, id_prefix="Q")] == [
+        500,
+        500,
+        300,
+    ]
