@@ -16,7 +16,7 @@ Koppel & Winter (2014). Sorgulanan belge Q, adayın bilinen belgeleri K ve diğe
 2. Havuzdan m sahte yazar örneklenir.
 3. Q'nun, örneklenen herhangi bir sahte yazardan çok K'ya daha yakın olup olmadığı kontrol edilir.
 
-Kazanan yinemelerin oranı, [0, 1] aralığındaki doğrulama puanıdır.
+Kazanan yinelemelerin oranı, [0, 1] aralığındaki doğrulama puanıdır. Q'nun örneklenen m sahte yazarın tümünü geçmesi gerekir; bu yüzden yazarlık sinyali yokken yinelemelerin yaklaşık `1/(1+m)` kadarını kazanır: bir puan 0,5'e göre değil, bu şans düzeyine göre okunmalıdır.
 
 ```python
 from bitig.features import MFWExtractor
@@ -25,6 +25,8 @@ from bitig.forensic import GeneralImpostors
 # Q, K ve sahte yazarların ortak bir sözcük dağarcığı paylaşması için
 # birleştirilmiş derlem üzerinde öznitelikler oluşturulur.
 fm = MFWExtractor(n=200, scale="zscore", lowercase=True).fit_transform(pooled_corpus)
+# slice_by_ids bitig'in parçası değildir: seçilen satırlarla bir FeatureMatrix döndüren
+# küçük bir yardımcı yazın (PAN-CLEF öğreticisindeki slice_fm'e bakın).
 q_fm      = slice_by_ids(fm, ["questioned"])
 known_fm  = slice_by_ids(fm, known_doc_ids)
 impostors = slice_by_ids(fm, impostor_doc_ids)
@@ -52,7 +54,7 @@ Berabere durumlar **sahte yazarlar lehine** bozulur (katı `>`). Q, K'ya ve bir 
 
 ### İki uygulama
 
-`bitig.forensic.GeneralImpostors` (bu sayfa), Q'yu sizin oluşturduğunuz öznitelik matrislerindeki tek tek sahte yazar **belgeleriyle** karşılaştırır. `bitig run` (`kind: verify`) ve Adli Laboratuvar Vakaları tarafından kullanılan `bitig.methods.imposters.GeneralImposters` ise kendi MFW uzayını kurar ve Q'yu yazar **merkezleriyle** karşılaştırır. İkisi de varsayılan olarak her yinelemede `ceil(sqrt(havuz))` sahte yazar örnekler ve [0, 1] aralığında kalibre edilmemiş bir kazanma oranı döndürür — bunu şans düzeyine göre okuyun, asla olabilirlik oranı olarak değil. Puanları farklıdır; bir eşleşme testi, belirsiz olmayan durumlarda aynı sonuca vardıklarını denetler.
+`bitig.forensic.GeneralImpostors` (bu sayfa), Q'yu sizin oluşturduğunuz öznitelik matrislerindeki tek tek sahte yazar **belgeleriyle** karşılaştırır. `bitig run` (`kind: verify`) ve Adli Laboratuvar Vakaları tarafından kullanılan `bitig.methods.imposters.GeneralImposters` ise kendi MFW uzayını kurar ve Q'yu yazar **merkezleriyle** karşılaştırır. İkisi de varsayılan olarak her yinelemede `ceil(sqrt(havuz))` sahte yazar örnekler ve [0, 1] aralığında kalibre edilmemiş bir kazanma oranı döndürür — bunu şans düzeyine göre okuyun, asla olabilirlik oranı olarak değil. Yalnızca derlem düzeyindeki uygulama `chance` (= `1/(1+m)`) değerini ve bir `verified` bayrağını raporlar; `threshold` varsayılan olarak şans ile 1'in ortasıdır ve şans düzeyini aşmalıdır (daha düşük bir değer `ValueError` verir). Puanları farklıdır; bir eşleşme testi, belirsiz olmayan durumlarda aynı sonuca vardıklarını denetler.
 
 ## Unmasking
 
@@ -90,7 +92,7 @@ result.values["eliminated_per_round"]   # denetlenebilir tur başına öznitelik
 |---|---|
 | Kısa CMC / tehdit metinleri (toplam < ~2000 sözcük) | `GeneralImpostors`. Unmasking, CV'yi anlamlı biçimde çalıştırmak için her tarafta daha fazla metne ihtiyaç duyar. |
 | Uzun düz yazı (roman, deneme, blog arşivi) | `Unmasking` — doğruluk düşüş eğrisi doğrudan yorumlanabilir. İkinci görüş olarak GI ile birleştirin. |
-| Kanıtsal rapor oluşturma | Her ikisini çalıştırın ve her ikisini `CalibratedScorer` ile kalibre edin. İki yöntem arasındaki uyum, başlı başına kanıtsal sinyaldir (Juola tarzı çok yöntemli karar). |
+| Kanıtsal rapor oluşturma | Her ikisini çalıştırın ve her ikisini `CalibratedScorer` ile kalibre edin. Her yöntemin sonucunu ayrı raporlayın; puanlarının ortalamasını almayın. |
 
 ## Referans
 
