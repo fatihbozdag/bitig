@@ -77,10 +77,13 @@ All method commands accept `--metadata`, `--group-by <field>`, `--seed <int>`.
 Execute a full declarative study end-to-end.
 
 ```bash
-bitig run study.yaml --name demo [--output-dir results/]
+bitig run study.yaml --name demo [--output results/] [--overwrite]
 ```
 
 Writes every method's `Result` to its own subdirectory plus a `resolved_config.json`.
+A run directory that already holds a previous run is refused; `--overwrite` replaces that
+run's outputs (and nothing else). Exits with code 1 if any method failed — each failed
+method's folder has an `error.txt` with the traceback.
 
 ### `bitig report <run-dir>`
 

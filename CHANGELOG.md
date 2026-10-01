@@ -62,5 +62,8 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
   is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`
   (was `accuracy`).
+- `bitig run` exits 1 if any method failed (listing them; `error.txt` holds the
+  traceback) and refuses a run directory holding a previous run unless `--overwrite`.
+  **[breaking]**
 - Unknown study parameters and unsupported feature types are refused at load time;
   `method:` on a Delta method is a deprecated alias for `variant:`. **[breaking]**

@@ -77,10 +77,13 @@ Tüm yöntem komutları `--metadata`, `--group-by <field>`, `--seed <int>` seçe
 Bildirimsel bir çalışmayı uçtan uca yürütür.
 
 ```bash
-bitig run study.yaml --name demo [--output-dir results/]
+bitig run study.yaml --name demo [--output results/] [--overwrite]
 ```
 
 Her yöntemin `Result` nesnesini kendi alt dizinine ve bir `resolved_config.json` dosyasına yazar.
+Önceki bir çalıştırmayı içeren dizin reddedilir; `--overwrite` o çalıştırmanın çıktılarını (ve
+yalnızca onları) değiştirir. Herhangi bir yöntem başarısız olursa çıkış kodu 1'dir — başarısız
+her yöntemin klasöründe hata izini içeren bir `error.txt` bulunur.
 
 ### `bitig report <run-dir>`
 

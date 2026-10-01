@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import inspect
 import json
+import shutil
+import traceback
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -204,8 +206,13 @@ def run_study(
     output_dir: str | Path | None = None,
     run_name: str | None = None,
     corpus: Corpus | None = None,
+    overwrite: bool = False,
 ) -> Path:
     """Execute a full study from a `study.yaml` file and save all results.
+
+    ``overwrite`` lets a run reuse a folder that holds a previous run, removing
+    only that run's own outputs first; otherwise such a folder is refused, so
+    stale method outputs never mix with new ones (audit 2026-09-26 P2).
 
     ``corpus`` supplies the documents directly instead of loading
     ``cfg.corpus.path`` (a Forensic Lab Case passes its registered,
@@ -215,7 +222,7 @@ def run_study(
     """
     cfg: StudyConfig = load_config(Path(config_path))
     validate_study_params(cfg)
-    run_dir = _make_run_dir(cfg, output_dir, run_name)
+    run_dir = _make_run_dir(cfg, output_dir, run_name, overwrite=overwrite)
     _log.info("run directory: %s", run_dir)
 
     if corpus is None:
@@ -302,23 +309,80 @@ def run_study(
                 method_cfg=method_cfg, method_dir=method_dir, result=result, corpus=corpus
             )
         except Exception as exc:
-            _log.error("method %s failed: %s", method_cfg.id, exc)
-            (method_dir / "error.txt").write_text(str(exc))
+            _log.error("method %s failed: %s", method_cfg.id, exc, exc_info=True)
+            # Full traceback; its last line is "ExcType: message" (read by case_run).
+            (method_dir / "error.txt").write_text(traceback.format_exc(), encoding="utf-8")
 
-    (run_dir / "resolved_config.json").write_text(
-        json.dumps(cfg.model_dump(), indent=2, default=str)
-    )
+    (run_dir / _RESOLVED_CONFIG).write_text(json.dumps(cfg.model_dump(), indent=2, default=str))
     return run_dir
 
 
-def _make_run_dir(cfg: StudyConfig, output_dir: str | Path | None, run_name: str | None) -> Path:
+_RESOLVED_CONFIG = "resolved_config.json"
+
+
+def failed_methods(run_dir: Path) -> dict[str, str]:
+    """``{method id: last line of its error.txt}`` for every failed method in a run."""
+    out: dict[str, str] = {}
+    for err in sorted(Path(run_dir).glob("*/error.txt")):
+        lines = err.read_text(encoding="utf-8").strip().splitlines()
+        out[err.parent.name] = lines[-1] if lines else "error"
+    return out
+
+
+def _previous_run_outputs(run_dir: Path, cfg: StudyConfig) -> list[Path]:
+    """Outputs of an earlier bitig run in ``run_dir`` (method dirs + its config file)."""
+    found: list[Path] = []
+    previous_cfg = run_dir / _RESOLVED_CONFIG
+    method_ids = {m.id for m in cfg.methods}
+    if previous_cfg.is_file():
+        found.append(previous_cfg)
+        try:
+            data = json.loads(previous_cfg.read_text(encoding="utf-8"))
+            method_ids |= {str(m.get("id")) for m in data.get("methods", []) if m.get("id")}
+        except (OSError, ValueError, AttributeError):
+            pass
+    for method_id in sorted(method_ids):
+        path = run_dir / method_id
+        # Only plain names directly under run_dir, and only folders bitig wrote.
+        if (
+            path.parent == run_dir
+            and path.is_dir()
+            and ((path / "result.json").exists() or (path / "error.txt").exists())
+        ):
+            found.append(path)
+    return found
+
+
+def _make_run_dir(
+    cfg: StudyConfig,
+    output_dir: str | Path | None,
+    run_name: str | None,
+    *,
+    overwrite: bool = False,
+) -> Path:
     base = Path(output_dir or cfg.output.dir)
     if run_name:
         run_dir = base / run_name
     elif cfg.output.timestamp:
-        run_dir = base / datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        run_dir, n = base / stamp, 2
+        while run_dir.exists():  # two runs in the same second
+            run_dir, n = base / f"{stamp}-{n}", n + 1
     else:
         run_dir = base
+    previous = _previous_run_outputs(run_dir, cfg) if run_dir.is_dir() else []
+    if previous:
+        if not overwrite:
+            raise FileExistsError(
+                f"{run_dir} already holds a previous run ({', '.join(p.name for p in previous)}); "
+                "use a new --name / timestamped output, or pass overwrite=True "
+                "(`bitig run --overwrite`) to replace that run's outputs"
+            )
+        for path in previous:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
