@@ -38,7 +38,7 @@ $$
 \text{c@1} = \frac{1}{n}\!\left( n_\text{correct} + n_\text{unanswered} \cdot \frac{n_\text{correct}}{n} \right)
 $$
 
-*yanıtsız* denemeler, kalibre edilmiş olasılığı `[0.5 − margin, 0.5 + margin]` içinde olan denemelerdir. Margin = 0 (varsayılan) c@1'i ham doğruluğa indirger.
+*yanıtsız* denemeler `|p − 0.5| ≤ margin` olan denemelerdir. Varsayılan margin = 0 ile, PAN değerlendiricisinde olduğu gibi tam olarak `p = 0.5` yanıtsızdır; böyle çıktılar yoksa c@1 doğruluğa eşittir. Pozitif bir margin çekimser bandı genişletir ancak PAN ile karşılaştırılamaz.
 
 PAN doğrulama paylaşımlı görevi, çekinmesini bilen sistemleri ödüllendirdiği için — doğrudan "yetersiz kanıt" adli kavramıyla örtüşür — 2013'ten bu yana c@1'i birincil metrik olarak kullanmaktadır.
 
@@ -101,14 +101,14 @@ plt.legend()
 ### c@1
 
 *Şu durumda kullanın:* sisteminiz çekimser kalabiliyorsa ("bilmiyorum") ve bunu dürüstçe kredilendirmek istiyorsanız — doğruluk artı çekimser kalma için kısmi kredi bonusu.
-*Şu durumda kullanmayın:* sisteminiz her zaman bir karar üretiyorsa; `c@1` doğruluğa indirger.
+*Şu durumda kullanmayın:* sisteminiz hiçbir zaman tam 0.5 (çekimser sinyali) üretmiyorsa; `c@1` o zaman doğruluğa eşittir.
 *Beklenen sonuç:* `[0, 1]` aralığında tek bir sayı. Yalnızca çekimser kalma oranı > 0 olduğunda doğruluğu geçer.
 
 ::: bitig.forensic.metrics.c_at_1
 
 ### F0.5u
 
-*Şu durumda kullanın:* bir PAN-CLEF doğrulama izini puanlıyorsanız — PAN 2022'den bu yana resmi metriktir; hassasiyet ağırlıklı ve yanıtsızlık cezalıdır.
+*Şu durumda kullanın:* bir PAN-CLEF doğrulama izini puanlıyorsanız — PAN'ın hassasiyet ağırlıklı F ölçüsü, `1.25·TP / (1.25·TP + 0.25·(FN + N_u) + FP)`; burada `N_u`, etiketinden bağımsız olarak her yanıtsız denemeyi (`p = 0.5`) sayar (Bevendorff vd. 2019/2020).
 *Şu durumda kullanmayın:* PAN dışı bir kitleye raporluyorsanız; uzman bir metriktir.
 *Beklenen sonuç:* `[0, 1]` aralığında tek bir sayı.
 

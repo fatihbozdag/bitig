@@ -201,73 +201,32 @@ def auc(scores: np.ndarray, y: np.ndarray) -> float:
     return float(u / (n_t * n_n))
 
 
-def c_at_1(probs: np.ndarray, y: np.ndarray, *, unanswered_margin: float = 0.0) -> float:
-    """c@1 (Peñas & Rodrigo 2011): accuracy with a credit for non-answers.
+def _non_answers(probs: np.ndarray, margin: float) -> np.ndarray:
+    """PAN non-answers: ``|p - 0.5| <= margin`` (``margin == 0`` → exactly 0.5)."""
+    if margin < 0:
+        raise ValueError("unanswered_margin must be >= 0")
+    return np.abs(probs - 0.5) <= margin
 
-    Canonical formula (Peñas & Rodrigo 2011, eq. 1):
 
-        c@1 = (1 / n) * (n_correct + n_unanswered * (n_correct / n))
-
-    where ``n`` is the total number of trials, ``n_correct`` is the number of correct
-    answered trials, and ``n_unanswered`` is the number of abstentions. The bonus for
-    abstention scales with the *overall* accuracy of the system (n_correct / n), not with
-    its accuracy on the answered subset — so a system that abstains frequently but is
-    also inaccurate on its answers does not get rewarded.
-
-    Non-answers are defined as trials whose probability lies within
-    ``[0.5 - unanswered_margin, 0.5 + unanswered_margin]``. If ``unanswered_margin = 0``,
-    the default, there are no non-answers and c@1 reduces to raw accuracy.
-
-    Forensically principled because it rewards a system that knows when to abstain (vs.
-    forcing a coin-flip on ambiguous evidence). The PAN verification shared task has used
-    c@1 as the primary metric since 2013.
-
-    Parameters
-    ----------
-    probs : np.ndarray of shape (n,)
-        Calibrated probabilities of the target hypothesis, in [0, 1]. Decisions are taken
-        at threshold 0.5.
-    y : np.ndarray of shape (n,)
-        Binary labels.
-    unanswered_margin : float
-        Half-width of the non-decision band around 0.5. 0.0 = no abstention; common PAN
-        settings use 0.0 or a small value like 0.05.
-    """
-    probs = np.asarray(probs, dtype=float)
-    y = np.asarray(y)
+def _check_trials(probs: np.ndarray, y: np.ndarray, name: str) -> None:
     if probs.shape != y.shape:
         raise ValueError("probs and y must have the same shape")
     if probs.size == 0:
-        raise ValueError("c@1 requires at least one trial")
+        raise ValueError(f"{name} requires at least one trial")
     if not np.all((probs >= 0) & (probs <= 1)):
         raise ValueError("probs must lie in [0, 1]")
-    if unanswered_margin < 0:
-        raise ValueError("unanswered_margin must be >= 0")
-
-    # Strict `<`: with unanswered_margin == 0 the band is empty, so NO trial is
-    # an abstention (not even an exact p == 0.5, which the prediction path below
-    # answers as class 1). This is what makes c@1 reduce exactly to accuracy at
-    # margin 0, as the docstring promises (audit P2 — `<=` marked p == 0.5
-    # unanswered and diverged from accuracy).
-    unanswered = np.abs(probs - 0.5) < unanswered_margin
-    predictions = (probs >= 0.5).astype(int)
-    correct = (predictions == y) & ~unanswered
-    n_correct = int(correct.sum())
-    n_unanswered = int(unanswered.sum())
-    n = probs.size
-    if n - n_unanswered == 0:
-        # All trials unanswered: by convention c@1 = 0 (prior-only).
-        return 0.0
-    return float((1.0 / n) * (n_correct + n_unanswered * (n_correct / n)))
 
 
-def f05u(probs: np.ndarray, y: np.ndarray) -> float:
-    """F0.5-unanswered (Bevendorff et al. PAN 2022) — a precision-weighted F-measure that
-    penalises both wrong answers and (weakly) non-answers.
+def c_at_1(probs: np.ndarray, y: np.ndarray, *, unanswered_margin: float = 0.0) -> float:
+    """c@1 (Peñas & Rodrigo 2011) as computed by the PAN verification evaluator.
 
-    F0.5u uses the classical F-beta with beta=0.5 (weighting precision over recall), but
-    counts trials falling in the [0.4, 0.6] decision band as non-answers, which are neither
-    true positives nor false positives (they lower recall).
+        c@1 = (1 / n) * (n_correct + n_unanswered * (n_correct / n))
+
+    A trial is a non-answer when ``|p - 0.5| <= unanswered_margin``. With the
+    default ``0.0`` that is exactly ``p == 0.5``, the PAN convention (Bevendorff
+    et al. 2020, ``pan20_verif_evaluator``). Answered trials are class 1 when
+    ``p > 0.5`` and class 0 when ``p < 0.5``. A positive margin widens the
+    abstention band; that variant is not PAN-comparable.
 
     Parameters
     ----------
@@ -275,27 +234,43 @@ def f05u(probs: np.ndarray, y: np.ndarray) -> float:
         Probabilities of the target hypothesis, in [0, 1].
     y : np.ndarray of shape (n,)
         Binary labels.
+    unanswered_margin : float
+        Half-width of the abstention band around 0.5 (default 0.0 = PAN).
     """
     probs = np.asarray(probs, dtype=float)
     y = np.asarray(y)
-    if probs.shape != y.shape:
-        raise ValueError("probs and y must have the same shape")
-    if probs.size == 0:
-        raise ValueError("f0.5u requires at least one trial")
-    if not np.all((probs >= 0) & (probs <= 1)):
-        raise ValueError("probs must lie in [0, 1]")
+    _check_trials(probs, y, "c@1")
+    unanswered = _non_answers(probs, unanswered_margin)
+    predictions = (probs > 0.5).astype(int)
+    correct = (predictions == y) & ~unanswered
+    n_correct = int(correct.sum())
+    n_unanswered = int(unanswered.sum())
+    n = probs.size
+    return float((1.0 / n) * (n_correct + n_unanswered * (n_correct / n)))
 
-    unanswered = (probs >= 0.4) & (probs <= 0.6)
-    decision = np.where(probs > 0.6, 1, np.where(probs < 0.4, 0, -1))
-    tp = int(((decision == 1) & (y == 1)).sum())
-    fp = int(((decision == 1) & (y == 0)).sum())
-    fn = int(((decision == 0) & (y == 1)).sum()) + int(((y == 1) & unanswered).sum())
-    if tp == 0:
-        return 0.0
-    precision = tp / (tp + fp)
-    recall = tp / (tp + fn)
-    beta2 = 0.25  # 0.5^2
-    return float((1 + beta2) * precision * recall / (beta2 * precision + recall))
+
+def f05u(probs: np.ndarray, y: np.ndarray, *, unanswered_margin: float = 0.0) -> float:
+    """F0.5u (Bevendorff et al. 2019/2020), as computed by the PAN verification evaluator.
+
+        F0.5u = 1.25 * TP / (1.25 * TP + 0.25 * (FN + N_u) + FP)
+
+    ``N_u`` counts **every** non-answer, whatever its label. A trial is a
+    non-answer when ``|p - 0.5| <= unanswered_margin`` (default ``0.0``: exactly
+    ``p == 0.5``, the PAN convention). Answered trials are positive when
+    ``p > 0.5``. A positive margin is not PAN-comparable.
+    """
+    probs = np.asarray(probs, dtype=float)
+    y = np.asarray(y)
+    _check_trials(probs, y, "f0.5u")
+    unanswered = _non_answers(probs, unanswered_margin)
+    answered_pos = (probs > 0.5) & ~unanswered
+    answered_neg = (probs < 0.5) & ~unanswered
+    tp = int((answered_pos & (y == 1)).sum())
+    fp = int((answered_pos & (y == 0)).sum())
+    fn = int((answered_neg & (y == 1)).sum())
+    n_u = int(unanswered.sum())
+    denom = 1.25 * tp + 0.25 * (fn + n_u) + fp
+    return float(1.25 * tp / denom) if denom > 0 else 0.0
 
 
 @dataclass
@@ -336,6 +311,7 @@ def compute_pan_report(
     log_lrs: np.ndarray | None = None,
     ece_bins: int = 10,
     c_at_1_margin: float = 0.0,
+    f05u_margin: float = 0.0,
 ) -> PANReport:
     """Run the full PAN evaluation suite on one set of trials.
 
@@ -348,14 +324,16 @@ def compute_pan_report(
     log_lrs : np.ndarray, optional
         log10-LRs for each trial. If provided, ``cllr_bits`` is included in the report.
     ece_bins : int
-    c_at_1_margin : float
+    c_at_1_margin, f05u_margin : float
+        Abstention half-widths around 0.5; the default 0.0 (exactly 0.5 is a
+        non-answer) matches the PAN evaluator.
     """
     probs = np.asarray(probs, dtype=float)
     y = np.asarray(y)
     return PANReport(
         auc=auc(probs, y),
         c_at_1=c_at_1(probs, y, unanswered_margin=c_at_1_margin),
-        f05u=f05u(probs, y),
+        f05u=f05u(probs, y, unanswered_margin=f05u_margin),
         brier=brier(probs, y),
         ece=ece(probs, y, n_bins=ece_bins),
         cllr_bits=cllr(np.asarray(log_lrs, dtype=float), y) if log_lrs is not None else None,

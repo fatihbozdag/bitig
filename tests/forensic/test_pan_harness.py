@@ -90,14 +90,12 @@ class TestCAt1:
         with pytest.raises(ValueError, match="unanswered_margin"):
             c_at_1(np.array([0.5]), np.array([1]), unanswered_margin=-0.1)
 
-    def test_c_at_1_margin_zero_answers_exact_half(self) -> None:
-        """At margin 0 an exact p==0.5 is ANSWERED (predicted class 1), so c@1
-        equals plain accuracy — it must not be silently treated as an abstention
-        (audit P2; the old `<=` band marked p==0.5 unanswered and diverged)."""
-        probs = np.array([0.5, 0.9, 0.2])  # predictions at >=0.5 → [1, 1, 0]
-        assert c_at_1(probs, np.array([1, 1, 0]), unanswered_margin=0.0) == pytest.approx(1.0)
-        # p=0.5 predicts 1; with truth 0 it's simply wrong → 2/3 accuracy, no abstention credit.
-        assert c_at_1(probs, np.array([0, 1, 0]), unanswered_margin=0.0) == pytest.approx(2 / 3)
+    def test_c_at_1_exact_half_is_a_non_answer_like_pan(self) -> None:
+        """PAN evaluator: p == 0.5 is a non-answer (audit 2026-09-26)."""
+        probs = np.array([0.5, 0.9, 0.2])
+        # n=3, n_c=2 (0.9->1, 0.2->0), n_u=1 -> (2 + 1 * 2/3) / 3 = 8/9.
+        assert c_at_1(probs, np.array([1, 1, 0])) == pytest.approx(8 / 9)
+        assert c_at_1(probs, np.array([0, 1, 0])) == pytest.approx(8 / 9)  # label irrelevant
 
     def test_c_at_1_all_unanswered_returns_zero(self) -> None:
         probs = np.full(4, 0.5)
@@ -117,16 +115,18 @@ class TestF05u:
         y = np.array([1, 1, 0, 0])
         assert f05u(probs, y) == 0.0
 
-    def test_unanswered_trials_lower_recall(self) -> None:
-        """A target trial landing in the non-decision band is a pseudo-false-negative for F0.5u."""
-        # Two targets confidently predicted, two abstained.
+    def test_pan_formula_with_exact_half_non_answer(self) -> None:
+        """F0.5u = 1.25TP / (1.25TP + 0.25(FN + N_u) + FP), N_u = trials at exactly 0.5."""
         probs = np.array([0.95, 0.9, 0.5, 0.55])
-        y = np.array([1, 1, 1, 1])  # all target
-        # tp=2, fp=0, fn=2 (from the unanswered targets).
-        # precision = 2/(2+0) = 1.0
-        # recall = 2/(2+2) = 0.5
-        # F0.5 = (1.25 * 1.0 * 0.5) / (0.25 * 1.0 + 0.5) = 0.625 / 0.75 ≈ 0.833
-        assert f05u(probs, y) == pytest.approx(0.833, abs=0.01)
+        y = np.array([1, 1, 1, 1])
+        # 0.55 is answered positive: TP=3, N_u=1 -> 3.75 / (3.75 + 0.25) = 0.9375.
+        assert f05u(probs, y) == pytest.approx(0.9375)
+        # Explicit band [0.4, 0.6]: TP=2, N_u=2 -> 2.5 / (2.5 + 0.5).
+        assert f05u(probs, y, unanswered_margin=0.1) == pytest.approx(2.5 / 3.0)
+
+    def test_non_answers_count_whatever_their_label(self) -> None:
+        # TP=1, N_u=1 (a non-target at 0.5) -> 1.25 / (1.25 + 0.25).
+        assert f05u(np.array([0.9, 0.5]), np.array([1, 0])) == pytest.approx(1.25 / 1.5)
 
 
 class TestComputePanReport:
