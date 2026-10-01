@@ -156,9 +156,9 @@ Desteklenen bağlantılar: `"ward"` (varsayılan, varyansı en aza indiren), `"a
 
 *Şu durumda kullanın:* dendrogram için sağlamlık kanıtı istiyorsanız — MFW öznitelik kümesini tekrar tekrar yeniden örnekleyin ve hangi kladların hayatta kaldığını görün.
 *Şu durumda kullanmayın:* hızlı tek bir görselleştirmeye ihtiyaç duyuyorsanız; bootstrap birçok Delta + kümeleme döngüsü çalıştırır ve yavaştır.
-*Beklenen sonuç:* klade destek değerleriyle (o kladın görüldüğü tekrar oranı) Newick formatında konsensüs ağacı.
+*Beklenen sonuç:* klade destek değerleriyle Newick formatında konsensüs ağacı. Her tekrar belgeleri de alt örnekler (`subsample`, varsayılan 0.8); bu nedenle bir kladın desteği, **tüm üyelerini içeren** ağaçlar arasında o kladın klade olarak göründüğü ağaçların oranıdır. Desteği `support_threshold` değerinden (varsayılan 0.5, çoğunluk kuralı) kesinlikle büyük olan kladlar ağacı oluşturur.
 
-Eder (2017). "Kaç tane MFW?" parametresini bantlar üzerinde örnekleyerek dışarıya alır.
+Eder (2017) MFW bantları üzerinde önyükleme yapar; bitig ayrıca belgeleri de alt örnekler, Eder'in yöntemi bunu yapmaz.
 
 ## Sınıflandırma + çapraz doğrulama
 

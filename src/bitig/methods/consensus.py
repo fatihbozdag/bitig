@@ -1,7 +1,12 @@
 """Bootstrap consensus trees (Eder 2017).
 
-Iterate MFW bands x replicates -> Burrows Delta -> Ward linkage -> extract clades. Aggregate
-clade support as fraction-of-dendrograms. Emit majority-support consensus as Newick.
+Iterate MFW bands x replicates -> Burrows Delta -> Ward linkage -> extract clades. Each
+replicate subsamples documents, so a tree only shows the clades of the documents it
+contains. A clade's support is therefore the fraction of trees **containing all of its
+members** in which it appears as a clade (audit 2026-09-26 P2: dividing by every tree,
+and counting the whole-subsample root as a clade, misstated support). Clades with support
+strictly greater than ``support_threshold`` (majority rule: > 0.5) form the consensus,
+emitted as Newick.
 """
 
 from __future__ import annotations
@@ -31,6 +36,10 @@ class BootstrapConsensus:
         self.replicates = replicates
         self.subsample = subsample
         self.support_threshold = support_threshold
+        if not 0.0 < subsample <= 1.0:
+            raise ValueError(f"subsample must be in (0, 1], got {subsample}")
+        if not 0.0 <= support_threshold < 1.0:
+            raise ValueError(f"support_threshold must be in [0, 1), got {support_threshold}")
         self.seed = seed
 
     def fit_transform(self, corpus: Corpus) -> Result:
@@ -44,6 +53,7 @@ class BootstrapConsensus:
         rng = derive_rng(self.seed, "consensus")
 
         clade_counts: Counter[frozenset[str]] = Counter()
+        tree_leaf_sets: list[frozenset[str]] = []
         total_dendrograms = 0
 
         for band in self.mfw_bands:
@@ -60,16 +70,22 @@ class BootstrapConsensus:
                 Z = linkage(fm.X, method="ward")  # noqa: N806
                 tree = to_tree(Z, rd=False)  # type: ignore[arg-type]
 
+                leaf_set = frozenset(subsample_ids)
                 for clade in _extract_clades(tree, subsample_ids):
-                    if 2 <= len(clade) < n_docs:
+                    # The root (all leaves of this tree) carries no information.
+                    if 2 <= len(clade) < len(leaf_set):
                         clade_counts[frozenset(clade)] += 1
+                tree_leaf_sets.append(leaf_set)
                 total_dendrograms += 1
 
         if total_dendrograms == 0:
             raise ValueError("Consensus: no valid dendrograms produced (all bands culled out?)")
 
-        support = {clade: count / total_dendrograms for clade, count in clade_counts.items()}
-        majority = {clade: s for clade, s in support.items() if s >= self.support_threshold}
+        support: dict[frozenset[str], float] = {}
+        for members, count in clade_counts.items():
+            eligible = sum(1 for leaves in tree_leaf_sets if members <= leaves)
+            support[members] = count / eligible
+        majority = {clade: s for clade, s in support.items() if s > self.support_threshold}
         newick = _build_newick(doc_ids, majority)
 
         return Result(

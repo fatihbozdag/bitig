@@ -33,6 +33,9 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - **[results]** MFW z-scores use `count / document token count` (was: counts
   renormalised over the retained vocabulary). Delta, PCA, General Impostors and
   rolling Delta values change.
+- **[results]** Bootstrap consensus: a clade's support is the fraction of trees containing
+  all its members in which it appears; a subsample's root no longer counts as a clade;
+  majority rule is strictly > `support_threshold`.
 - **[results]** `bitig run` honours `preprocess.language`; the study seed reaches every
   stochastic method.
 - **[results]** `Corpus.hash` binds texts to ids and metadata (scheme 2, recorded as

@@ -199,10 +199,13 @@ confidence).
 MFW feature set and see which clades survive.
 *Don't use when:* you need one quick visualisation; bootstrap runs many Delta +
 clustering cycles and is slow.
-*Expect:* a Newick consensus tree with clade-support values (fraction of replicates
-where that clade appears).
+*Expect:* a Newick consensus tree with clade-support values. Each replicate also
+subsamples documents (`subsample`, default 0.8), so a clade's support is the fraction of
+trees **containing all of its members** in which it appears as a clade. Clades with
+support strictly above `support_threshold` (default 0.5, majority rule) form the tree.
 
-Eder (2017). Integrates out the "how many MFW?" knob by sampling across bands.
+Eder (2017) bootstraps across MFW bands; bitig additionally subsamples documents, which
+Eder's method does not.
 
 ## Classification + CV
 
