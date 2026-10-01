@@ -40,6 +40,10 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   stochastic method.
 - **[results]** `Corpus.hash` binds texts to ids and metadata (scheme 2, recorded as
   `Provenance.corpus_hash_scheme`).
+- **[results]** `FunctionWordExtractor(scale="zscore")` z-scores relative frequencies (it
+  returned raw counts); English contractions and French elided forms in the bundled lists
+  now match. Character/word n-gram `zscore` uses relative frequencies; new
+  `max_features` caps their vocabulary.
 - **[results]** Classification CV refits the feature extractor inside each training
   fold (`bitig classify`, `kind: classify`); `loao` grouped by a relabelling of the target
   is refused everywhere. The Bayesian runner reports `resubstitution_accuracy`
