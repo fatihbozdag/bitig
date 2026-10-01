@@ -19,9 +19,13 @@ console = Console()
 def classify_command(
     path: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),  # noqa: B008
     metadata: Path = typer.Option(..., "--metadata", "-m", exists=True, dir_okay=False),  # noqa: B008
-    estimator: str = typer.Option("logreg", "--estimator"),
+    estimator: str = typer.Option(
+        "logreg", "--estimator", help="logreg | svm_linear | svm_rbf | rf | hgbm"
+    ),
     group_by: str = typer.Option("author", "--group-by"),
-    cv_kind: str = typer.Option("stratified", "--cv-kind"),
+    cv_kind: str = typer.Option(
+        "stratified", "--cv-kind", help="stratified | loao | leave_one_text_out"
+    ),
     groups_by: str | None = typer.Option(
         None,
         "--groups-by",

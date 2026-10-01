@@ -18,7 +18,7 @@ def embed_command(
         None, "--metadata", "-m", exists=True, dir_okay=False
     ),
     model: str = typer.Option("sentence-transformers/all-MiniLM-L6-v2", "--model"),
-    pool: str = typer.Option("mean", "--pool"),
+    pool: str = typer.Option("mean", "--pool", help="mean | cls | max"),
     output: Path = typer.Option(Path("embeddings.parquet"), "--output", "-o"),  # noqa: B008
 ) -> None:
     """Embed a corpus with a sentence-transformer model and save the matrix to parquet."""

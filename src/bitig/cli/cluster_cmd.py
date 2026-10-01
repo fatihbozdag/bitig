@@ -19,7 +19,7 @@ console = Console()
 def cluster_command(
     path: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),  # noqa: B008
     metadata: Path | None = typer.Option(None, "--metadata", "-m", exists=True, dir_okay=False),  # noqa: B008
-    method: str = typer.Option("hierarchical", "--method"),
+    method: str = typer.Option("hierarchical", "--method", help="hierarchical | kmeans | hdbscan"),
     n_clusters: int = typer.Option(2, "--n-clusters"),
     linkage: str = typer.Option(
         "ward", "--linkage", help="For hierarchical: ward | average | complete | single"

@@ -11,10 +11,11 @@ url: "https://github.com/fatihbozdag/bitig"
 repository-code: "https://github.com/fatihbozdag/bitig"
 version: "0.3.1"
 abstract: >
-  bitig is a Python package and interactive CLI for computational stylometry.
-  It provides feature parity with R's Stylo for authorship attribution,
-  author-group comparison, and Digital Humanities analyses, and adds modern
-  NLP and ML capabilities via spaCy and scikit-learn.
+  bitig is a Python package and command-line tool for computational stylometry.
+  It covers authorship attribution, author-group comparison and related
+  Digital Humanities analyses (Delta, Zeta, dimensionality reduction,
+  clustering, bootstrap consensus trees, classification), drawing on methods
+  popularised by R's Stylo, and builds on spaCy and scikit-learn.
 keywords:
   - stylometry
   - authorship-attribution

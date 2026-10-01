@@ -77,3 +77,16 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   parse nothing. **[breaking]**
 - Unknown study parameters and unsupported feature types are refused at load time;
   `method:` on a Delta method is a deprecated alias for `variant:`. **[breaking]**
+
+### Documentation
+
+- New Forensic Lab page (EN/TR) documenting the case workflow, seals and `bitig case verify`.
+- Tutorials corrected against real runs: Federalist (11 disputed papers, no projection step,
+  measured PCA variance, uncalibrated Naive Bayes posteriors, byline caveat), Turkish (actual
+  run outputs), PAN-CLEF (measured metrics; per-trial LR instead of a mean over trials).
+- CLI and `study.yaml` references regenerated from the code; settings the runner ignores are
+  marked. Getting-started, methods, features, topic-invariance and verification pages fixed.
+- README and quickstart: PCA claims corrected and figure regenerated; stale status lines and
+  test-count badge removed. `CITATION.cff` no longer claims feature parity with Stylo.
+- [results] The Turkish example study no longer includes Burrows Delta, which failed on its
+  single-author corpus.

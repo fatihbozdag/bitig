@@ -74,7 +74,7 @@ def case_new(
         help="Root directory holding all cases (default: ~/.bitig/cases/).",
     ),
 ) -> None:
-    """Create a new Case directory under ``--cases-dir``."""
+    """Create a new Case directory under --cases-dir."""
     try:
         case = Case.create(
             cases_dir,
@@ -112,7 +112,7 @@ def case_list(
         DEFAULT_CASES_DIR, "--cases-dir", help="Cases root (default: ~/.bitig/cases/)."
     ),
 ) -> None:
-    """List every Case under ``--cases-dir`` in a Rich table."""
+    """List every Case under --cases-dir in a table."""
     cases, problems = scan_cases(cases_dir)
     for path, reason in problems:
         console.print(f"[red]unreadable case[/red] {path.name}: {reason}")
@@ -158,11 +158,7 @@ def case_open(
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
 ) -> None:
-    """Print the case path + one-line summary.
-
-    Intended as the shell-side "enter the Case" hook; the GUI build will
-    use the same Case.load() under the hood, so behaviour stays consistent.
-    """
+    """Print the case path and a short summary (mode, recipe, examiner, signed, latest run)."""
     case = _resolve_case(cases_dir, id)
     r = case.record
     console.print(f"[bold]{r.id}[/bold] — {r.title}")
@@ -285,7 +281,7 @@ def case_fork(
         ),
     ),
 ) -> None:
-    """Clone a Case into an unsigned descendant for further iteration (spec §6)."""
+    """Clone a Case into an unsigned descendant for further iteration."""
     try:
         _validate_case_id(id)  # the source id is a path component too (audit P1.3)
         forked = fork_case(
@@ -393,7 +389,7 @@ def case_sign(
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
 ) -> None:
-    """Sign & lock a Case (spec §6). The Case becomes read-only after this."""
+    """Sign & lock a Case. The Case becomes read-only after this."""
     case = _resolve_case(cases_dir, id)
     try:
         plugin = get_signature_plugin(signature_plugin)
@@ -438,7 +434,7 @@ def case_verify(
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
 ) -> None:
-    """Verify a signed Case's chain-of-custody seal (audit P1.1).
+    """Verify a signed Case's chain-of-custody seal.
 
     Recomputes every sealed quantity from disk and compares it to signed.json.
     Exit codes: 0 = seal intact, 1 = case is not signed (nothing to verify),
