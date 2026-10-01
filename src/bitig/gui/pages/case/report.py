@@ -122,20 +122,45 @@ def _export_pdf(case: Case) -> None:
 
 
 def _verify_seal(case: Case) -> None:
-    """Recompute and display the chain-of-custody seal status (audit P1.1)."""
-    result = case.verify_seal()
+    """Recompute and display the chain-of-custody seal status (audit P1.1).
+
+    An optional key verifies an HMAC seal; without it an intact HMAC seal is
+    reported as unverified rather than passed (audit 2026-09-26).
+    """
     with ui.dialog() as dialog, ui.card().classes("bg-slate-900 text-slate-100 min-w-96"):
         ui.label("Seal verification").classes("text-lg font-semibold")
-        if not result.signed:
-            ui.label("Case is not signed — nothing to verify.").classes("bitig-muted")
-        else:
-            headline = "● PASS — seal intact" if result.ok else "● FAIL — seal broken"
-            ui.label(headline).classes("bitig-mono " + ("bitig-ok" if result.ok else "bitig-err"))
-            for c in result.checks:
-                mark = "✓" if c.ok else "✗"
-                klass = "bitig-ok" if c.ok else "bitig-err"
-                ui.label(f"{mark} {c.name}: {c.detail}").classes(f"bitig-mono text-xs {klass}")
+        key_input = ui.input(
+            "Signature key (HMAC seals; leave empty for unsigned seals)", password=True
+        ).classes("w-full")
+        output = ui.column().classes("w-full gap-1")
+
+        def run_check() -> None:
+            output.clear()
+            result = case.verify_seal(signature_key=key_input.value or None)
+            with output:
+                if not result.signed:
+                    ui.label("Case is not signed — nothing to verify.").classes("bitig-muted")
+                    return
+                if result.tamper_evident:
+                    headline, klass = "● PASS — seal intact and signed", "bitig-ok"
+                elif result.ok:
+                    headline, klass = (
+                        "● HASHES CONSISTENT — UNSIGNED seal (not tamper-evident)",
+                        "bitig-err",
+                    )
+                else:
+                    headline, klass = "● FAIL — seal broken or unverified", "bitig-err"
+                ui.label(headline).classes(f"bitig-mono {klass}")
+                for c in result.checks:
+                    mark = "✓" if c.ok else "✗"
+                    c_klass = "bitig-ok" if c.ok else "bitig-err"
+                    ui.label(f"{mark} {c.name}: {c.detail}").classes(
+                        f"bitig-mono text-xs {c_klass}"
+                    )
+
+        run_check()
         with ui.row().classes("w-full justify-end"):
+            ui.button("Verify", on_click=run_check).props("flat color=amber")
             ui.button("Close", on_click=dialog.close).props("flat color=white")
     dialog.open()
 

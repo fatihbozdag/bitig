@@ -36,9 +36,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
+import tempfile
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -60,6 +62,8 @@ from bitig.recipes import (
 if TYPE_CHECKING:
     from bitig.corpus import Corpus
     from bitig.signatures import SignaturePlugin
+
+_log = logging.getLogger(__name__)
 
 EvidenceRole = Literal["questioned", "known", "control"]
 _ROLES: tuple[EvidenceRole, ...] = ("questioned", "known", "control")
@@ -129,9 +133,9 @@ class ControlCorpusRef:
     """Pointer to an external impostor pool (forensic mode only).
 
     Cases reference control corpora by id rather than copying them in.
-    The runner is responsible for resolving the id at execution time
-    (e.g., to a bundled corpus shipped with bitig, or one registered in
-    ``~/.bitig/config.toml``).
+    NOTE: no runner code resolves or analyses this corpus yet. Reports list
+    it as "not used by the analysis" so the chain of custody does not
+    suggest otherwise (audit 2026-09-26 P2).
     """
 
     corpus_id: str
@@ -329,9 +333,12 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Non
     """Write ``text`` to ``path`` atomically (write temp + os.replace) so an
     interrupted write can't truncate an integrity-root file (audit P2)."""
     path = Path(path)
-    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    # Unique per call (mkstemp): a pid-only name collided between threads.
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.tmp-")
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(text, encoding=encoding)
+        with os.fdopen(fd, "w", encoding=encoding) as fh:
+            fh.write(text)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -361,10 +368,18 @@ class SealVerification:
 
     signed: bool
     checks: list[SealCheck]
+    # Plugin recorded in signed.json; "null" means hashes only — consistent
+    # hashes are then NOT evidence against tampering by anyone with write access.
+    plugin_id: str = "null"
 
     @property
     def ok(self) -> bool:
         return self.signed and all(c.ok for c in self.checks)
+
+    @property
+    def tamper_evident(self) -> bool:
+        """True only for a verified seal with a cryptographic signature."""
+        return self.ok and self.plugin_id != "null"
 
 
 def _count_tokens(path: Path) -> int:
@@ -416,6 +431,9 @@ class Case:
     def __init__(self, root: Path, record: CaseRecord) -> None:
         self.root: Path = Path(root)
         self.record: CaseRecord = record
+        # SHA-256 of case.json as this handle last read or wrote it; save()
+        # refuses to overwrite a newer version (see _check_not_stale).
+        self._disk_sha: str | None = None
 
     # -- construction -------------------------------------------------------
 
@@ -482,7 +500,8 @@ class Case:
         case_json = case_dir / _CASE_JSON
         if not case_json.is_file():
             raise CaseError(f"Not a Case directory (missing {_CASE_JSON}): {case_dir}")
-        data = json.loads(case_json.read_text(encoding="utf-8"))
+        raw = case_json.read_bytes()
+        data = json.loads(raw.decode("utf-8"))
         record = CaseRecord.from_dict(data)
         # case.json is untrusted (cases are shareable). Reject any evidence path
         # that is absolute or escapes the case dir BEFORE anything hashes or
@@ -496,7 +515,9 @@ class Case:
         # '../../x' would read result.json / figures from anywhere (audit P2).
         for run_id in [*record.runs, *([record.latest_run] if record.latest_run else [])]:
             _validate_case_id(run_id)
-        return cls(case_dir, record)
+        case = cls(case_dir, record)
+        case._disk_sha = hashlib.sha256(raw).hexdigest()
+        return case
 
     # -- paths --------------------------------------------------------------
 
@@ -536,9 +557,28 @@ class Case:
         silently re-blessed by the next save (audit 2026-09-26 N-P1.1). The
         Custom editor goes through :meth:`change_recipe`, which regenerates.
         """
+        self._check_not_stale()
         self.record.corpus_hash = compute_corpus_hash(self.record.evidence)
         payload = json.dumps(self.record.to_dict(), indent=2)
         _atomic_write_text(self.case_json_path, payload)
+        self._disk_sha = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _check_not_stale(self) -> None:
+        """Refuse to save over a case.json another handle or process has changed.
+
+        save() writes the whole in-memory record, so a handle loaded before
+        another one signed the case (e.g. the GUI run page during a long run)
+        would un-sign it, and evidence registered elsewhere would be dropped
+        (audit 2026-09-26 P2).
+        """
+        if not self.case_json_path.is_file():
+            return
+        current = hashlib.sha256(self.case_json_path.read_bytes()).hexdigest()
+        if self._disk_sha is not None and current != self._disk_sha:
+            raise CaseError(
+                "case.json was changed by another handle or process since this case was "
+                "loaded; reload the case (Case.load) and retry."
+            )
 
     # -- evidence -----------------------------------------------------------
 
@@ -1172,9 +1212,29 @@ class Case:
             )
         )
 
+        checks.append(self._signer_check(payload))
         checks.append(self._signature_check(payload, signature_key))
 
-        return SealVerification(signed=True, checks=checks)
+        return SealVerification(
+            signed=True,
+            checks=checks,
+            plugin_id=str(payload.get("signature_plugin_id") or "null"),
+        )
+
+    def _signer_check(self, payload: dict[str, Any]) -> SealCheck:
+        """case.json's signer / time must match the sealed ones (shown by status and GUI)."""
+        mismatched = [
+            field_name
+            for field_name in ("signed_by", "signed_at")
+            if getattr(self.record, field_name) != payload.get(field_name)
+        ]
+        if mismatched:
+            return SealCheck(
+                "signer",
+                False,
+                f"case.json {', '.join(mismatched)} differ from {_REPORT_SIGNED}",
+            )
+        return SealCheck("signer", True, f"signed by {payload.get('signed_by')!r}")
 
     def _run_outputs_check(self, payload: dict[str, Any]) -> SealCheck:
         """Compare the sealed run-output manifest with the files on disk (N-P1.5)."""
@@ -1254,7 +1314,8 @@ class Case:
             return SealCheck(
                 "signature",
                 True,
-                "no cryptographic signature (Null plugin) — chain-of-custody hashes only",
+                "UNSIGNED (Null plugin): hashes only — anyone with write access can "
+                "recompute them, so this seal is not tamper-evident",
             )
         if sig is None:
             return SealCheck(
@@ -1369,24 +1430,40 @@ def fork_case(
     return forked
 
 
-def list_cases(root: Path) -> list[Case]:
-    """Return every Case under ``root`` (one level deep).
+def scan_cases(root: Path) -> tuple[list[Case], list[tuple[Path, str]]]:
+    """Every readable Case under ``root`` (one level deep), and the unreadable ones.
 
-    Skips entries that don't contain a ``case.json``. Returned in
-    alphabetical order by id; the GUI's Case-list landing page can re-sort
-    by created_at / signed status as needed.
+    Returns ``(cases, problems)`` where ``problems`` lists ``(directory,
+    reason)`` for case directories whose ``case.json`` is malformed or
+    rejected by :meth:`Case.load`; one bad case no longer aborts the whole
+    listing (audit 2026-09-26 P2). Directories without ``case.json`` are not
+    cases and are skipped silently.
     """
     root = Path(root)
     if not root.is_dir():
-        return []
-    out: list[Case] = []
+        return [], []
+    cases: list[Case] = []
+    problems: list[tuple[Path, str]] = []
     for child in sorted(root.iterdir()):
-        if not child.is_dir():
+        if not child.is_dir() or not (child / _CASE_JSON).is_file():
             continue
-        if not (child / _CASE_JSON).is_file():
-            continue
-        out.append(Case.load(child))
-    return out
+        try:
+            cases.append(Case.load(child))
+        except (CaseError, KeyError, TypeError, ValueError, OSError) as exc:
+            problems.append((child, f"{type(exc).__name__}: {exc}"))
+    return cases, problems
+
+
+def list_cases(root: Path) -> list[Case]:
+    """Every readable Case under ``root`` (one level deep), alphabetical by id.
+
+    Unreadable case directories are skipped with a warning; use
+    :func:`scan_cases` to get them.
+    """
+    cases, problems = scan_cases(root)
+    for path, reason in problems:
+        _log.warning("skipping unreadable case %s: %s", path, reason)
+    return cases
 
 
 __all__ = [
@@ -1406,4 +1483,5 @@ __all__ = [
     "hash_file",
     "hash_text",
     "list_cases",
+    "scan_cases",
 ]

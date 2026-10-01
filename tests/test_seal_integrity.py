@@ -391,3 +391,52 @@ def test_file_dropped_after_signing_fails_verify(tmp_path: Path) -> None:
     (case.evidence_dir / "known" / "late.txt").write_text("added later", encoding="utf-8")
     check = _check(case, "unregistered_files")
     assert not check.ok and "late.txt" in check.detail
+
+
+# -- Stale handles (lost update) ----------------------------------------------
+
+
+def test_stale_handle_cannot_unsign_a_case(tmp_path: Path) -> None:
+    """GUI run page holds a handle through a long run while the case is signed
+    elsewhere; its register_run save() used to write signed=False back."""
+    case = _run_case(tmp_path)
+    stale = Case.load(case.root)
+    Case.load(case.root).mark_signed()
+    (case.runs_dir / "later").mkdir()
+    with pytest.raises(CaseError, match="changed by another"):
+        stale.register_run("later")
+    assert Case.load(case.root).record.signed
+
+
+def test_stale_handle_cannot_drop_evidence_registered_elsewhere(tmp_path: Path) -> None:
+    case = _run_case(tmp_path)
+    stale = Case.load(case.root)
+    Case.load(case.root).add_evidence(_MINI / "bob_two.txt", role="known", author="Bob")
+    with pytest.raises(CaseError, match="changed by another"):
+        stale.set_param("seed", 7)
+    assert any(e.path.endswith("bob_two.txt") for e in Case.load(case.root).record.evidence.known)
+
+
+# -- Listing and control corpus -----------------------------------------------
+
+
+def test_one_bad_case_does_not_break_listing(tmp_path: Path) -> None:
+    from bitig.cases import list_cases, scan_cases
+
+    root = tmp_path / "cases"
+    Case.create(root, id="good", title="t", examiner="x", recipe="exploration")
+    (root / "bad").mkdir()
+    (root / "bad" / "case.json").write_text("{}", encoding="utf-8")
+    cases, problems = scan_cases(root)
+    assert [c.record.id for c in cases] == ["good"]
+    assert problems and problems[0][0].name == "bad"
+    assert [c.record.id for c in list_cases(root)] == ["good"]
+    result = _cli("case", "list", "--cases-dir", str(root))
+    assert result.exit_code == 0 and "unreadable case" in result.output and "good" in result.output
+
+
+def test_report_says_control_corpus_is_not_used(tmp_path: Path) -> None:
+    case = _run_case(tmp_path)
+    case.set_control_corpus("BUMR", n_docs=10)
+    html = build_case_report(case).read_text(encoding="utf-8")
+    assert "BUMR" in html and "not used by the analysis" in html

@@ -19,6 +19,12 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - Export refuses a signed case whose seal no longer verifies.
 - New: `bitig case add-evidence`, `bitig case reacknowledge` (sealed custody log),
   `bitig case fork --acknowledge-mismatch`.
+- HMAC signatures (scheme 2) cover the whole `signed.json` payload, signer included;
+  `verify_seal` cross-checks the signer in `case.json`. A Null-plugin seal is reported as
+  "UNSIGNED — not tamper-evident", never "seal verified". The GUI verify dialog takes a key.
+- A stale `Case` handle can no longer overwrite a newer `case.json` (e.g. un-sign a case
+  signed elsewhere); it raises and must be reloaded.
+- `bitig case list` / the GUI list unreadable cases instead of failing on the first one.
 - Reports no longer call a General Impostors score a likelihood ratio, and show one
   score per questioned document instead of the maximum.
 

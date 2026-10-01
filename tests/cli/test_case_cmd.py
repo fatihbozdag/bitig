@@ -400,6 +400,22 @@ def test_case_verify_passes_for_untampered_seal(tmp_path: Path) -> None:
 
     result = runner.invoke(app, ["case", "verify", "vok", "--cases-dir", str(cases_dir)])
     assert result.exit_code == 0, result.output
+    # A Null-plugin seal is consistent but not tamper-evident; never "verified".
+    assert "UNSIGNED" in result.output
+    assert "seal verified" not in result.output
+
+
+def test_case_verify_hmac_seal_reports_verified(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BITIG_SIGNATURE_KEY", "k")
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "vh")
+    _stub_report(cases_dir, "vh")
+    signed = runner.invoke(
+        app, ["case", "sign", "vh", "--signature-plugin", "hmac", "--cases-dir", str(cases_dir)]
+    )
+    assert signed.exit_code == 0, signed.output
+    result = runner.invoke(app, ["case", "verify", "vh", "--cases-dir", str(cases_dir)])
+    assert result.exit_code == 0, result.output
     assert "seal verified" in result.output
 
 

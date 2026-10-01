@@ -106,7 +106,7 @@
       <tr><th>role</th><th>document</th><th>tokens</th></tr>
       {% for e in chain_of_custody %}
         {% if e.role == "control" %}
-        <tr><td>{{ e.role }}</td><td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }})</span></td><td>—</td></tr>
+        <tr><td>{{ e.role }}</td><td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }}; not used by the analysis)</span></td><td>—</td></tr>
         {% else %}
         <tr><td>{{ e.role }}</td><td>{{ e.label }}</td><td>{{ e.tokens }}</td></tr>
         {% endif %}

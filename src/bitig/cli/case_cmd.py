@@ -20,7 +20,7 @@ from bitig.cases import (
     CaseError,
     _validate_case_id,
     fork_case,
-    list_cases,
+    scan_cases,
 )
 from bitig.recipes import RECIPES
 from bitig.signatures import SIGNATURE_PLUGINS, get_signature_plugin
@@ -113,7 +113,9 @@ def case_list(
     ),
 ) -> None:
     """List every Case under ``--cases-dir`` in a Rich table."""
-    cases = list_cases(cases_dir)
+    cases, problems = scan_cases(cases_dir)
+    for path, reason in problems:
+        console.print(f"[red]unreadable case[/red] {path.name}: {reason}")
     if not cases:
         console.print(f"[yellow]no cases found under[/yellow] {cases_dir}")
         return
@@ -453,7 +455,13 @@ def case_verify(
         mark = "[green]✓[/green]" if c.ok else "[red]✗[/red]"
         console.print(f"  {mark} {c.name}: {c.detail}")
 
-    if result.ok:
+    if result.ok and not result.tamper_evident:
+        console.print(
+            f"[yellow]hashes consistent[/yellow] — but {case.record.id} is UNSIGNED "
+            "(Null plugin): this is not evidence against tampering by anyone with write "
+            "access. Sign with --signature-plugin hmac for a tamper-evident seal."
+        )
+    elif result.ok:
         console.print(f"[green]seal verified[/green] — {case.record.id} is intact")
     else:
         console.print(f"[red]SEAL BROKEN[/red] — {case.record.id} failed verification")

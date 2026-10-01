@@ -292,3 +292,38 @@ def test_custom_plugin_can_augment_payload(tmp_path: Path):
     assert payload["signature_plugin_id"] == "audit-trail-test"
     assert payload["audit_trail"]["case_id"] == "aud"
     assert payload["audit_trail"]["examiner"] == "Inspector Lestrade"
+
+
+def test_hmac_covers_the_signer_and_case_json_must_match(tmp_path: Path, monkeypatch):
+    """signed_by was outside the HMAC and never cross-checked (audit 2026-09-26 P2)."""
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="who")
+    case.mark_signed(signed_by="Alice", signature_plugin=HmacSignaturePlugin(key="k"))
+    assert Case.load(case.root).verify_seal(signature_key="k").tamper_evident
+
+    signed_json = case.report_dir / "signed.json"
+    payload = json.loads(signed_json.read_text(encoding="utf-8"))
+    assert payload["signature"]["scheme"] == 2
+    payload["signed_by"] = "Mallory"
+    signed_json.write_text(json.dumps(payload), encoding="utf-8")
+    result = Case.load(case.root).verify_seal(signature_key="k")
+    failed = {c.name for c in result.checks if not c.ok}
+    assert {"signature", "signer"} <= failed  # HMAC breaks; case.json still says Alice
+
+
+def test_legacy_scheme1_hmac_still_verifies():
+    import hashlib
+    import hmac as hmac_mod
+
+    payload = {"case_state_hash": "a", "report_html_hash": "b", "signed_at": "t"}
+    value = hmac_mod.new(b"k", b"a\nb\nt", hashlib.sha256).hexdigest()
+    payload["signature"] = {"algorithm": "HMAC-SHA256", "value": value}
+    assert verify_hmac_signature(payload, key="k")
+
+
+def test_null_seal_is_not_tamper_evident(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    case = _signable_case(tmp_path, id="nul2")
+    case.mark_signed()
+    result = Case.load(case.root).verify_seal()
+    assert result.ok and not result.tamper_evident
