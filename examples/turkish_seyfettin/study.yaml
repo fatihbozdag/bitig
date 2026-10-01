@@ -2,12 +2,13 @@
 #
 # Wikisource:tr currently has substantial PD-old prose for only one author, so
 # this tutorial showcases what bitig produces when you point it at a single
-# author's body of work: pairwise Burrows Delta, a PCA biplot of the lexical
-# axes, and a Ward hierarchical clustering that surfaces sub-structure (genre
-# / period / theme) inside one writer's career.
+# author's body of work: a PCA biplot of the lexical axes and a Ward
+# hierarchical clustering that surfaces sub-structure inside one writer's
+# career. Burrows Delta is deliberately absent: `bitig run` needs at least two
+# `author` values to fit Delta centroids, and this corpus has one.
 #
 # Run it with:
-#   .venv/bin/python -m bitig run examples/turkish_seyfettin/study.yaml --name seyfettin
+#   bitig run examples/turkish_seyfettin/study.yaml --name seyfettin
 
 name: seyfettin-within-author
 seed: 42
@@ -35,12 +36,6 @@ features:
     scale: zscore
 
 methods:
-  - id: burrows
-    kind: delta
-    variant: burrows
-    features: mfw500
-    group_by: author
-
   - id: pca
     kind: reduce
     variant: pca

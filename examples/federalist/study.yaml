@@ -1,9 +1,11 @@
 # Full Federalist Papers stylometric analysis
 #
-# Reproduces the Mosteller & Wallace (1964) disputed-paper attribution using
-# Burrows Delta. Also exercises Zeta (contrastive vocabulary), PCA projection,
-# hierarchical clustering with Ward linkage, and a small bootstrap consensus
-# tree. Runs against the full 85-paper corpus with standard author labels.
+# Exploratory views of the 71 single-author papers (Hamilton 51, Madison 15,
+# Jay 5): Burrows Delta (in-sample/resubstitution only), Zeta (contrastive
+# vocabulary), PCA, Ward hierarchical clustering, and a small bootstrap
+# consensus tree. The 11 disputed papers and the 3 joint papers are filtered
+# out below, so this study does NOT attribute or plot the disputed papers;
+# attribution is the separate `bitig delta` / `bitig bayesian` step in README.md.
 #
 # Usage:
 #   bitig run examples/federalist/study.yaml --name demo
@@ -15,8 +17,8 @@ seed: 42
 corpus:
   path: examples/federalist/corpus
   metadata: examples/federalist/metadata.tsv
-  # Only analyse single-author papers; Joint_HM (18-20) and Disputed (test set)
-  # are excluded from the training-based views by the filter below.
+  # Only analyse single-author papers; Joint_HM (18-20, role=excluded) and the
+  # Disputed papers (role=test) are dropped from every method by this filter.
   filter:
     role: [train]
 

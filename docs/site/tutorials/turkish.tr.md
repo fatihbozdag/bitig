@@ -1,8 +1,8 @@
 # Türkçe stilometri öğreticisi
 
-Küçük bir Türkçe kısa hikaye derleminde MFW + Ateşman okunabilirlik + Burrows Delta
-kullanarak yazar tespiti yapan, baştan sona çalıştırılabilir bir örnek. Hikayeler, Türkçe
-Wikisource'dan alınan, telif hakkı süresi dolmuş Ömer Seyfettin metinleridir.
+Çalıştırılabilir bir Türkçe örnek: bir Türkçe proje kurun, ardından Türkçe Wikisource'dan alınan,
+telif hakkı süresi dolmuş Ömer Seyfettin kısa hikayelerinden oluşan bir derlemi MFW, PCA ve Ward
+kümeleme ile inceleyin.
 
 ## Kurulum
 
@@ -13,8 +13,8 @@ bitig init seyfettin --language tr
 cd seyfettin
 ```
 
-Bu komut, Türkçe için önceden yapılandırılmış `study.yaml` içeren bir proje dizini oluşturur.
-Şununla doğrulayın:
+Bu komut, Türkçe için önceden yapılandırılmış (`preprocess.language: tr`) `study.yaml` içeren bir
+proje dizini oluşturur. Şununla doğrulayın:
 
 ```bash
 bitig info
@@ -22,13 +22,19 @@ bitig info
 
 `language` satırı `tr` gösterir.
 
+Stanza (`spacy-stanza` aracılığıyla) yalnızca `bitig ingest` ve Python API'deki spaCy tabanlı
+öznitelikler için gereklidir. `bitig run` komutunun oluşturduğu öznitelikler (MFW, n-gramlar,
+işlev sözcükleri, noktalama, sözcüksel çeşitlilik, okunabilirlik) ham metin üzerinde çalışır ve
+Stanza'yı hiç yüklemez.
+
 ## Derlem
 
-`corpus/` dizinine UTF-8 `.txt` dosyası olarak 3-5 Türkçe kısa hikaye ekleyin. İyi bir
+`corpus/` dizinine Türkçe metinlerinizi UTF-8 `.txt` dosyası olarak ekleyin. İyi bir
 telif hakkı süresi dolmuş kaynak, [Türkçe Vikiskaynak'taki Ömer Seyfettin](https://tr.wikisource.org/wiki/Yazar:%C3%96mer_Seyfettin)
 sayfasıdır — 20. yüzyıl başına ait düzinelerce kısa hikaye orada zaten yazıya geçirilmiş durumdadır.
 
-`corpus/metadata.tsv` dosyasını ekleyin:
+`corpus/metadata.tsv` dosyasını ekleyin ve `study.yaml` içindeki `metadata:` satırının yorumunu
+kaldırın:
 
 ```tsv
 filename	author	year
@@ -38,119 +44,111 @@ forsa.txt	Omer_Seyfettin	1913
 pembe_incili_kaftan.txt	Omer_Seyfettin	1917
 ```
 
-Gerçek bir çalışmada birden fazla yazar olması gerekir. Tek yazarlı demo için Seyfettin'i
-birkaç Refik Halit Karay hikayesiyle eşleştirin (o da telif hakkı süresi dolmuş) — böylece
-Delta'nın ayırt edecek bir şeyi olur.
+İskele çalışması `author` sütununa göre gruplanmış Burrows Delta çalıştırır; bu yöntem **en az iki**
+farklı `author` değerine ait belge gerektirir. Tek yazarla Delta yöntemi başarısız olur ve
+`bitig run` 1 durum koduyla çıkar. Ya ikinci bir yazarın metinlerini ekleyin ya da aşağıdaki
+çalışan örnekte olduğu gibi Delta yöntemini `reduce` / `cluster` yöntemleriyle değiştirin.
 
 ## Çalışmayı çalıştırın
 
 ```bash
-bitig ingest corpus/ --language tr --metadata corpus/metadata.tsv
+bitig ingest corpus/ --language tr --metadata corpus/metadata.tsv   # isteğe bağlı
 bitig run study.yaml --name first-run
 ```
 
-`bitig ingest`, Stanza'yı `spacy-stanza` aracılığıyla çalıştırır. İlk çalıştırma her belgeyi
-ayrıştırır ve DocBin'leri önbelleğe alır; sonraki çalıştırmalar önbellekten okur ve saniyeler
-içinde tamamlanır.
+`bitig ingest`, Stanza'yı `spacy-stanza` aracılığıyla çalıştırır ve ayrıştırmaları DocBin olarak
+önbelleğe alır. `bitig run` bu önbelleği okumaz; dolayısıyla bu çalışma için ingest adımı isteğe
+bağlıdır.
 
 ## Çıktılar
 
-Varsayılan bir Türkçe çalışma şunları hesaplar:
+İskele Türkçe çalışması **MFW** (ilk 1 000 sözcük, z-skorlu) oluşturur ve **Burrows Delta**
+çalıştırır. `bitig run`, yöntem başına bir klasör ve çalıştırma yapılandırmasını yazar:
 
-- **MFW** (ilk 1000 belirteç, z-skorlanmış göreli sıklıklar)
-- **Türkçe işlev sözcükleri** — UD Turkish BOUN kapalı sınıf belirteçlerinden türetilen
-  `resources/languages/tr/function_words.txt` dosyasından yüklenir
-- **Ateşman ve Bezirci-Yılmaz** okunabilirlik endeksleri
-- **Burrows Delta** + PCA/MDS indirgeme grafikleri
+```
+results/first-run/
+├── resolved_config.json      # tam çözümlenmiş çalışma yapılandırması
+└── burrows/
+    ├── result.json           # tahminler, yeniden ikame doğruluğu, köken bilgisi
+    └── confusion_matrix.png
+```
 
-`results/first-run/` çıktı klasörü şunları içerir:
-
-- Delta skorları ve köken bilgisi içeren `result.json`
-- `table_*.parquet` öznitelik matrisleri
-- PNG / PDF şekiller (mesafe ısı haritası, PCA dağılım grafiği)
-- Derlem özetini, seed değerini ve tam çözümlenmiş yapılandırmayı kaydeden `provenance.json`
+- `result.json`, yöntemin değerlerini ve bir köken bilgisi bloğunu (bitig sürümü, derlem özeti,
+  öznitelik özeti, seed, çözümlenmiş yapılandırma) içerir. Ayrı bir `provenance.json` yoktur.
+- Delta değerleri örneklem içidir: `resubstitution_accuracy` bir ayrışabilirlik denetimidir;
+  `attributions` ise `author` değeri olmayan belgeleri listeler.
+- Diğer yöntemler kendi varsayılan şekillerini yazar: `reduce` için `scatter.png` ve
+  `pca_biplot.png`, `cluster` için `dendrogram.png`, `zeta` için `zeta.png`. Yalnızca tablo
+  döndüren yöntemler (Zeta, kayan Delta, doğrulama) ayrıca `table_N.parquet` dosyaları yazar.
+- Başarısız bir yöntem, klasöründe `result.json` yerine bir `error.txt` bırakır ve çalıştırma
+  1 durum koduyla çıkar.
 
 ## Çalışan örnek: Ömer Seyfettin'in 28 kısa hikayesi
 
 Depodaki `examples/turkish_seyfettin/` dizini, Ömer Seyfettin'in
 (1884-1920; Türkiye'de telif hakkı süresi 1991'de dolmuştur)
 [tr.wikisource.org](https://tr.wikisource.org) üzerinden `fetch_corpus.py`
-betiği ile çekilip çalışmayla birlikte depoya işlenmiş 28 kısa hikayesi
-üzerinde uçtan uca, yeniden üretilebilir bir çalıştırma sunar.
+betiği ile çekilmiş 28 kısa hikayesi üzerinde uçtan uca bir çalıştırma sunar. Derlem
+çalışmayla birlikte depoya işlenmiştir; yeniden çekmeniz gerekmez:
 
 ```bash
-python examples/turkish_seyfettin/fetch_corpus.py --n 30   # ~30s; Wikisource'a saygılı
-python -m bitig run examples/turkish_seyfettin/study.yaml --name seyfettin
+bitig run examples/turkish_seyfettin/study.yaml --name seyfettin
+# isteğe bağlı: hikayeleri yeniden indirin (~30s; Wikisource'a saygılı)
+python examples/turkish_seyfettin/fetch_corpus.py --n 30
 ```
 
 **Derlem.** 200 belirteçlik alt sınırı geçen 28 hikaye var; uzunluklar 326 ile
-4 455 belirteç arasında (medyan ≈ 1 700). Wikisource transkripsiyonları CC BY-SA 4.0
+4 455 belirteç arasında (medyan ≈ 1 560). Wikisource transkripsiyonları CC BY-SA 4.0
 lisanslıdır; atıf bilgileri ve kaynak URL'ler
 `examples/turkish_seyfettin/manifest.json` dosyasındadır.
 
-**Çalışma.** En sık 500 sözcük (z-skorlu, `min_df = 2`) + Türkçe işlev sözcükleri
-sıklıkları → Burrows Delta öz-atfetme + PCA + Ward hiyerarşik kümeleme.
-Tek-yazar kurguları yazar arası doğrulamayı (Imposters / classify) kabul etmediği
-için bu *yazar içi keşifsel stilometri*dir, yazar tespiti değildir.
+**Çalışma.** En sık 500 sözcük (z-skorlu, `min_df = 2`) → PCA + Ward hiyerarşik kümeleme.
+Çalışma ayrıca varsayılan olarak hiçbir yöntemin kullanmadığı bir Türkçe işlev sözcüğü
+özniteliği (`tr_fwords`) oluşturur; denemek için bir yöntemin `features:` alanını ona
+yönlendirin. Tek yazarlı bir derlem yazarlar arası yazar tespitine ya da doğrulamaya (Delta,
+Imposters, classify) izin vermez; bu nedenle bu *yazar içi keşifsel stilometri*dir, yazar
+tespiti değildir.
 
-### Burrows Delta öz-atfetme
+Çalıştırma şunları yazar:
 
-28 hikayelik leave-one-out ızgarasında her hikayenin en yakın komşusu kendisidir
-(doğruluk = 1.0). Tek-yazar derlem için bu önemsiz sonuç — her belge kendi MFW
-profiline başkasınınkinden daha yakındır — aynı zamanda hiçbir hikayenin yanlış
-yazar metaverisiyle etiketlenmediğini doğrular. Esas sinyal bir sıra
-sonradadır: 2. en yakın komşular, biçemce yakın hikayeleri yüzeye çıkarır.
-Sıralamada kullanılan ikili mesafe matrisi
-`results/seyfettin/burrows/result.json` içinde saklanır.
+```
+examples/turkish_seyfettin/results/seyfettin/
+├── resolved_config.json
+├── pca/
+│   ├── result.json        # koordinatlar, yüklemeler, açıklanan varyans
+│   ├── scatter.png
+│   └── pca_biplot.png
+└── ward/
+    ├── result.json        # küme etiketleri ve bağlantı matrisi
+    └── dendrogram.png
+```
 
 ### MFW-500 sözcüksel uzayı üzerinde PCA
 
-![PCA dağılımı](turkish_figures/pca_scatter.png)
+PC1 varyansın **%8,0**'ini, PC2 ise **%6,9**'unu açıklar. Tek bir bileşen baskın değildir:
+tek bir yazarın iç sözcüksel varyansı pek çok küçük eksene yayılır.
 
-PC1 varyansın **% 7.7**'sini, PC2 ise **% 7.2**'sini açıklar. Tek bir bileşenin
-baskın olmaması başlı başına tanılayıcıdır: tek bir yazarın iç sözcüksel
-varyansı, bir-iki eksende toplanmak yerine pek çok küçük eksene yayılır. Yazar
-arası bir PCA ile karşılaştırın (örn. [Federalist öğreticisi](federalist.md)):
-orada PC1 tek başına çoğunlukla % 30 ve üzerini yakalar.
+**En büyük yüklemeler — PC1**: `o`, `akşam`, `gül`, `bana`, `karşı`, `bakıyordu`, `nihayet`, `ki`.
 
-**En etkili yüklemeler — PC1**: `baktı`, `değildi`, `açtı`, `durdu`, `hafif`, `iki`, `şeyler`, `gelince`.
-PC1, basit-geçmiş 3. tekil anlatım eylemlerine (`baktı`, `açtı`, `durdu`)
-yaslanan hikayeleri bunlara yaslanmayanlardan ayırır.
+**En büyük yüklemeler — PC2**: `durdu`, `idi`, `başını`, `hafif`, `değildi`, `üzerine`, `şeyler`, `tarafa`.
 
-**En etkili yüklemeler — PC2**: `idi`, `ediyordu`, `onu`, `o`, `olduğu`, `nihayet`, `etti`, `durdu`.
-PC2, geçmiş-süreğen yardımcısını (`idi`, `ediyordu`) ve 3. tekil zamir öbeğini
-(`onu`, `o`, `olduğu`) yakalar — yani uzun-durum betimi ile olay-odaklı anlatım
-arasındaki seçim.
-
-Biplot, en etkili 12 yükleme vektörünü aynı 2-B izdüşüm üzerine bindirir:
-
-![PCA biplot](turkish_figures/pca_biplot.png)
-
-[Etkileşimli plotly biplot'ı aç ↗](turkish_figures/pca_biplot.html) — hikaye
-kimliklerini ve ok ucu etiketlerini görmek için imleci üstüne getirin.
+`pca/pca_biplot.png`, en büyük 15 yükleme vektörünü aynı 2-B izdüşüm üzerine bindirir.
 
 ### Ward hiyerarşik kümeleme (k = 4)
 
-![Ward dendrogramı](turkish_figures/ward_dendrogram.png)
+Dendrogramı (`ward/dendrogram.png`) dört düz kümede kesmek şunu verir:
 
-Dört düz kümede kesim şunu verir:
+| Küme | n  | Üyeler | Hikaye uzunluğu (belirteç) |
+|-----:|---:|---|---|
+| 0    | 17 | `and`, `antiseptik`, `elma`, `kasag`, … | medyan 1 152 (326–3 115) |
+| 1    |  9 | `aleko`, `bomba`, `ferman`, `forsa`, … | medyan 2 418 (1 096–4 455) |
+| 2    |  1 | `keramet` | 508 |
+| 3    |  1 | `hediye` | 454 |
 
-| Küme | n  | Üye hikaye kimlikleri |
-|-----:|---:|---|
-| 0    | 23 | derlemin gövdesi (`aleko`, `bomba`, `kasag`, `forsa`, …) |
-| 1    |  3 | `bir_refikin_defter_i_ihtisasat_ndan`, `elma`, `hediye` |
-| 2    |  1 | `bir_kay_s_n_tesiri` |
-| 3    |  1 | `keramet` |
-
-Üç parçalık küme, derlemdeki en kısa üç parçaya karşılık çıkar (329 / 517 /
-457 belirteç). İki tekil de kısadır (554 ve 511 belirteç). Dendrogram özünde
-**uzunluk-güdümlü bir sinyal** yüzeye çıkarmaktadır: ~600 belirteç altındaki
-metinlerde z-skorlu MFW sayımları gürültülenir, dolayısıyla kısa hikayeler
-konudan bağımsız olarak ana buluttan uzaklaşır. Bu yöntem hatası değil — küçük
-*N* için MFW kestirim varyansının doğal sonucu — ve bu çözümlemenin verdiği
-en kullanışlı bilgi de tam olarak budur:
-
-[Etkileşimli plotly dendrogramını aç ↗](turkish_figures/ward_dendrogram.html)
+Hikaye uzunluğu kümelerle örtüşür: iki tekil küme, derlemin en kısa ikinci ve üçüncü
+hikayeleridir; 1. küme ise uzun hikayeleri toplar. Kısa metinlerde z-skorlu MFW sayımları
+gürültülenir, dolayısıyla kısa hikayeler konudan bağımsız olarak ana buluttan uzaklaşır. Bu
+yöntem hatası değil — küçük *N* için MFW kestirim varyansının doğal sonucudur:
 
 > Türkçe kısa düzyazıda stilometri yapıyorsanız, alt küme yapısından
 > tema/dönem sonuçları çıkarmadan önce belge başına belirteç tabanını en az
@@ -171,27 +169,23 @@ seçilmiş makaleleri ya da kendi kurumsal derleminiz) ile eşleştirmenizi
 
 ## Özelleştirme
 
-Öznitelikleri veya yöntemleri değiştirmek için `study.yaml` dosyasını düzenleyin. Örneğin,
-MFW yerine bağlamsal gömme kullanmak için:
+Öznitelikleri veya yöntemleri değiştirmek için `study.yaml` dosyasını düzenleyin. `bitig run`,
+`mfw`, `word_ngram`, `char_ngram`, `function_word`, `punctuation`, `lexical_diversity` ve
+`readability` öznitelik türlerini oluşturur; başka bir türü çalışmayı yüklerken reddeder. Örneğin
+karakter n-gramları kısa metinlerde daha dayanıklıdır:
 
 ```yaml
 features:
-  - id: bert_tr
-    type: contextual_embedding
-    # model auto-resolves to `dbmdz/bert-base-turkish-cased` via the language registry
-    pool: mean
+  - id: char3
+    type: char_ngram
+    n: 3
+    scale: zscore
 ```
 
-Daha ağır bir Türkçe kodlayıcı için `model:` öğesini herhangi bir HuggingFace denetim
-noktasına yönlendirin:
-
-```yaml
-features:
-  - id: bert5urk
-    type: contextual_embedding
-    model: stefan-it/bert5urk
-    pool: mean
-```
+Bağlamsal gömmeler bir `bitig run` öznitelik türü değildir. Bunları Python'dan
+`bitig.features.ContextualEmbeddingExtractor` ile kullanın; `language="tr"` ile model
+`dbmdz/bert-base-turkish-cased` olarak çözümlenir ve `model=` herhangi bir HuggingFace denetim
+noktasını kabul eder (örn. `stefan-it/bert5urk`). Bu, `bitig[embeddings]` ekini gerektirir.
 
 ## Türkçe'ye özgü notlar
 
