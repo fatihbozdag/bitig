@@ -28,6 +28,17 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - Reports no longer call a General Impostors score a likelihood ratio, and show one
   score per questioned document instead of the maximum.
 
+- New `bitig case run <id>`: runs a case from the CLI with the same guards as the GUI
+  (exit 0 succeeded, 1 partial or failed, 2 blocked).
+- `bitig case verify` exit codes: 0 verified (valid HMAC), 1 not signed, 2 broken,
+  3 intact Null seal (not tamper-evident), 4 HMAC seal that cannot be checked without a key
+  ("CANNOT VERIFY" instead of "SEAL BROKEN"). `$BITIG_SIGNATURE_KEY` alone no longer fails
+  a Null seal; an explicit `--key` still requires a valid HMAC. `SealVerification.status`
+  exposes the outcome. **[breaking]** (scripts that treated exit 0 as success for Null seals)
+- `Case.set_param` no longer freezes the auto-filled verify `target_ids` into the overrides,
+  so questioned documents added later are analysed. A target list that does not match the
+  questioned evidence now blocks the run with a clear message instead of failing every method.
+
 ### Methods and metrics
 
 - **[results]** General Impostors samples `ceil(sqrt(pool))` impostors per iteration

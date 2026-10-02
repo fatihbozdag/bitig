@@ -362,7 +362,48 @@ def case_reacknowledge(
         f"[yellow]re-acknowledged[/yellow] {log['path']}: "
         f"{log['old_sha256'][:12]}… → {log['new_sha256'][:12]}… by {log['by']}"
     )
-    console.print("  Re-run the analysis before signing.")
+    console.print(f"  Re-run the analysis before signing: bitig case run {case.record.id}")
+
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+
+@case_app.command("run")
+def case_run(
+    id: str = typer.Argument(..., help="Case id to run."),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Run the Case's analysis on its registered evidence.
+
+    Same guards as the GUI Run step: refuses a signed case, a custody mismatch,
+    an edited study.yaml or incomplete verification inputs. Exit codes:
+    0 = every method succeeded, 1 = some or all methods failed,
+    2 = run blocked (nothing was run).
+    """
+    from bitig.case_run import perform_run
+
+    case = _resolve_case(cases_dir, id)
+    outcome = perform_run(case)
+    for m in outcome.methods:
+        if m.ok:
+            console.print(f"  [green]✓[/green] {m.method_id}")
+        else:
+            console.print(f"  [red]✗[/red] {m.method_id} — {m.error}")
+    if outcome.run_id and outcome.status != "blocked":
+        console.print(f"  run: {case.runs_dir / outcome.run_id}")
+    if outcome.status == "succeeded":
+        console.print(f"[green]succeeded[/green] — {outcome.message}")
+        return
+    if outcome.status == "blocked":
+        console.print(f"[red]blocked[/red] — {outcome.message}")
+        raise typer.Exit(code=2)
+    color = "yellow" if outcome.status == "partial" else "red"
+    console.print(f"[{color}]{outcome.status}[/{color}] — {outcome.message}")
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -437,28 +478,46 @@ def case_verify(
     """Verify a signed Case's chain-of-custody seal.
 
     Recomputes every sealed quantity from disk and compares it to signed.json.
-    Exit codes: 0 = seal intact, 1 = case is not signed (nothing to verify),
-    2 = seal broken (tamper / mismatch). Scriptable in CI.
+    Exit codes: 0 = seal verified (valid HMAC signature), 1 = case is not
+    signed, 2 = seal broken (tamper / mismatch), 3 = hashes intact but the seal
+    is a Null seal (not tamper-evident), 4 = hashes intact but the HMAC
+    signature cannot be checked (no key). Scriptable in CI.
+
+    An explicit --key always requires a valid HMAC signature. A key found only
+    in $BITIG_SIGNATURE_KEY checks HMAC seals but leaves a Null seal at exit 3.
     """
     case = _resolve_case(cases_dir, id)
     result = case.verify_seal(signature_key=key)
+    status = result.status
 
-    if not result.signed:
+    if status == "not_signed":
         console.print(f"[yellow]{id} is not signed — nothing to verify.[/yellow]")
         raise typer.Exit(code=1)
 
     for c in result.checks:
-        mark = "[green]✓[/green]" if c.ok else "[red]✗[/red]"
+        if c.ok:
+            mark = "[green]✓[/green]"
+        elif c.unverifiable:
+            mark = "[yellow]?[/yellow]"
+        else:
+            mark = "[red]✗[/red]"
         console.print(f"  {mark} {c.name}: {c.detail}")
 
-    if result.ok and not result.tamper_evident:
-        console.print(
-            f"[yellow]hashes consistent[/yellow] — but {case.record.id} is UNSIGNED "
-            "(Null plugin): this is not evidence against tampering by anyone with write "
-            "access. Sign with --signature-plugin hmac for a tamper-evident seal."
-        )
-    elif result.ok:
+    if status == "verified":
         console.print(f"[green]seal verified[/green] — {case.record.id} is intact")
+    elif status == "unsigned":
+        console.print(
+            f"[yellow]UNSIGNED[/yellow] — hashes consistent, but {case.record.id} has a Null "
+            "seal: this is not evidence against tampering by anyone with write access. "
+            "Sign with --signature-plugin hmac for a tamper-evident seal."
+        )
+        raise typer.Exit(code=3)
+    elif status == "unverifiable":
+        console.print(
+            f"[yellow]CANNOT VERIFY[/yellow] — hashes consistent, but {case.record.id} carries "
+            "an HMAC signature and no key was given (--key or $BITIG_SIGNATURE_KEY)."
+        )
+        raise typer.Exit(code=4)
     else:
         console.print(f"[red]SEAL BROKEN[/red] — {case.record.id} failed verification")
         raise typer.Exit(code=2)

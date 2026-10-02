@@ -141,18 +141,25 @@ def _verify_seal(case: Case) -> None:
                 if not result.signed:
                     ui.label("Case is not signed — nothing to verify.").classes("bitig-muted")
                     return
-                if result.tamper_evident:
+                status = result.status
+                if status == "verified":
                     headline, klass = "● PASS — seal intact and signed", "bitig-ok"
-                elif result.ok:
+                elif status == "unsigned":
                     headline, klass = (
                         "● HASHES CONSISTENT — UNSIGNED seal (not tamper-evident)",
                         "bitig-err",
                     )
+                elif status == "unverifiable":
+                    headline, klass = (
+                        "● CANNOT VERIFY — hashes consistent; enter the key to check the "
+                        "HMAC signature",
+                        "bitig-err",
+                    )
                 else:
-                    headline, klass = "● FAIL — seal broken or unverified", "bitig-err"
+                    headline, klass = "● FAIL — seal broken", "bitig-err"
                 ui.label(headline).classes(f"bitig-mono {klass}")
                 for c in result.checks:
-                    mark = "✓" if c.ok else "✗"
+                    mark = "✓" if c.ok else ("?" if c.unverifiable else "✗")
                     c_klass = "bitig-ok" if c.ok else "bitig-err"
                     ui.label(f"{mark} {c.name}: {c.detail}").classes(
                         f"bitig-mono text-xs {c_klass}"

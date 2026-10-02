@@ -356,6 +356,12 @@ class SealCheck:
     name: str
     ok: bool
     detail: str
+    # True when the check could not be carried out (an HMAC seal checked
+    # without a key): not a pass, but not evidence of tampering either.
+    unverifiable: bool = False
+
+
+SealStatus = Literal["not_signed", "broken", "unverifiable", "unsigned", "verified"]
 
 
 @dataclass(frozen=True)
@@ -380,6 +386,23 @@ class SealVerification:
     def tamper_evident(self) -> bool:
         """True only for a verified seal with a cryptographic signature."""
         return self.ok and self.plugin_id != "null"
+
+    @property
+    def status(self) -> SealStatus:
+        """One-word outcome.
+
+        ``broken`` if any check failed; ``unverifiable`` if every hash check
+        passed but the signature could not be checked (no key); ``unsigned``
+        for an intact Null seal (hashes only, not tamper-evident);
+        ``verified`` for an intact seal with a valid signature.
+        """
+        if not self.signed:
+            return "not_signed"
+        if any(not c.ok and not c.unverifiable for c in self.checks):
+            return "broken"
+        if any(c.unverifiable for c in self.checks):
+            return "unverifiable"
+        return "verified" if self.tamper_evident else "unsigned"
 
 
 def _count_tokens(path: Path) -> int:
@@ -773,7 +796,7 @@ class Case:
 
     # -- study --------------------------------------------------------------
 
-    def resolved_study_dict(self) -> dict[str, Any]:
+    def resolved_study_dict(self, *, fill_targets: bool = True) -> dict[str, Any]:
         """The study.yaml-shaped dict for this Case's recipe + overrides.
 
         ``corpus.path`` is the case-relative ``evidence`` dir, recorded for
@@ -782,7 +805,8 @@ class Case:
         copied or moved Case analyses its own evidence (audit N-P1.1).
 
         ``verify`` methods without explicit ``target_ids`` target every
-        registered questioned document.
+        registered questioned document (unless ``fill_targets`` is false), so
+        a questioned document added later is targeted too.
         """
         study = resolve_recipe(
             self.record.recipe,
@@ -790,6 +814,8 @@ class Case:
             corpus_path=_EVIDENCE_DIR,
             name=self.record.id,
         )
+        if not fill_targets:
+            return study
         questioned = [_evidence_doc_id(e) for e in self.record.evidence.questioned]
         for method in study.get("methods") or []:
             if isinstance(method, dict) and method.get("kind") == "verify":
@@ -825,7 +851,10 @@ class Case:
         from bitig.recipes import apply_param_target
 
         self._require_unsigned("set param")
-        resolved = apply_param_target(self.resolved_study_dict(), target, value)
+        # Patch the study without the auto-filled ``target_ids``: storing them
+        # would freeze today's questioned set into the overrides, and a
+        # questioned document added later would silently go untargeted.
+        resolved = apply_param_target(self.resolved_study_dict(fill_targets=False), target, value)
 
         # Persist the override as a flat top-level patch over the recipe
         # defaults. We strip ``corpus`` / ``name`` because those are filled
@@ -1275,16 +1304,19 @@ class Case:
 
         * the plugin ids recorded in the two files must agree;
         * a non-Null plugin id with a missing signature fails;
-        * a verifier holding a key (``signature_key`` or
-          ``$BITIG_SIGNATURE_KEY``) always requires a valid HMAC, whatever
-          plugin id the files claim.
+        * a verifier passing ``signature_key`` explicitly always requires a
+          valid HMAC, whatever plugin id the files claim;
+        * a key found only in ``$BITIG_SIGNATURE_KEY`` checks HMAC seals, but
+          does not fail a Null seal: the result stays ``unsigned`` (never
+          ``verified``) with a note that a removed signature looks the same.
         """
         from bitig.signatures import verify_hmac_signature
 
         payload_plugin = payload.get("signature_plugin_id") or "null"
         record_plugin = self.record.signature_plugin_id or "null"
         sig = payload.get("signature")
-        key = signature_key or os.environ.get("BITIG_SIGNATURE_KEY")
+        env_key = os.environ.get("BITIG_SIGNATURE_KEY")
+        key = signature_key or env_key
 
         if payload_plugin != record_plugin:
             return SealCheck(
@@ -1293,7 +1325,8 @@ class Case:
                 f"plugin mismatch: {_REPORT_SIGNED} says {payload_plugin!r}, "
                 f"case.json says {record_plugin!r}",
             )
-        if key:
+        null_seal = payload_plugin == "null" and sig is None
+        if key and not (signature_key is None and null_seal):
             ok = verify_hmac_signature(payload, key=key)
             if ok:
                 return SealCheck("signature", True, "HMAC signature valid")
@@ -1311,12 +1344,16 @@ class Case:
                 return SealCheck(
                     "signature", False, "Null plugin seal unexpectedly carries a signature"
                 )
-            return SealCheck(
-                "signature",
-                True,
+            detail = (
                 "UNSIGNED (Null plugin): hashes only — anyone with write access can "
-                "recompute them, so this seal is not tamper-evident",
+                "recompute them, so this seal is not tamper-evident"
             )
+            if env_key:
+                detail += (
+                    "; $BITIG_SIGNATURE_KEY is set: if this case was signed with HMAC, "
+                    "its signature has been removed"
+                )
+            return SealCheck("signature", True, detail)
         if sig is None:
             return SealCheck(
                 "signature", False, f"plugin {payload_plugin!r} recorded but signature is missing"
@@ -1325,8 +1362,9 @@ class Case:
             return SealCheck(
                 "signature",
                 False,
-                "HMAC signature present but no key provided "
+                "CANNOT VERIFY: HMAC signature present but no key provided "
                 "(pass signature_key= or set BITIG_SIGNATURE_KEY)",
+                unverifiable=True,
             )
         return SealCheck("signature", False, f"unknown signature plugin {payload_plugin!r}")
 

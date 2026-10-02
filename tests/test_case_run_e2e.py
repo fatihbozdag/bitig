@@ -123,3 +123,53 @@ def test_legacy_case_overrides_run_after_translation(tmp_path: Path) -> None:
     case.save()
     outcome = perform_run(case)
     assert outcome.status == "succeeded", outcome.message
+
+
+def test_questioned_document_added_after_set_param_is_targeted(tmp_path: Path) -> None:
+    """set_param must not freeze the auto-filled target list into the overrides."""
+    case = _case(tmp_path, "imposters_lr")
+    extra = tmp_path / "late_q.txt"
+    extra.write_text((_MINI / "bob_two.txt").read_text("utf-8"), "utf-8")
+    case.add_evidence(extra, role="questioned")
+    assert "target_ids" not in json.dumps(case.record.overrides)
+
+    outcome = perform_run(case)
+    assert outcome.status == "succeeded", outcome.message
+    result = json.loads(
+        (case.runs_dir / str(outcome.run_id) / "verify" / "result.json").read_text("utf-8")
+    )
+    assert sorted(result["params"]["target_ids"]) == ["alice_two", "late_q"]
+
+
+def test_explicit_target_list_missing_a_questioned_document_blocks(tmp_path: Path) -> None:
+    """A target list frozen by an older bitig blocks with a clear message, not a failed run."""
+    case = _case(tmp_path, "imposters_lr")
+    case.set_param("methods[verify].target_ids", ["alice_two"])
+    extra = tmp_path / "late_q.txt"
+    extra.write_text((_MINI / "bob_two.txt").read_text("utf-8"), "utf-8")
+    case.add_evidence(extra, role="questioned")
+
+    outcome = perform_run(case)
+    assert outcome.status == "blocked"
+    assert "late_q" in outcome.message and "not targeted" in outcome.message
+    assert case.record.latest_run is None
+
+
+def test_cli_case_run_exit_codes(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from bitig.cli import app
+
+    runner = CliRunner()
+    case = _case(tmp_path, "imposters_lr")
+    cases_dir = str(tmp_path / "cases")
+
+    ok = runner.invoke(app, ["case", "run", "c", "--cases-dir", cases_dir])
+    assert ok.exit_code == 0, ok.output
+    assert "succeeded" in ok.output
+    assert Case.load(case.root).record.latest_run is not None
+
+    (case.evidence_dir / "known" / "alice_one.txt").write_text("changed", "utf-8")
+    blocked = runner.invoke(app, ["case", "run", "c", "--cases-dir", cases_dir])
+    assert blocked.exit_code == 2, blocked.output
+    assert "blocked" in blocked.output

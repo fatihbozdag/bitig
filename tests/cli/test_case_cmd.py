@@ -399,8 +399,8 @@ def test_case_verify_passes_for_untampered_seal(tmp_path: Path) -> None:
     assert runner.invoke(app, ["case", "sign", "vok", "--cases-dir", str(cases_dir)]).exit_code == 0
 
     result = runner.invoke(app, ["case", "verify", "vok", "--cases-dir", str(cases_dir)])
-    assert result.exit_code == 0, result.output
-    # A Null-plugin seal is consistent but not tamper-evident; never "verified".
+    # A Null-plugin seal is consistent but not tamper-evident: exit 3, never "verified".
+    assert result.exit_code == 3, result.output
     assert "UNSIGNED" in result.output
     assert "seal verified" not in result.output
 
@@ -417,6 +417,70 @@ def test_case_verify_hmac_seal_reports_verified(tmp_path: Path, monkeypatch) -> 
     result = runner.invoke(app, ["case", "verify", "vh", "--cases-dir", str(cases_dir)])
     assert result.exit_code == 0, result.output
     assert "seal verified" in result.output
+
+
+def test_case_verify_null_seal_with_env_key_is_unsigned_not_broken(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A globally set $BITIG_SIGNATURE_KEY must not fail a healthy Null seal."""
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "venv")
+    _stub_report(cases_dir, "venv")
+    assert (
+        runner.invoke(app, ["case", "sign", "venv", "--cases-dir", str(cases_dir)]).exit_code == 0
+    )
+    monkeypatch.setenv("BITIG_SIGNATURE_KEY", "k")
+    result = runner.invoke(app, ["case", "verify", "venv", "--cases-dir", str(cases_dir)])
+    assert result.exit_code == 3, result.output
+    assert "signature has been removed" in result.output
+    assert "SEAL BROKEN" not in result.output
+
+
+def test_case_verify_null_seal_with_explicit_key_is_broken(tmp_path: Path) -> None:
+    """An explicit --key demands a valid HMAC, so a Null seal fails."""
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "vkey")
+    _stub_report(cases_dir, "vkey")
+    assert (
+        runner.invoke(app, ["case", "sign", "vkey", "--cases-dir", str(cases_dir)]).exit_code == 0
+    )
+    result = runner.invoke(
+        app, ["case", "verify", "vkey", "--key", "k", "--cases-dir", str(cases_dir)]
+    )
+    assert result.exit_code == 2, result.output
+    assert "SEAL BROKEN" in result.output
+
+
+def test_case_verify_hmac_seal_without_key_cannot_verify(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BITIG_SIGNATURE_KEY", "k")
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "vnokey")
+    _stub_report(cases_dir, "vnokey")
+    signed = runner.invoke(
+        app,
+        ["case", "sign", "vnokey", "--signature-plugin", "hmac", "--cases-dir", str(cases_dir)],
+    )
+    assert signed.exit_code == 0, signed.output
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY")
+    result = runner.invoke(app, ["case", "verify", "vnokey", "--cases-dir", str(cases_dir)])
+    assert result.exit_code == 4, result.output
+    assert "CANNOT VERIFY" in result.output
+    assert "SEAL BROKEN" not in result.output
+
+
+def test_case_verify_hmac_seal_wrong_key_is_broken(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BITIG_SIGNATURE_KEY", "k")
+    cases_dir = tmp_path / "cases"
+    _new(cases_dir, "vwrong")
+    _stub_report(cases_dir, "vwrong")
+    runner.invoke(
+        app,
+        ["case", "sign", "vwrong", "--signature-plugin", "hmac", "--cases-dir", str(cases_dir)],
+    )
+    result = runner.invoke(
+        app, ["case", "verify", "vwrong", "--key", "other", "--cases-dir", str(cases_dir)]
+    )
+    assert result.exit_code == 2, result.output
 
 
 def test_case_verify_exits_2_on_tamper(tmp_path: Path) -> None:

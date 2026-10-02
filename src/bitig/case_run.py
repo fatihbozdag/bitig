@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from bitig.cases import Case
+from bitig.cases import Case, _evidence_doc_id
 from bitig.runner import run_study
 
 RunStatus = Literal["succeeded", "partial", "failed", "blocked"]
@@ -173,6 +173,26 @@ def _verify_inputs_problem(case: Case, params: dict[str, Any], group_by: str | N
             "Verification needs known documents from the candidate AND at least one other "
             "author (the impostors)."
         )
+    # An explicit target list must name exactly the registered questioned
+    # documents: an untargeted questioned document has no author label, so the
+    # runner would treat it as unlabelled training data and every method fails.
+    targets = params.get("target_ids")
+    if targets:
+        questioned = {_evidence_doc_id(e) for e in evidence.questioned}
+        untargeted = sorted(questioned - {str(t) for t in targets})
+        unknown = sorted({str(t) for t in targets} - questioned)
+        if untargeted or unknown:
+            parts = []
+            if untargeted:
+                parts.append(f"questioned document(s) {untargeted} are not targeted")
+            if unknown:
+                parts.append(f"target(s) {unknown} are not registered questioned documents")
+            return (
+                "The verify method's target list does not match the questioned evidence: "
+                + "; ".join(parts)
+                + ". Clear or update 'target_ids' (an empty list targets every questioned "
+                "document)."
+            )
     return None
 
 

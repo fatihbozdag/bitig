@@ -440,3 +440,28 @@ def test_report_says_control_corpus_is_not_used(tmp_path: Path) -> None:
     case.set_control_corpus("BUMR", n_docs=10)
     html = build_case_report(case).read_text(encoding="utf-8")
     assert "BUMR" in html and "not used by the analysis" in html
+
+
+def test_seal_status_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """status separates broken from unverifiable and unsigned (audit 2026-09-26 follow-up)."""
+    from bitig.signatures import HmacSignaturePlugin
+
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY", raising=False)
+    null_case = make_signable(
+        Case.create(tmp_path / "cases", id="n", title="t", examiner="x", recipe="exploration")
+    )
+    null_case.mark_signed()
+    assert null_case.verify_seal().status == "unsigned"
+    monkeypatch.setenv("BITIG_SIGNATURE_KEY", "k")
+    assert null_case.verify_seal().status == "unsigned"
+    assert null_case.verify_seal(signature_key="k").status == "broken"
+
+    hmac_case = make_signable(
+        Case.create(tmp_path / "cases", id="h", title="t", examiner="x", recipe="exploration")
+    )
+    hmac_case.mark_signed(signature_plugin=HmacSignaturePlugin(key="k"))
+    assert hmac_case.verify_seal().status == "verified"
+    monkeypatch.delenv("BITIG_SIGNATURE_KEY")
+    assert hmac_case.verify_seal().status == "unverifiable"
+    assert not hmac_case.verify_seal().ok
+    assert hmac_case.verify_seal(signature_key="wrong").status == "broken"
