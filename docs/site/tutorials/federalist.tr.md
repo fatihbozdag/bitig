@@ -47,7 +47,10 @@ Bu komut, boş bir `corpus/` ve başlangıç `study.yaml` içeren bir proje dizi
 Deponun [`examples/federalist/`](https://github.com/fatihbozdag/bitig/tree/main/examples/federalist)
 dizininde 85 makalenin tamamı ayrı `.txt` dosyaları olarak ve hazır bir `metadata.tsv` ile
 mevcuttur. `corpus/` ile `metadata.tsv` dosyalarını kopyalayın ya da örnekteki kendi
-`README.md` dosyasını takip ederek Project Gutenberg'den oluşturun.
+`README.md` dosyasını takip ederek Project Gutenberg'den oluşturun. Her dosya yalnızca deneme
+metnini içerir ve "To the People of the State of New York" hitabıyla başlar: Project Gutenberg
+başlığı (makale numarası, başlık, gazete ve tarih, yazar imzası) çıkarılmıştır; böylece buradaki
+yazar adları özniteliklere sızamaz.
 
 `metadata.tsv`'de her makale için şu sütunlar bulunur: `filename`, `author`, `role`, `notes`.
 `role`, 71 tek yazarlı makale için `train`, 11 tartışmalı makale için `test` (`author` =
@@ -189,29 +192,29 @@ tek sayfalık bir rapor elde edersiniz.
 
 Yukarıdaki adımlar, gelen derlem üzerinde çalıştırıldığında şu sayıları verir:
 
-- **PCA** (71 makale, MFW 200): ilk iki bileşen varyansın %7,5'ini ve %5,9'unu açıklar (toplam
-  %13,5). PC1 esas olarak Jay'in beş denemesini diğer tüm makalelerden ayırır. Hamilton ve
+- **PCA** (71 makale, MFW 200): ilk iki bileşen varyansın %7,4'ünü ve %5,9'unu açıklar (toplam
+  %13,3). PC1 esas olarak Jay'in beş denemesini diğer tüm makalelerden ayırır. Hamilton ve
   Madison büyük ölçüde örtüşür: Madison makaleleri PC2'de ortalamada daha yukarıda yer alır,
-  ancak temiz bir ayrım yoktur. Örneğin kendi MFW 500 çalışmasında iki bileşen %5,6 ve %4,6
+  ancak temiz bir ayrım yoktur. Örneğin kendi MFW 500 çalışmasında iki bileşen %5,6 ve %4,5
   açıklar.
-- **Ward** (3 küme): 15 Madison makalesinin tamamı, 11 Hamilton makalesiyle birlikte tek bir
-  kümeye düşer. Diğer 40 Hamilton makalesi ikinci bir küme oluşturur; Jay'in makaleleri 3 / 2
-  bölünür.
+- **Ward** (3 küme): Madison makaleleri kendi başına bir küme oluşturmaz. Dokuzu, 45 Hamilton ve
+  2 Jay makalesiyle birlikte en büyük kümede yer alır; diğer altısı 6 Hamilton makalesiyle ikinci
+  bir küme oluşturur. Kalan 3 Jay makalesi üçüncü kümeyi oluşturur.
 - **Çalışmadaki Burrows Delta**: yeniden ikame doğruluğu 1,0. Bu bir yazar tespiti sonucu değil,
   örneklem içi bir ayrışabilirlik denetimidir.
+- **Zeta**: Hamilton'ın tercih ettiği sözcükler listesinin başında `upon`, `kind`, `community`,
+  `intended` ve `men`; Madison'ın listesinin başında `few`, `consequently`, `whilst`,
+  `proceedings` ve `particularly` yer alır. `upon` ve `whilst`, Mosteller & Wallace'ın
+  dayandığı belirteçler arasındadır.
 - **Yazar tespiti (5. adım)**: `bitig delta` (MFW 200) 11 tartışmalı makalenin tamamını
   Madison'a atar. `bitig bayesian` da 11 makalenin hepsi için Madison'ı seçer ve her biri için
   `max p(author)` = 1.000 yazdırır. Yukarıda açıklandığı gibi bu 1.000 kalibre edilmiş bir
-  olasılık değildir.
+  olasılık değildir. `--mfw 500` ile (örnek dizinindeki `README.md` komutları) `bitig bayesian`
+  yine 11 makalenin hepsi için Madison'ı seçer, ancak `bitig delta` 50 numaralı makaleyi dördüncü
+  sınıf olan `Joint_HM`'ye, diğer 10 makaleyi Madison'a atar. İki ayarda da hiçbir tartışmalı
+  makale Hamilton'a atanmaz.
 
 Madison ataması Mosteller & Wallace'ın 1964 sonucuyla örtüşür.
-
-!!! warning "Yazar imzaları metinlerde duruyor"
-    Her derlem dosyası Project Gutenberg imza satırını (`HAMILTON`, `MADISON`, `JAY`) korur ve
-    tartışmalı makalelerde `MADISON` yazar. Zeta listelerinin başında `hamilton` ve `madison`
-    sözcüklerinin yer almasının nedeni budur. MFW 200'de iki ad da öznitelikler arasında
-    değildir ve imzaları silmek yazar tespitini değiştirmez. MFW 500'de `hamilton` bir
-    özniteliktir. Bu derlem üzerinde kendi deneylerinizi yapmadan önce imzaları çıkarın.
 
 Bu öğreticinin hızlı başlangıç mini sürümü önce yalnızca 9 makale üzerinde işlem hattını
 çalıştırmak isteyenler için

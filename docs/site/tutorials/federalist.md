@@ -48,7 +48,10 @@ This scaffolds a project directory with an empty `corpus/` and a starter `study.
 The repo's [`examples/federalist/`](https://github.com/fatihbozdag/bitig/tree/main/examples/federalist)
 directory has all 85 papers as individual `.txt` files plus a ready-made
 `metadata.tsv`. Copy `corpus/` and `metadata.tsv` over, or follow the example's
-own `README.md` to build it from Project Gutenberg.
+own `README.md` to build it from Project Gutenberg. Each file holds only the essay body,
+from the salutation "To the People of the State of New York" on: the Project Gutenberg
+header (paper number, title, newspaper and date, author byline) has been stripped, so the
+author names in it cannot leak into the features.
 
 `metadata.tsv` has one row per paper with: `filename`, `author`, `role`, `notes`.
 `role` is `train` for the 71 single-author papers, `test` for the 11 disputed papers
@@ -190,27 +193,28 @@ embedded figures, and a provenance section.
 
 These are the numbers from running the steps above on the shipped corpus:
 
-- **PCA** (71 papers, MFW 200): the first two components explain 7.5 % and 5.9 % of the
-  variance (13.5 % together). PC1 mainly separates Jay's five essays from everyone else.
+- **PCA** (71 papers, MFW 200): the first two components explain 7.4 % and 5.9 % of the
+  variance (13.3 % together). PC1 mainly separates Jay's five essays from everyone else.
   Hamilton and Madison overlap heavily: Madison papers sit higher on PC2 on average, but
   there is no clean split. With the example's own MFW 500 study the two components explain
-  5.6 % and 4.6 %.
-- **Ward** (3 clusters): all 15 Madison papers fall in one cluster, together with 11 Hamilton
-  papers. The other 40 Hamilton papers form a second cluster, and Jay's papers split 3 / 2.
+  5.6 % and 4.5 %.
+- **Ward** (3 clusters): the Madison papers do not form their own cluster. Nine of them
+  share the largest cluster with 45 Hamilton papers and 2 Jay papers; the other six form a
+  second cluster with 6 Hamilton papers. The remaining 3 Jay papers make up the third
+  cluster.
 - **Burrows Delta in the study**: resubstitution accuracy 1.0. This is an in-sample
   separability check, not an attribution result.
+- **Zeta**: the Hamilton-preferred list is topped by `upon`, `kind`, `community`, `intended`
+  and `men`; the Madison-preferred list by `few`, `consequently`, `whilst`, `proceedings` and
+  `particularly`. `upon` and `whilst` are among the markers Mosteller & Wallace relied on.
 - **Attribution (step 5)**: `bitig delta` (MFW 200) assigns all 11 disputed papers to Madison.
   `bitig bayesian` also picks Madison for all 11 and prints `max p(author)` = 1.000 for each.
-  As explained above, that 1.000 is not a calibrated probability.
+  As explained above, that 1.000 is not a calibrated probability. With `--mfw 500` (the
+  commands in the example's `README.md`), `bitig bayesian` still picks Madison for all 11,
+  but `bitig delta` assigns No. 50 to the fourth `Joint_HM` class and the other 10 to
+  Madison. No disputed paper goes to Hamilton at either setting.
 
 The Madison attribution matches Mosteller & Wallace's 1964 result.
-
-!!! warning "Author bylines are still in the texts"
-    Each corpus file keeps the Project Gutenberg byline (`HAMILTON`, `MADISON`, `JAY`), and
-    the disputed papers carry `MADISON`. That is why `hamilton` and `madison` top the Zeta
-    lists. At MFW 200 neither name is among the features, and removing the bylines leaves
-    the attribution unchanged. At MFW 500 `hamilton` is a feature. Strip the bylines before
-    you run your own experiments on this corpus.
 
 The quickstart mini-version of this tutorial is at
 [`examples/quickstart/`](https://github.com/fatihbozdag/bitig/tree/main/examples/quickstart)

@@ -9,7 +9,10 @@ with attribution of the 11 historically disputed essays (49–57, 62, 63).
 85 texts — Hamilton (51), Madison (15), Jay (5), joint Hamilton+Madison (3),
 disputed (11) — copied verbatim from Project Gutenberg ebook 1404 and
 labelled in `metadata.tsv` following the canonical consensus (Mosteller &
-Wallace 1964; subsequent scholarship).
+Wallace 1964; subsequent scholarship). Each file keeps only the essay body,
+from the salutation "To the People of the State of New York" on: the
+Gutenberg header (paper number, title, newspaper and date, author byline) is
+stripped, so the author names cannot leak into the features.
 
 | Author                | Count |
 |-----------------------|-------|
@@ -50,26 +53,21 @@ bitig bayesian examples/federalist/corpus --mfw 500 \
 
 ## Result
 
-Both Burrows Delta and the Wallace–Mosteller-style Bayesian attribution
-assign **every one of the 11 disputed papers to Madison** (at MFW 500 as
-above, and at MFW 200), reproducing the classical Mosteller & Wallace (1964)
-result. `bitig bayesian` prints `max p(author)` = 1.000 for every disputed
+The Wallace–Mosteller-style Bayesian attribution assigns **every one of the
+11 disputed papers to Madison** (at MFW 500 as above, and at MFW 200),
+reproducing the classical Mosteller & Wallace (1964) result. Burrows Delta
+does the same at MFW 200; at MFW 500 it assigns 10 papers to Madison and
+No. 50 to the `Joint_HM` class (see below). No disputed paper is assigned to
+Hamilton. `bitig bayesian` prints `max p(author)` = 1.000 for every disputed
 paper. That number is a Naive Bayes posterior (word occurrences treated as
 independent), which is pushed to 0 or 1; it is **not a calibrated
 probability** and should be read as a ranking of candidates only.
 
 The commands train on every paper outside `role=test`, so the 3 joint papers
 (18–20) enter training as their own `Joint_HM` class; there is no flag to
-exclude them. Training on Hamilton and Madison only gives the same 11/11
-Madison result.
-
-**Caveat — author bylines.** Each text keeps its Project Gutenberg byline
-(`HAMILTON`, `MADISON`, `JAY`), and the disputed papers carry `MADISON`. At
-MFW 500 the token `hamilton` is one of the features, and the Zeta lists below
-are topped by `hamilton` / `madison`. With the bylines stripped, Bayesian
-attribution is still 11/11 Madison, and so is Delta trained on Hamilton and
-Madison only; Delta trained as above (with the `Joint_HM` class) then assigns
-No. 50 to `Joint_HM`. Strip the bylines before running your own experiments.
+exclude them, so the No. 50 → `Joint_HM` result above comes from that fourth
+class. Training Delta on Hamilton and Madison only (dropping the Jay and joint
+files from the corpus directory) gives 11/11 Madison at both MFW 200 and 500.
 
 ## What the study.yaml does
 
@@ -79,17 +77,20 @@ papers (Joint and Disputed excluded via `role: [train]`):
 1. **Burrows Delta** — nearest-author-centroid on 500 most-frequent words (z-scored).
    Its accuracy (1.0) is resubstitution (in-sample) only: no disputed paper is in this study.
 2. **PCA** — 2-D projection of the same feature matrix. The two components
-   explain 5.6 % and 4.6 % of the variance. PC1 separates Jay from the rest;
-   Hamilton and Madison overlap. The disputed papers are not in the plot. See
+   explain 5.6 % and 4.5 % of the variance. PC1 separates Jay from the rest;
+   Hamilton and Madison overlap (PC2 separates them only on average). The disputed papers are not in the plot. See
    `results/demo/pca/scatter.png` (written by `bitig run`) or the
    author-coloured `pca.png` written by `render_figures.py`.
 3. **Hierarchical clustering (Ward)** — 3 clusters. Measured: all 15 Madison
-   papers share a cluster with 38 Hamilton and 2 Jay papers; the other 13
-   Hamilton papers form a second cluster and 3 Jay papers the third. Dendrogram in
+   papers share a cluster with 36 Hamilton and 2 Jay papers; 14 other
+   Hamilton papers form a second cluster, and the remaining Hamilton paper
+   joins 3 Jay papers in the third. Dendrogram in
    `results/demo/ward/dendrogram.png` (`ward.png` from `render_figures.py`).
 4. **Craig's Zeta** — contrastive vocabulary between Hamilton and Madison.
-   Shows the "upon" vs. "whilst" signature Mosteller & Wallace relied on
-   (after the byline tokens `hamilton` / `madison`, see the caveat above).
+   Shows the "upon" vs. "whilst" signature Mosteller & Wallace relied on:
+   the Hamilton list is topped by `upon`, `kind`, `community`, `intended`,
+   `men`; the Madison list by `few`, `consequently`, `whilst`,
+   `proceedings`, `particularly`/`trial`.
    Preference plot in `results/demo/zeta_hamilton_madison/zeta.png`.
 5. **Bootstrap consensus tree** — 5 MFW bands × 20 replicates = 100 Ward
    dendrograms, with majority-support clade extraction. Newick string in

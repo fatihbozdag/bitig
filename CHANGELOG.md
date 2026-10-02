@@ -99,5 +99,9 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   marked. Getting-started, methods, features, topic-invariance and verification pages fixed.
 - README and quickstart: PCA claims corrected and figure regenerated; stale status lines and
   test-count badge removed. `CITATION.cff` no longer claims feature parity with Stylo.
+- [results] The Federalist example corpus no longer carries Project Gutenberg headers (number,
+  title, venue/date and the author byline, which named Madison on every disputed paper). Only
+  the essay body is analysed. With the leak gone, Burrows Delta at MFW 500 assigns No. 50 to the
+  joint Hamilton–Madison class; every other reported attribution is unchanged (tutorial updated).
 - [results] The Turkish example study no longer includes Burrows Delta, which failed on its
   single-author corpus.
