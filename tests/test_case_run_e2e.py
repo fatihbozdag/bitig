@@ -173,3 +173,12 @@ def test_cli_case_run_exit_codes(tmp_path: Path) -> None:
     blocked = runner.invoke(app, ["case", "run", "c", "--cases-dir", cases_dir])
     assert blocked.exit_code == 2, blocked.output
     assert "blocked" in blocked.output
+
+
+def test_delta_attribution_run_emits_confusion_matrix(tmp_path: Path) -> None:
+    """Predictions cover labelled documents only; the plot must still be drawn."""
+    case = _case(tmp_path, "delta_attribution")
+    outcome = perform_run(case)
+    assert outcome.status == "succeeded", outcome.message
+    figures = list((case.runs_dir / str(outcome.run_id)).rglob("confusion_matrix.png"))
+    assert figures

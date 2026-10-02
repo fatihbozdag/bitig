@@ -465,3 +465,47 @@ def test_seal_status_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert hmac_case.verify_seal().status == "unverifiable"
     assert not hmac_case.verify_seal().ok
     assert hmac_case.verify_seal(signature_key="wrong").status == "broken"
+
+
+def test_stale_handle_cannot_overwrite_another_handles_seal(tmp_path: Path) -> None:
+    """Handle A loaded before B signed must not replace (then delete) B's seal files."""
+    root = make_signable(
+        Case.create(tmp_path / "cases", id="s", title="t", examiner="x", recipe="exploration")
+    ).root
+    a = Case.load(root)
+    b = Case.load(root)
+    b.mark_signed()
+    sealed = (root / "report" / "signed.json").read_bytes()
+
+    with pytest.raises(CaseError, match="changed by another handle"):
+        a.mark_signed()
+    assert (root / "report" / "signed.json").read_bytes() == sealed
+    assert Case.load(root).verify_seal().status == "unsigned"
+
+
+def test_scheme1_hmac_seal_does_not_trust_a_run_manifest(tmp_path: Path) -> None:
+    """A scheme-1 HMAC does not cover run_manifest, so the manifest is not evidence."""
+    case = make_signable(
+        Case.create(tmp_path / "cases", id="l", title="t", examiner="x", recipe="exploration")
+    )
+    payload = {
+        "latest_run": case.record.latest_run,
+        "run_manifest": case._run_manifest(),
+        "signature": {"scheme": 1},
+    }
+    check = case._run_outputs_check(payload)
+    assert not check.ok and "legacy seal" in check.detail
+    payload["signature"] = {"scheme": 2}
+    assert case._run_outputs_check(payload).ok
+
+
+def test_duplicate_document_ids_in_legacy_evidence_are_refused(tmp_path: Path) -> None:
+    import dataclasses
+
+    case = make_signable(
+        Case.create(tmp_path / "cases", id="d", title="t", examiner="x", recipe="exploration")
+    )
+    known = case.record.evidence.known[0]
+    case.record.evidence.questioned.append(dataclasses.replace(known, role="questioned"))
+    with pytest.raises(CaseError, match="share a document id"):
+        case.build_corpus()

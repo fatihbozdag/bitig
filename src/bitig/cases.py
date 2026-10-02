@@ -329,6 +329,16 @@ def _ensure_within(path: Path, root: Path) -> Path:
     return resolved
 
 
+def _current_umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+# Read once at import: os.umask can only be queried by setting it.
+_UMASK = _current_umask()
+
+
 def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
     """Write ``text`` to ``path`` atomically (write temp + os.replace) so an
     interrupted write can't truncate an integrity-root file (audit P2)."""
@@ -337,6 +347,8 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Non
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.tmp-")
     tmp = Path(tmp_name)
     try:
+        # mkstemp creates 0600; give the file the mode a plain open() would.
+        os.chmod(tmp, 0o666 & ~_UMASK)
         with os.fdopen(fd, "w", encoding=encoding) as fh:
             fh.write(text)
         os.replace(tmp, path)
@@ -765,6 +777,15 @@ class Case:
         entries = self._registered_entries()
         if not entries:
             raise CaseError("No evidence registered; add questioned/known files before running.")
+        ids = [_evidence_doc_id(e) for e in entries]
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        if duplicates:
+            # Registered before add_evidence enforced unique stems: two
+            # documents with one id would be confused (e.g. as verify targets).
+            raise CaseError(
+                f"Evidence files share a document id (file stem): {duplicates}. "
+                "Fork the case without one of them, or rename and re-register it."
+            )
         documents: list[Document] = []
         for entry in entries:
             abs_path = self.root / entry.path
@@ -1035,6 +1056,9 @@ class Case:
             signed_payload = plugin.sign(payload, case=self)
             _atomic_write_text(tmp_json, json.dumps(signed_payload, indent=2))
 
+            # A handle loaded before another one signed the case must not
+            # overwrite that seal: refuse before moving any file into place.
+            self._check_not_stale()
             os.replace(tmp_html, signed_html)
             moved.append(signed_html)
             os.replace(tmp_json, signed_json)
@@ -1268,6 +1292,11 @@ class Case:
     def _run_outputs_check(self, payload: dict[str, Any]) -> SealCheck:
         """Compare the sealed run-output manifest with the files on disk (N-P1.5)."""
         sealed = payload.get("run_manifest")
+        sig = payload.get("signature")
+        if isinstance(sig, dict) and int(sig.get("scheme", 1)) < 2:
+            # A scheme-1 HMAC does not cover run_manifest, so a manifest in
+            # such a seal could have been added after signing.
+            sealed = None
         if not isinstance(sealed, dict):
             return SealCheck(
                 "run_outputs",

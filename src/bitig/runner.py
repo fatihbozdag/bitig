@@ -730,10 +730,16 @@ def _emit_default_plot(
 
         elif kind in ("delta", "bayesian"):
             preds = result.values.get("predictions")
-            if preds is None or groups is None:
+            if preds is None or groups is None or group_by is None:
+                return
+            # Predictions cover the labelled documents only (unlabelled ones are
+            # attributed, not scored), so compare against those labels.
+            labelled = [str(v) for v in corpus.metadata_column(group_by) if v is not None]
+            truth = labelled if len(labelled) == len(preds) else groups
+            if len(truth) != len(preds):
                 return
             fig = plot_confusion_matrix(
-                np.asarray(groups),
+                np.asarray(truth),
                 np.asarray(preds),
                 title=str(result.method_name),
             )

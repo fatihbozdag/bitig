@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -526,3 +527,12 @@ def test_case_record_dict_round_trip():
         overrides={"seed": 7},
     )
     assert CaseRecord.from_dict(r.to_dict()) == r
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+def test_atomic_writes_keep_the_umask_mode(cases_root: Path) -> None:
+    """mkstemp creates 0600 files; case.json must get the mode a plain open() gives."""
+    case = Case.create(cases_root, id="m", title="t", examiner="x", recipe="exploration")
+    mask = os.umask(0)
+    os.umask(mask)
+    assert (case.case_json_path.stat().st_mode & 0o777) == (0o666 & ~mask)

@@ -40,15 +40,22 @@ def build_classifier(name: str, **kwargs: Any) -> BaseEstimator:
 class FeatureTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
     """Adapt a bitig extractor (documents → FeatureMatrix) to a plain sklearn step (→ X)."""
 
-    def __init__(self, extractor: BaseFeatureExtractor) -> None:
+    def __init__(self, extractor: BaseFeatureExtractor, language: str = "en") -> None:
         self.extractor = extractor
+        # sklearn hands each fold a plain list of Documents; re-wrap it with the
+        # corpus language so language-dependent extractors (function words,
+        # readability) do not fall back to English inside the folds.
+        self.language = language
+
+    def _corpus(self, documents: list[Any]) -> Corpus:
+        return Corpus(documents=list(documents), language=self.language)
 
     def fit(self, documents: list[Any], y: Any = None) -> FeatureTransformer:
-        self.extractor.fit(list(documents))
+        self.extractor.fit(self._corpus(documents))
         return self
 
     def transform(self, documents: list[Any]) -> np.ndarray:
-        return self.extractor.transform(list(documents)).X
+        return self.extractor.transform(self._corpus(documents)).X
 
 
 def _is_degenerate_grouping(groups: np.ndarray, y: np.ndarray) -> bool:
@@ -93,7 +100,7 @@ def cross_validate_bitig(
             raise ValueError("extractor= requires corpus=")
         X: Any = list(corpus.documents)  # noqa: N806 (sklearn convention)
         model: BaseEstimator = Pipeline(
-            [("features", FeatureTransformer(extractor)), ("clf", estimator)]
+            [("features", FeatureTransformer(extractor, corpus.language)), ("clf", estimator)]
         )
     elif fm is not None:
         X = fm.X  # noqa: N806
