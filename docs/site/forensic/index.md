@@ -18,7 +18,7 @@ from bitig.forensic import (
 
     # Topic-invariant features
     CategorizedCharNgramExtractor,   # Sapkota et al. 2015
-    distort_corpus, distort_text,    # Stamatatos 2013
+    distort_corpus, distort_text,    # Stamatatos 2017
 
     # Calibration + LR output
     CalibratedScorer,                # Platt / isotonic
@@ -87,6 +87,7 @@ These land in the rendered forensic report under a dedicated *Chain of custody* 
 
 ## Read next
 
+- [Forensic Lab: the Case workflow](case-workflow.md) — evidence custody, runs, sealed reports
 - [Verification](verification.md) — GI + Unmasking
 - [Calibration & LR output](calibration.md)
 - [Topic-invariant features](topic-invariance.md)

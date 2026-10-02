@@ -12,10 +12,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from nicegui import run, ui
+from nicegui import ui
 
 from bitig.features import CharNgramExtractor, MFWExtractor
 from bitig.forensic import GeneralImpostors, Unmasking, distort_corpus
+from bitig.gui.background import io_bound
 from bitig.gui.filepicker import is_native_available, pick_file, pick_folder
 from bitig.gui.layout import page_shell
 from bitig.gui.state import get_state
@@ -168,16 +169,14 @@ def forensic_page() -> None:
                 if not questioned_path.is_file():
                     raise ValueError(f"questioned path {questioned_path} is not a file")
 
-                known = await run.io_bound(load_corpus, known_path, language=state.language)
+                known = await io_bound(load_corpus, known_path, language=state.language)
                 # Wrap the questioned .txt in a one-document corpus by staging
                 # its parent dir is not safe; construct via load_corpus on the
                 # parent and filter — simpler to just read the text and pass it.
                 q_text = questioned_path.read_text(encoding="utf-8")
 
                 if distortion_switch.value:
-                    known = await run.io_bound(
-                        distort_corpus, known, mode=distortion_mode_select.value
-                    )
+                    known = await io_bound(distort_corpus, known, mode=distortion_mode_select.value)
                     from bitig.forensic import distort_text
 
                     q_text = distort_text(q_text, mode=distortion_mode_select.value)
@@ -190,7 +189,7 @@ def forensic_page() -> None:
                         n_rounds=int(n_rounds_input.value),
                         seed=42,
                     )
-                    result = await run.io_bound(
+                    result = await io_bound(
                         unmasking.verify,
                         questioned=q_text,
                         known=known,
@@ -203,11 +202,11 @@ def forensic_page() -> None:
                     impostors_path = Path(impostors_path_str).expanduser()
                     if not impostors_path.is_dir():
                         raise ValueError(f"impostor-pool path {impostors_path} is not a directory")
-                    impostors_corpus = await run.io_bound(
+                    impostors_corpus = await io_bound(
                         load_corpus, impostors_path, language=state.language
                     )
                     if distortion_switch.value:
-                        impostors_corpus = await run.io_bound(
+                        impostors_corpus = await io_bound(
                             distort_corpus,
                             impostors_corpus,
                             mode=distortion_mode_select.value,
@@ -233,9 +232,7 @@ def forensic_page() -> None:
                     k_fm = extractor.transform(known)
                     i_fm = extractor.transform(impostors_corpus)
                     gi = GeneralImpostors(n_iterations=int(gi_iter_input.value), seed=42)
-                    result = await run.io_bound(
-                        gi.verify, questioned=q_fm, known=k_fm, impostors=i_fm
-                    )
+                    result = await io_bound(gi.verify, questioned=q_fm, known=k_fm, impostors=i_fm)
                 else:  # pragma: no cover — select is bounded
                     raise ValueError(f"unknown verifier {verifier_kind!r}")
             except Exception as exc:

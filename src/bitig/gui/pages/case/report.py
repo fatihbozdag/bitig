@@ -35,7 +35,9 @@ from bitig.gui.state import get_state
 from bitig.report.case_report import (
     ReportRendererError,
     build_case_report,
+    forensic_method_paragraph,
 )
+from bitig.report.scalars import fmt_scalar, gi_scores
 
 
 @ui.page("/case/{case_id}/report")
@@ -88,7 +90,9 @@ def _sign(case: Case) -> None:
     if mismatches:
         ui.notify(
             f"Cannot sign: {len(mismatches)} evidence file(s) fail chain-of-custody. "
-            "Re-acknowledge on the Evidence step first.",
+            "Re-acknowledge legitimately changed files on the Evidence step (then re-run), "
+            "or fork the case (`bitig case fork`) if a file is missing or should not "
+            "have changed.",
             type="negative",
             multi_line=True,
         )
@@ -118,20 +122,52 @@ def _export_pdf(case: Case) -> None:
 
 
 def _verify_seal(case: Case) -> None:
-    """Recompute and display the chain-of-custody seal status (audit P1.1)."""
-    result = case.verify_seal()
+    """Recompute and display the chain-of-custody seal status (audit P1.1).
+
+    An optional key verifies an HMAC seal; without it an intact HMAC seal is
+    reported as unverified rather than passed (audit 2026-09-26).
+    """
     with ui.dialog() as dialog, ui.card().classes("bg-slate-900 text-slate-100 min-w-96"):
         ui.label("Seal verification").classes("text-lg font-semibold")
-        if not result.signed:
-            ui.label("Case is not signed — nothing to verify.").classes("bitig-muted")
-        else:
-            headline = "● PASS — seal intact" if result.ok else "● FAIL — seal broken"
-            ui.label(headline).classes("bitig-mono " + ("bitig-ok" if result.ok else "bitig-err"))
-            for c in result.checks:
-                mark = "✓" if c.ok else "✗"
-                klass = "bitig-ok" if c.ok else "bitig-err"
-                ui.label(f"{mark} {c.name}: {c.detail}").classes(f"bitig-mono text-xs {klass}")
+        key_input = ui.input(
+            "Signature key (HMAC seals; leave empty for unsigned seals)", password=True
+        ).classes("w-full")
+        output = ui.column().classes("w-full gap-1")
+
+        def run_check() -> None:
+            output.clear()
+            result = case.verify_seal(signature_key=key_input.value or None)
+            with output:
+                if not result.signed:
+                    ui.label("Case is not signed — nothing to verify.").classes("bitig-muted")
+                    return
+                status = result.status
+                if status == "verified":
+                    headline, klass = "● PASS — seal intact and signed", "bitig-ok"
+                elif status == "unsigned":
+                    headline, klass = (
+                        "● HASHES CONSISTENT — UNSIGNED seal (not tamper-evident)",
+                        "bitig-err",
+                    )
+                elif status == "unverifiable":
+                    headline, klass = (
+                        "● CANNOT VERIFY — hashes consistent; enter the key to check the "
+                        "HMAC signature",
+                        "bitig-err",
+                    )
+                else:
+                    headline, klass = "● FAIL — seal broken", "bitig-err"
+                ui.label(headline).classes(f"bitig-mono {klass}")
+                for c in result.checks:
+                    mark = "✓" if c.ok else ("?" if c.unverifiable else "✗")
+                    c_klass = "bitig-ok" if c.ok else "bitig-err"
+                    ui.label(f"{mark} {c.name}: {c.detail}").classes(
+                        f"bitig-mono text-xs {c_klass}"
+                    )
+
+        run_check()
         with ui.row().classes("w-full justify-end"):
+            ui.button("Verify", on_click=run_check).props("flat color=amber")
             ui.button("Close", on_click=dialog.close).props("flat color=white")
     dialog.open()
 
@@ -153,16 +189,25 @@ def _render_forensic_body(case: Case) -> None:
 
     ui.html("<hr style='border-color: #ddd;'>")
 
-    # Hypotheses
-    ui.label("Hypotheses").classes("text-lg font-semibold")
-    ui.label("H_p (prosecution): the questioned text and the known texts share an author.")
-    ui.label("H_d (defence):   the questioned text and the known texts do not share an author.")
+    lr = lr_from_values(result.values) if result is not None else None
+    values = result.values if result is not None else {}
+
+    # Hp/Hd framing only accompanies an actual likelihood ratio (N-P1.8).
+    if lr is not None:
+        ui.label("Hypotheses").classes("text-lg font-semibold")
+        ui.label("H_p (prosecution): the questioned text and the known texts share an author.")
+        ui.label("H_d (defence):   the questioned text and the known texts do not share an author.")
+    elif values.get("candidate"):
+        ui.label("Question").classes("text-lg font-semibold")
+        ui.label(
+            "Whether the questioned document(s) were written by the candidate author "
+            f"{values['candidate']!r}."
+        )
 
     # Headline card: LR when a calibrated LR exists, else the GI verification
     # score — never the candidate's name (audit P1.10). The verbal rung is
     # classified from the RAW LR float, never the display string (audit P1.11).
     headline_label, headline_value = scalars[0] if scalars else ("score", "—")
-    lr = lr_from_values(result.values) if result is not None else None
     with ui.row().classes("w-full items-center gap-4 mt-2"):
         with (
             ui.column()
@@ -190,10 +235,13 @@ def _render_forensic_body(case: Case) -> None:
                     )
                     ui.label(f"  {label_}  ({lo}-{hi})").style(style)
         elif headline_label == "GI score":
-            ui.label(
-                "Uncalibrated General-Impostors verification score in [0, 1] — not a "
-                "likelihood ratio; no ENFSI rung applies until calibration is configured."
-            ).style("font-size: 12px; color: #555; max-width: 320px;")
+            with ui.column().classes("gap-1"):
+                for doc_id, score in gi_scores(values):
+                    ui.label(f"{doc_id}: {fmt_scalar(score)}").classes("bitig-mono")
+                ui.label(
+                    "Uncalibrated General-Impostors verification score in [0, 1] — not a "
+                    "likelihood ratio; no ENFSI rung applies until calibration is configured."
+                ).style("font-size: 12px; color: #555; max-width: 320px;")
 
     if lr is not None:
         ui.label(f"Interpretation: {lr_verbal_statement(lr)}.").style(
@@ -204,12 +252,7 @@ def _render_forensic_body(case: Case) -> None:
     with ui.row().classes("w-full gap-6 mt-2"):
         with ui.column().classes("flex-1 gap-1"):
             ui.label("Method").classes("text-lg font-semibold")
-            method_text = result.method_name if result else "(no run yet)"
-            ui.label(
-                f"Authorship verification was performed via {method_text}. The likelihood "
-                "ratio above expresses how much more probable the observed evidence is "
-                "under H_p than under H_d."
-            )
+            ui.label(forensic_method_paragraph(result, has_lr=lr is not None))
         with ui.column().classes("w-96 gap-1"):
             ui.label("Chain of custody").classes("text-lg font-semibold")
             for e in case.record.evidence.questioned + case.record.evidence.known:

@@ -63,8 +63,8 @@ Every `Result` carries a `Provenance` record with:
 Plus six optional forensic fields (questioned / known descriptions, hypothesis pair,
 acquisition + custody notes, source-file SHA-256s) for chain-of-custody.
 
-Two runs of the same `study.yaml` against the same corpus produce byte-identical
-`result.json` under matching seeds. See [Results & provenance](results.md).
+Two runs of the same `study.yaml` against the same corpus with matching seeds produce
+identical result values (up to floating-point rounding). See [Results & provenance](results.md).
 
 ## Read next
 

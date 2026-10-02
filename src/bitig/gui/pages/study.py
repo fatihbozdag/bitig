@@ -164,6 +164,10 @@ def study_page() -> None:
                 feat_params["n"] = int(ngram_n_input.value)
 
             method_kind = method_select.value
+            if method_kind == "bayesian" and feat_type in ("mfw", "char_ngram", "word_ngram"):
+                # The Bayesian attributor models counts; MFW defaults to z-scores,
+                # which it rejects (audit 2026-09-26 P2).
+                feat_params["scale"] = "none"
             method_params: dict[str, object] = {}
             if _VARIANTS.get(method_kind) and variant_select.value:
                 method_params["variant"] = variant_select.value
@@ -184,8 +188,13 @@ def study_page() -> None:
             if method_kind == "classify":
                 method_params["estimator"] = "logreg"
             if method_kind == "cluster":
-                method_params["n_clusters"] = int(n_clusters_input.value)
-                method_params["linkage"] = "ward"
+                # Only the params each clusterer accepts: the runner now rejects
+                # unknown ones (k-means has no linkage; HDBSCAN no n_clusters).
+                cluster_variant = method_params.get("variant", "hierarchical")
+                if cluster_variant in {"hierarchical", "kmeans"}:
+                    method_params["n_clusters"] = int(n_clusters_input.value)
+                if cluster_variant == "hierarchical":
+                    method_params["linkage"] = "ward"
             if method_kind == "reduce":
                 method_params["n_components"] = int(n_components_input.value)
             if method_kind == "zeta":

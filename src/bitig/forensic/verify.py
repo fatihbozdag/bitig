@@ -34,6 +34,15 @@ Aggregate = Literal["centroid", "nearest"]
 class GeneralImpostors:
     """Authorship verification via the General Impostors method.
 
+    This is the document-level variant: Q is compared with the candidate's known
+    documents and with individual impostor *documents* in precomputed feature
+    matrices. :class:`bitig.methods.imposters.GeneralImposters` (used by
+    ``bitig run`` and Forensic Lab Cases) is the corpus-level variant: it fits its
+    own MFW space and compares Q with author *centroids*. Both sample
+    ``ceil(sqrt(pool))`` impostors per iteration by default and return a win
+    fraction in [0, 1]; neither score is a likelihood ratio. A parity test
+    (``tests/forensic/test_gi_parity.py``) checks they agree on clear cases.
+
     Parameters
     ----------
     n_iterations : int
@@ -58,8 +67,9 @@ class GeneralImpostors:
         How to build a single comparison point from the candidate's known documents:
 
         - ``centroid``: compare Q to the mean vector of the known samples (simple, standard).
-        - ``nearest``: compare Q to the nearest known sample in the projected subspace
-          (more conservative under stylistic heterogeneity within an author's corpus).
+        - ``nearest``: compare Q to the nearest known sample in the projected subspace.
+          This gives the candidate its best of k chances per iteration, so it biases the
+          score toward same-author (anti-conservative); calibrate under the same setting.
     seed : int
         Seed for the numpy random generator used to sample features and impostors.
 

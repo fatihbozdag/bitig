@@ -53,6 +53,22 @@ _INDEX_REGISTRY: dict[str, dict[str, Callable[[str], float]]] = {
 }
 
 
+def _require_cmudict() -> None:
+    """English syllables come from NLTK's cmudict. textstat downloads it on first
+    use, which fails (or reaches the network) on offline forensic machines; bitig
+    never triggers that download (audit 2026-09-26 P2)."""
+    import nltk
+
+    try:
+        nltk.data.find("corpora/cmudict")
+    except LookupError as exc:
+        raise RuntimeError(
+            "English readability needs NLTK's cmudict corpus, which is not installed. "
+            "Install it once with: python -m nltk.downloader cmudict "
+            "(or copy nltk_data/corpora/cmudict.zip onto an offline machine)."
+        ) from exc
+
+
 class ReadabilityExtractor(BaseFeatureExtractor):
     feature_type = "readability"
 
@@ -84,6 +100,8 @@ class ReadabilityExtractor(BaseFeatureExtractor):
                 f"Available for {lang!r}: {sorted(available)}."
             )
         self._fns = [available[i] for i in self._resolved_indices]
+        if lang == "en":
+            _require_cmudict()
 
     def _transform(self, corpus: Corpus) -> tuple[np.ndarray, list[str]]:
         X = np.zeros((len(corpus), len(self._resolved_indices)), dtype=float)  # noqa: N806

@@ -176,7 +176,17 @@ print(f"mean score (target trials): {scores[labels == 1].mean():.3f}")
 print(f"mean score (non-target):    {scores[labels == 0].mean():.3f}")
 ```
 
-On this synthetic setup the two means should be clearly separated (≈ 0.8 vs ≈ 0.2).
+Output on this synthetic setup (bitig 0.3.1, numpy 2.4.6, scikit-learn 1.9.1):
+
+```
+Corpus: 80 documents from 40 authors
+80 trials (40 target / 40 non-target)
+mean score (target trials): 1.000
+mean score (non-target):    0.101
+```
+
+Every same-author trial wins all 100 iterations; the synthetic authors are far easier
+to tell apart than real PAN data.
 
 ## 5. Calibrate
 
@@ -201,6 +211,19 @@ print(f"calibrated posterior range: [{test_probs.min():.2f}, {test_probs.max():.
 print(f"log-LR range:               [{test_log_lrs.min():.2f}, {test_log_lrs.max():.2f}]")
 ```
 
+```
+calibrated posterior range: [0.11, 0.81]
+log-LR range:               [-0.79, 0.73]
+```
+
+`predict_log_lr` divides out the calibration set's prior odds (here 21 target / 27
+non-target trials), so the log-LR is not simply the logit of the posterior. Each value
+is the LR **for one trial**: every same-author test trial here gets log₁₀ LR = +0.73
+(LR ≈ 5.4), the different-author trials get between −0.79 and +0.15 (LR ≈ 0.16 to
+1.4). Platt scaling (`sklearn` `LogisticRegression` with its default regularisation)
+keeps the posteriors well inside (0, 1) even though the scores separate the classes
+perfectly, so these LRs are modest.
+
 ## 6. PAN evaluation
 
 ```python
@@ -219,18 +242,25 @@ for k, v in report.to_dict().items():
         print(f"  {k:12s} {v}")
 ```
 
-Expected output on the synthetic setup (approximate):
+Output on the synthetic setup:
 
 ```
-  auc          0.97
-  c_at_1       0.92
-  f05u         0.91
-  brier        0.10
-  ece          0.04
-  cllr_bits    0.24
-  n_target     20
-  n_nontarget  20
+  auc          1.000
+  c_at_1       0.999
+  f05u         0.960
+  brier        0.043
+  ece          0.192
+  cllr_bits    0.324
+  n_target     19
+  n_nontarget  13
 ```
+
+The random 60/40 split leaves 32 test trials (19 same-author, 13 different-author).
+One different-author trial has p = 0.524, inside the 0.05 band, so it is a non-answer.
+The PAN evaluator treats only p = 0.5 exactly as a non-answer; that is the default
+(`c_at_1_margin=0.0`, `f05u_margin=0.0`), and only the default is comparable with
+published PAN scores. AUC is perfect, but ECE (0.19) and C_llr (0.32 bits) show the
+calibrated outputs are under-confident.
 
 ## 7. Tippett plot
 
@@ -258,8 +288,8 @@ log-LRs while the non-target CDF drops quickly.
 
 ## 8. Forensic HTML report
 
-Save the test-set results as a bitig `Result`, stamp chain-of-custody metadata on its
-`Provenance`, and render the LR-framed forensic report.
+Pick one test trial as the case, save its result as a bitig `Result`, stamp
+chain-of-custody metadata on its `Provenance`, and render the LR-framed forensic report.
 
 ```python
 import json
@@ -272,13 +302,21 @@ from bitig.report import build_forensic_report
 run_dir = Path("pan_demo")
 (run_dir / "gi").mkdir(parents=True, exist_ok=True)
 
+# An LR is a statement about ONE trial (one Q against one K), never an average
+# over a mixed set of same- and different-author trials. Report one case here.
+test_ids = [trials[i].trial_id for i in test_idx]
+case = 0
+case_log_lr = float(test_log_lrs[case])
+print(f"case {test_ids[case]}: log10 LR = {case_log_lr:+.2f}, LR = {10 ** case_log_lr:.2f}")
+
 result = Result(
     method_name="general_impostors",
     params={"n_iterations": 100, "feature_subsample_rate": 0.5, "seed": 42},
     values={
-        "score_mean_target":    float(test_probs[test_labels == 1].mean()),
-        "score_mean_nontarget": float(test_probs[test_labels == 0].mean()),
-        "n_trials": int(len(test_labels)),
+        "trial_id": test_ids[case],
+        "gi_score": float(scores[test_idx][case]),
+        "calibrated_posterior": float(test_probs[case]),
+        "log10_lr": case_log_lr,
     },
     provenance=Provenance.current(
         spacy_model="n/a",
@@ -287,8 +325,8 @@ result = Result(
         feature_hash=fm.provenance_hash,
         seed=42,
         resolved_config={"method": "pan_tutorial"},
-        questioned_description="PAN-style verification trials (synthetic corpus)",
-        known_description="one known sample per candidate, 40 authors",
+        questioned_description=f"questioned document of trial {test_ids[case]} (synthetic corpus)",
+        known_description="one known sample of the candidate author",
         hypothesis_pair="H1: candidate wrote Q; H0: different author wrote Q",
         acquisition_notes="synthetic Dirichlet-multinomial profiles, seed 42",
         custody_notes="reproducible from tutorial code above",
@@ -301,15 +339,25 @@ build_forensic_report(
     output=run_dir / "report.html",
     title="PAN-style verification — demo",
     lr_summaries={"general_impostors": {
-        "log_lr": f"{test_log_lrs.mean():.2f}",
-        "lr":     f"{10 ** test_log_lrs.mean():.1f}",
+        "log_lr": f"{case_log_lr:.2f}",
+        "lr":     f"{10 ** case_log_lr:.2f}",
     }},
 )
 print(f"report: {run_dir / 'report.html'}")
 ```
 
+```
+case T_A30_same: log10 LR = +0.73, LR = 5.37
+report: pan_demo/report.html
+```
+
+Do not put the mean log-LR of the test set in the report: the test set mixes same- and
+different-author trials, and an average over them is not the LR of any case. Report
+the LR of the trial you are asked about; use the PAN metrics and the Tippett plot to
+describe the system over many trials.
+
 Open the HTML in a browser: you get a single-page forensic report with the hypothesis
-block, chain-of-custody block, method-level LR summary with the ENFSI verbal scale
+block, chain-of-custody block, LR of the reported trial with the ENFSI verbal scale
 interpretation, and the reproducibility provenance.
 
 ## Moving to real PAN data
@@ -342,8 +390,8 @@ corpora are among the largest public same-author benchmarks.
 
 - Every random choice in this tutorial is seeded (`rng = np.random.default_rng(42)` +
   `GeneralImpostors(seed=42)` + `scorer.method="platt"` which is deterministic).
-- A rerun produces byte-identical `Result.values` under matching Python + numpy +
-  scikit-learn versions.
+- A rerun produces identical `Result.values` (up to floating-point rounding) under
+  matching Python + numpy + scikit-learn versions.
 - The `Provenance` record captures all versions; any drift is detectable.
 
 See [Forensic toolkit](../forensic/index.md) for deeper documentation of each component.

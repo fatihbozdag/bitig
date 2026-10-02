@@ -36,9 +36,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
+import tempfile
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,7 +60,10 @@ from bitig.recipes import (
 )
 
 if TYPE_CHECKING:
+    from bitig.corpus import Corpus
     from bitig.signatures import SignaturePlugin
+
+_log = logging.getLogger(__name__)
 
 EvidenceRole = Literal["questioned", "known", "control"]
 _ROLES: tuple[EvidenceRole, ...] = ("questioned", "known", "control")
@@ -127,9 +133,9 @@ class ControlCorpusRef:
     """Pointer to an external impostor pool (forensic mode only).
 
     Cases reference control corpora by id rather than copying them in.
-    The runner is responsible for resolving the id at execution time
-    (e.g., to a bundled corpus shipped with bitig, or one registered in
-    ``~/.bitig/config.toml``).
+    NOTE: no runner code resolves or analyses this corpus yet. Reports list
+    it as "not used by the analysis" so the chain of custody does not
+    suggest otherwise (audit 2026-09-26 P2).
     """
 
     corpus_id: str
@@ -190,6 +196,13 @@ class CaseRecord:
     signed_at: str | None = None
     signed_by: str | None = None
     signature_plugin_id: str | None = None
+    # _case_state_hash() at the moment latest_run was computed; signing
+    # refuses when the case has changed since (audit 2026-09-26 N-P1.2).
+    latest_run_state_hash: str | None = None
+    # Append-only record of evidence re-acknowledged after a hash change.
+    custody_log: list[dict[str, Any]] = field(default_factory=list)
+    # Parent case, its registered hashes and any custody mismatch at fork time.
+    forked_from: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -209,6 +222,9 @@ class CaseRecord:
             "signed_at": self.signed_at,
             "signed_by": self.signed_by,
             "signature_plugin_id": self.signature_plugin_id,
+            "latest_run_state_hash": self.latest_run_state_hash,
+            "custody_log": [dict(e) for e in self.custody_log],
+            "forked_from": self.forked_from,
         }
 
     @classmethod
@@ -230,6 +246,9 @@ class CaseRecord:
             signed_at=data.get("signed_at"),
             signed_by=data.get("signed_by"),
             signature_plugin_id=data.get("signature_plugin_id"),
+            latest_run_state_hash=data.get("latest_run_state_hash"),
+            custody_log=[dict(e) for e in data.get("custody_log", [])],
+            forked_from=data.get("forked_from"),
         )
 
 
@@ -245,6 +264,11 @@ def hash_file(path: Path, *, chunk_size: int = 65536) -> str:
         for chunk in iter(lambda: fh.read(chunk_size), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _evidence_doc_id(entry: EvidenceEntry) -> str:
+    """Document id of a registered evidence file in the run corpus: its file stem."""
+    return Path(entry.path).stem
 
 
 def hash_text(text: str) -> str:
@@ -268,7 +292,11 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 def _validate_case_id(case_id: str) -> str:
     """Reject case ids that aren't a single safe path component (P1.3)."""
-    if not isinstance(case_id, str) or case_id in {"", ".", ".."} or not _SAFE_ID_RE.match(case_id):
+    if (
+        not isinstance(case_id, str)
+        or case_id in {"", ".", ".."}
+        or not _SAFE_ID_RE.fullmatch(case_id)
+    ):
         raise CaseError(
             f"Invalid case id {case_id!r}: must match [A-Za-z0-9._-]+ and not be '.' or '..' "
             "(no path separators, no parent-directory traversal, not absolute)."
@@ -301,13 +329,28 @@ def _ensure_within(path: Path, root: Path) -> Path:
     return resolved
 
 
+def _current_umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+# Read once at import: os.umask can only be queried by setting it.
+_UMASK = _current_umask()
+
+
 def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
     """Write ``text`` to ``path`` atomically (write temp + os.replace) so an
     interrupted write can't truncate an integrity-root file (audit P2)."""
     path = Path(path)
-    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    # Unique per call (mkstemp): a pid-only name collided between threads.
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.tmp-")
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(text, encoding=encoding)
+        # mkstemp creates 0600; give the file the mode a plain open() would.
+        os.chmod(tmp, 0o666 & ~_UMASK)
+        with os.fdopen(fd, "w", encoding=encoding) as fh:
+            fh.write(text)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -325,6 +368,12 @@ class SealCheck:
     name: str
     ok: bool
     detail: str
+    # True when the check could not be carried out (an HMAC seal checked
+    # without a key): not a pass, but not evidence of tampering either.
+    unverifiable: bool = False
+
+
+SealStatus = Literal["not_signed", "broken", "unverifiable", "unsigned", "verified"]
 
 
 @dataclass(frozen=True)
@@ -337,10 +386,35 @@ class SealVerification:
 
     signed: bool
     checks: list[SealCheck]
+    # Plugin recorded in signed.json; "null" means hashes only — consistent
+    # hashes are then NOT evidence against tampering by anyone with write access.
+    plugin_id: str = "null"
 
     @property
     def ok(self) -> bool:
         return self.signed and all(c.ok for c in self.checks)
+
+    @property
+    def tamper_evident(self) -> bool:
+        """True only for a verified seal with a cryptographic signature."""
+        return self.ok and self.plugin_id != "null"
+
+    @property
+    def status(self) -> SealStatus:
+        """One-word outcome.
+
+        ``broken`` if any check failed; ``unverifiable`` if every hash check
+        passed but the signature could not be checked (no key); ``unsigned``
+        for an intact Null seal (hashes only, not tamper-evident);
+        ``verified`` for an intact seal with a valid signature.
+        """
+        if not self.signed:
+            return "not_signed"
+        if any(not c.ok and not c.unverifiable for c in self.checks):
+            return "broken"
+        if any(c.unverifiable for c in self.checks):
+            return "unverifiable"
+        return "verified" if self.tamper_evident else "unsigned"
 
 
 def _count_tokens(path: Path) -> int:
@@ -392,6 +466,9 @@ class Case:
     def __init__(self, root: Path, record: CaseRecord) -> None:
         self.root: Path = Path(root)
         self.record: CaseRecord = record
+        # SHA-256 of case.json as this handle last read or wrote it; save()
+        # refuses to overwrite a newer version (see _check_not_stale).
+        self._disk_sha: str | None = None
 
     # -- construction -------------------------------------------------------
 
@@ -458,7 +535,8 @@ class Case:
         case_json = case_dir / _CASE_JSON
         if not case_json.is_file():
             raise CaseError(f"Not a Case directory (missing {_CASE_JSON}): {case_dir}")
-        data = json.loads(case_json.read_text(encoding="utf-8"))
+        raw = case_json.read_bytes()
+        data = json.loads(raw.decode("utf-8"))
         record = CaseRecord.from_dict(data)
         # case.json is untrusted (cases are shareable). Reject any evidence path
         # that is absolute or escapes the case dir BEFORE anything hashes or
@@ -468,7 +546,13 @@ class Case:
             if os.path.isabs(entry.path):
                 raise CaseError(f"Evidence path is absolute (rejected): {entry.path!r}")
             _ensure_within(case_dir / entry.path, case_dir)
-        return cls(case_dir, record)
+        # Run ids are joined onto runs/ by the report and seal code; a crafted
+        # '../../x' would read result.json / figures from anywhere (audit P2).
+        for run_id in [*record.runs, *([record.latest_run] if record.latest_run else [])]:
+            _validate_case_id(run_id)
+        case = cls(case_dir, record)
+        case._disk_sha = hashlib.sha256(raw).hexdigest()
+        return case
 
     # -- paths --------------------------------------------------------------
 
@@ -500,15 +584,36 @@ class Case:
     # -- persistence --------------------------------------------------------
 
     def save(self) -> None:
-        """Recompute derived hashes and flush ``case.json``."""
-        # study_hash is refreshed lazily off the on-disk study.yaml so a
-        # hand-edit through the Custom slide-over still produces a fresh
-        # hash next save.
-        if self.study_yaml_path.is_file():
-            self.record.study_hash = hash_file(self.study_yaml_path)
+        """Recompute derived hashes and flush ``case.json``.
+
+        ``study_hash`` is deliberately NOT refreshed from disk here: it is set
+        only by :meth:`regenerate_study_yaml`, so a hand edit of
+        ``study.yaml`` is detected (:meth:`study_yaml_intact`) instead of being
+        silently re-blessed by the next save (audit 2026-09-26 N-P1.1). The
+        Custom editor goes through :meth:`change_recipe`, which regenerates.
+        """
+        self._check_not_stale()
         self.record.corpus_hash = compute_corpus_hash(self.record.evidence)
         payload = json.dumps(self.record.to_dict(), indent=2)
         _atomic_write_text(self.case_json_path, payload)
+        self._disk_sha = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _check_not_stale(self) -> None:
+        """Refuse to save over a case.json another handle or process has changed.
+
+        save() writes the whole in-memory record, so a handle loaded before
+        another one signed the case (e.g. the GUI run page during a long run)
+        would un-sign it, and evidence registered elsewhere would be dropped
+        (audit 2026-09-26 P2).
+        """
+        if not self.case_json_path.is_file():
+            return
+        current = hashlib.sha256(self.case_json_path.read_bytes()).hexdigest()
+        if self._disk_sha is not None and current != self._disk_sha:
+            raise CaseError(
+                "case.json was changed by another handle or process since this case was "
+                "loaded; reload the case (Case.load) and retry."
+            )
 
     # -- evidence -----------------------------------------------------------
 
@@ -547,6 +652,14 @@ class Case:
         _ensure_within(dest, role_dir)
         if dest.exists():
             raise CaseError(f"Destination already exists: {dest}. Pass dest_name= to disambiguate.")
+        # The file stem is the document id in the run corpus, so it must be
+        # unique across roles (questioned/alice.txt vs known/alice.txt).
+        doc_id = Path(name).stem
+        if any(_evidence_doc_id(e) == doc_id for e in self._registered_entries()):
+            raise CaseError(
+                f"Evidence document id {doc_id!r} is already registered under another role. "
+                "Pass dest_name= to disambiguate."
+            )
         shutil.copy2(src, dest)
 
         entry = EvidenceEntry(
@@ -570,6 +683,65 @@ class Case:
         self.save()
         return ref
 
+    def unregistered_evidence_files(self) -> list[str]:
+        """Files under ``evidence/`` that are not registered (never analysed or sealed)."""
+        if not self.evidence_dir.is_dir():
+            return []
+        registered = {e.path for e in self._registered_entries()}
+        return sorted(
+            p.relative_to(self.root).as_posix()
+            for p in self.evidence_dir.rglob("*")
+            if p.is_file() and p.relative_to(self.root).as_posix() not in registered
+        )
+
+    def reacknowledge_evidence(
+        self, path: str, *, reason: str, by: str | None = None
+    ) -> dict[str, Any]:
+        """Accept the current bytes of a changed evidence file, on the record.
+
+        For a registered file whose hash no longer matches (e.g. a re-export
+        with different line endings), the analyst states *why* the change is
+        legitimate. The old and new hashes, the reason, who and when are
+        appended to ``record.custody_log``. That log is part of the canonical
+        case state, so it is sealed and printed in the report's chain of
+        custody. It also changes the case state, so any earlier run must be
+        re-run before the case can be signed.
+
+        Missing files cannot be re-acknowledged: fork the case instead.
+        Raises :class:`CaseError` on a signed case, an empty reason, an
+        unregistered path, a missing file, or a file that has not changed.
+        """
+        self._require_unsigned("re-acknowledge evidence")
+        reason = (reason or "").strip()
+        if not reason:
+            raise CaseError("A reason is required to re-acknowledge changed evidence.")
+        entry = next((e for e in self._registered_entries() if e.path == path), None)
+        if entry is None:
+            raise CaseError(f"Not a registered evidence path: {path!r}")
+        abs_path = self.root / entry.path
+        _ensure_within(abs_path, self.evidence_dir)
+        if not abs_path.is_file():
+            raise CaseError(
+                f"{entry.path} is missing; a missing file cannot be re-acknowledged. "
+                "Fork the case instead."
+            )
+        new_sha = hash_file(abs_path)
+        if new_sha == entry.sha256:
+            raise CaseError(f"{entry.path} is unchanged; nothing to re-acknowledge.")
+        log_entry = {
+            "at": _utcnow_iso(),
+            "by": by or self.record.examiner,
+            "path": entry.path,
+            "old_sha256": entry.sha256,
+            "new_sha256": new_sha,
+            "reason": reason,
+        }
+        self.record.custody_log.append(log_entry)
+        entry.sha256 = new_sha
+        entry.tokens = _count_tokens(abs_path)
+        self.save()
+        return log_entry
+
     def verify_custody(self) -> list[EvidenceEntry]:
         """Return registered entries whose on-disk SHA-256 no longer matches.
 
@@ -587,20 +759,91 @@ class Case:
                 mismatches.append(entry)
         return mismatches
 
+    def _registered_entries(self) -> list[EvidenceEntry]:
+        return [*self.record.evidence.questioned, *self.record.evidence.known]
+
+    def build_corpus(self, *, language: str = "en") -> Corpus:
+        """Load the run corpus from the registered evidence only (audit 2026-09-26 N-P0.1).
+
+        Every document is read from its registered path and its bytes are
+        re-hashed at read time, so the texts analysed are exactly the texts
+        in the chain of custody: unregistered files under ``evidence/`` are
+        never loaded, and a file altered since registration aborts the load.
+        Each document carries ``role`` and, when registered, ``author`` /
+        ``year`` metadata. The document id is the file stem.
+        """
+        from bitig.corpus import Corpus, Document
+
+        entries = self._registered_entries()
+        if not entries:
+            raise CaseError("No evidence registered; add questioned/known files before running.")
+        ids = [_evidence_doc_id(e) for e in entries]
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        if duplicates:
+            # Registered before add_evidence enforced unique stems: two
+            # documents with one id would be confused (e.g. as verify targets).
+            raise CaseError(
+                f"Evidence files share a document id (file stem): {duplicates}. "
+                "Fork the case without one of them, or rename and re-register it."
+            )
+        documents: list[Document] = []
+        for entry in entries:
+            abs_path = self.root / entry.path
+            _ensure_within(abs_path, self.evidence_dir)
+            data = abs_path.read_bytes()
+            if hashlib.sha256(data).hexdigest() != entry.sha256:
+                raise CaseError(
+                    f"Chain-of-custody mismatch on {entry.path}: file changed since registration."
+                )
+            metadata: dict[str, Any] = {"role": entry.role}
+            if entry.author is not None:
+                metadata["author"] = entry.author
+            if entry.year is not None:
+                metadata["year"] = entry.year
+            documents.append(
+                Document(
+                    id=_evidence_doc_id(entry),
+                    text=data.decode("utf-8"),
+                    metadata=metadata,
+                )
+            )
+        return Corpus(documents=documents, language=language.lower())
+
+    def study_yaml_intact(self) -> bool:
+        """True iff ``study.yaml`` still hashes to the value recorded when it was written."""
+        if not self.study_yaml_path.is_file():
+            return False
+        return hash_file(self.study_yaml_path) == self.record.study_hash
+
     # -- study --------------------------------------------------------------
 
-    def resolved_study_dict(self) -> dict[str, Any]:
+    def resolved_study_dict(self, *, fill_targets: bool = True) -> dict[str, Any]:
         """The study.yaml-shaped dict for this Case's recipe + overrides.
 
-        ``corpus.path`` is filled in to point at the Case's evidence dir
-        so ``bitig run study.yaml`` from inside the Case works.
+        ``corpus.path`` is the case-relative ``evidence`` dir, recorded for
+        reference only: a Case run loads its corpus from the registered
+        evidence (:meth:`build_corpus`), never by globbing a directory, so a
+        copied or moved Case analyses its own evidence (audit N-P1.1).
+
+        ``verify`` methods without explicit ``target_ids`` target every
+        registered questioned document (unless ``fill_targets`` is false), so
+        a questioned document added later is targeted too.
         """
-        return resolve_recipe(
+        study = resolve_recipe(
             self.record.recipe,
             self.record.overrides,
-            corpus_path=str(self.evidence_dir),
+            corpus_path=_EVIDENCE_DIR,
             name=self.record.id,
         )
+        if not fill_targets:
+            return study
+        questioned = [_evidence_doc_id(e) for e in self.record.evidence.questioned]
+        for method in study.get("methods") or []:
+            if isinstance(method, dict) and method.get("kind") == "verify":
+                fields = method["params"] if isinstance(method.get("params"), dict) else method
+                if not fields.get("target_ids"):
+                    fields["target_ids"] = questioned
+        return study
 
     def resolved_study(self) -> StudyConfig:
         return StudyConfig.model_validate(self.resolved_study_dict())
@@ -629,7 +872,10 @@ class Case:
         from bitig.recipes import apply_param_target
 
         self._require_unsigned("set param")
-        resolved = apply_param_target(self.resolved_study_dict(), target, value)
+        # Patch the study without the auto-filled ``target_ids``: storing them
+        # would freeze today's questioned set into the overrides, and a
+        # questioned document added later would silently go untargeted.
+        resolved = apply_param_target(self.resolved_study_dict(fill_targets=False), target, value)
 
         # Persist the override as a flat top-level patch over the recipe
         # defaults. We strip ``corpus`` / ``name`` because those are filled
@@ -662,17 +908,25 @@ class Case:
 
     # -- runs ---------------------------------------------------------------
 
-    def register_run(self, run_id: str) -> Path:
+    def register_run(self, run_id: str, *, case_state_hash: str | None = None) -> Path:
         """Record a completed run. The runner creates ``runs/<run_id>/``
         and writes its artefacts; this method just updates ``case.json``
         and refreshes the ``runs/latest`` symlink.
+
+        ``case_state_hash`` is the case state the run was computed on (taken
+        before the run started). Signing refuses a run whose state differs
+        from the current one (audit 2026-09-26 N-P1.2); a run registered
+        without it can never be signed.
         """
+        self._require_unsigned("register a run")
+        run_id = _validate_case_id(run_id)
         run_dir = self.runs_dir / run_id
         if not run_dir.is_dir():
             raise CaseError(f"Run directory does not exist: {run_dir}")
         if run_id not in self.record.runs:
             self.record.runs.append(run_id)
         self.record.latest_run = run_id
+        self.record.latest_run_state_hash = case_state_hash
 
         # Update `runs/latest` symlink. Filesystems that don't support
         # symlinks (e.g. Windows without dev mode) silently skip — the
@@ -694,6 +948,34 @@ class Case:
     def is_signed(self) -> bool:
         return self.record.signed
 
+    def sign_blockers(self) -> list[str]:
+        """Why this case cannot be signed right now; empty when it can.
+
+        Enforced by :meth:`mark_signed` itself, so every entry point (CLI,
+        GUI, API) gets the same guarantees (audit 2026-09-26 N-P1.2, N-P1.7).
+        """
+        if self.record.signed:
+            return ["Case is already signed."]
+        blockers: list[str] = []
+        if not self._registered_entries():
+            blockers.append("No evidence is registered.")
+        mismatches = self.verify_custody()
+        if mismatches:
+            blockers.append(
+                "Chain-of-custody mismatch on: " + ", ".join(m.path for m in mismatches)
+            )
+        if not self.study_yaml_intact():
+            blockers.append("study.yaml is missing or was modified outside bitig.")
+        latest = self.record.latest_run
+        if latest is None or not (self.runs_dir / latest).is_dir():
+            blockers.append("No successful run to sign; run the analysis first.")
+        elif self.record.latest_run_state_hash != self._case_state_hash():
+            blockers.append(
+                "The case changed after the latest run (evidence, settings or custody log); "
+                "re-run the analysis before signing."
+            )
+        return blockers
+
     def mark_signed(
         self,
         *,
@@ -708,25 +990,36 @@ class Case:
         HSM-backed signature). The default (``None``) keeps the
         chain-of-custody-only behaviour.
 
+        Refuses (:class:`CaseError`) unless :meth:`sign_blockers` is empty.
+        The seal binds the canonical case state, the frozen ``signed.html``
+        and a hash manifest of every file in the latest run. ``signed.html``
+        and ``signed.json`` are written to temporary names and moved into
+        place only once everything has succeeded; any failure (including an
+        interrupt) removes them and leaves the case unsigned.
+
         Returns the (possibly plugin-augmented) ``signed.json`` payload
-        as a dict. Raises :class:`CaseError` if the Case is already
-        signed — `bitig case fork` produces a fresh unsigned descendant.
+        as a dict.
         """
         # Lazy import so bitig.cases stays importable without the new
         # signatures module (e.g. minimal embedded use).
         from bitig.signatures import DEFAULT_SIGNATURE_PLUGIN
 
-        if self.record.signed:
-            raise CaseError("Case is already signed.")
+        blockers = self.sign_blockers()
+        if blockers:
+            raise CaseError("Cannot sign: " + " ".join(blockers))
 
         plugin = signature_plugin if signature_plugin is not None else DEFAULT_SIGNATURE_PLUGIN
         signed_at = _utcnow_iso()
         signed_by = signed_by or self.record.examiner
 
-        # Set the signing state BEFORE rendering so the sealed report shows the
-        # SIGNED banner + signer/timestamp (the document that gets sealed must
-        # reflect that it is signed). save() persists it; on any failure below
-        # we roll the record back so a half-signed state can't be left behind.
+        signed_html = self.report_dir / _REPORT_SIGNED_HTML
+        signed_json = self.report_dir / _REPORT_SIGNED
+        tmp_html = signed_html.with_name(f".{signed_html.name}.tmp-{uuid.uuid4().hex}")
+        tmp_json = signed_json.with_name(f".{signed_json.name}.tmp-{uuid.uuid4().hex}")
+
+        # The signing fields are set in memory only, so the rendered report
+        # shows the SIGNED banner; case.json is not touched until the seal
+        # files are in place (audit 2026-09-26 N-P1.3).
         prev = (
             self.record.signed,
             self.record.signed_at,
@@ -737,52 +1030,64 @@ class Case:
         self.record.signed_at = signed_at
         self.record.signed_by = signed_by
         self.record.signature_plugin_id = plugin.id
-        self.save()
-
+        moved: list[Path] = []
         try:
-            # Render the final (signed-context) report and freeze it as an
-            # immutable signed.html. Export-to-PDF and any later render serve
-            # this frozen copy, so the locked artefact can never be silently
-            # rewritten out from under its sealed hash (audit P1.5, P1.7).
-            # Lazy import: bitig.report imports bitig.cases, so importing it at
-            # module scope would cycle — but at call time the cycle is resolved.
-            from bitig.report.case_report import build_case_report
+            # Lazy import: bitig.report imports bitig.cases.
+            from bitig.report.case_report import render_case_report_html
 
-            build_case_report(self, format="html")  # writes draft.html (signed banner)
-            draft = self.report_dir / _REPORT_DRAFT
-            if not draft.is_file():  # pragma: no cover - renderer always writes it
-                raise CaseError("Report rendering produced no draft.html; cannot seal.")
-            shutil.copy2(draft, self.report_dir / _REPORT_SIGNED_HTML)
+            self.report_dir.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(tmp_html, render_case_report_html(self))
 
-            # case_state_hash is sign-invariant (see _case_state_hash) so it is
-            # reproducible after the save() above. report_html_hash binds the
-            # frozen report as a SEPARATE sealed field — folding it into
-            # case_state_hash would be circular, since the report footer
-            # displays case_state_hash itself. verify_seal() checks both.
+            # case_state_hash is sign-invariant (see _case_state_hash).
+            # report_html_hash binds the frozen report as a SEPARATE field —
+            # folding it into case_state_hash would be circular, since the
+            # report footer displays case_state_hash itself. run_manifest binds
+            # result.json and the figures the report embeds by path.
             payload: dict[str, Any] = {
                 "signed_at": signed_at,
                 "signed_by": signed_by,
                 "case_state_hash": self._case_state_hash(),
-                "report_html_hash": self._report_html_hash(),
+                "report_html_hash": hash_file(tmp_html),
+                "latest_run": self.record.latest_run,
+                "run_manifest": self._run_manifest(),
                 "bitig_version": __version__,
                 "signature_plugin_id": plugin.id,
             }
             signed_payload = plugin.sign(payload, case=self)
-            _atomic_write_text(
-                self.report_dir / _REPORT_SIGNED, json.dumps(signed_payload, indent=2)
-            )
-        except Exception:
-            # Roll back so the case is not left in a half-signed state.
+            _atomic_write_text(tmp_json, json.dumps(signed_payload, indent=2))
+
+            # A handle loaded before another one signed the case must not
+            # overwrite that seal: refuse before moving any file into place.
+            self._check_not_stale()
+            os.replace(tmp_html, signed_html)
+            moved.append(signed_html)
+            os.replace(tmp_json, signed_json)
+            moved.append(signed_json)
+            self.save()  # persist signed=True last
+        except BaseException:
             (
                 self.record.signed,
                 self.record.signed_at,
                 self.record.signed_by,
                 self.record.signature_plugin_id,
             ) = prev
-            self.save()
+            for path in (tmp_html, tmp_json, *moved):
+                path.unlink(missing_ok=True)
             raise
 
         return signed_payload
+
+    def _run_manifest(self) -> dict[str, str]:
+        """``{path relative to the case root: sha256}`` for every file in the latest run."""
+        if self.record.latest_run is None:
+            return {}
+        run_dir = self.runs_dir / self.record.latest_run
+        _ensure_within(run_dir, self.runs_dir)
+        return {
+            p.relative_to(self.root).as_posix(): hash_file(p)
+            for p in sorted(run_dir.rglob("*"))
+            if p.is_file()
+        }
 
     # -- internals ----------------------------------------------------------
 
@@ -827,7 +1132,7 @@ class Case:
             if r.evidence.control is not None
             else None
         )
-        return {
+        state: dict[str, Any] = {
             "schema": 1,
             "id": r.id,
             "title": r.title,
@@ -842,6 +1147,13 @@ class Case:
             "evidence": evidence,
             "control": control,
         }
+        # Added in 0.3.2; included only when present so seals made by earlier
+        # versions keep reproducing their case_state_hash.
+        if r.custody_log:
+            state["custody_log"] = r.custody_log
+        if r.forked_from is not None:
+            state["forked_from"] = r.forked_from
+        return state
 
     def _case_state_hash(self) -> str:
         """SHA-256 over the sign-invariant canonical state (spec §6, audit P0.1).
@@ -861,8 +1173,8 @@ class Case:
         when no report has been rendered yet.
         """
         signed_html = self.report_dir / _REPORT_SIGNED_HTML
-        if signed_html.is_file():
-            return hash_file(signed_html)
+        if self.record.signed:
+            return hash_file(signed_html) if signed_html.is_file() else None
         draft = self.report_dir / _REPORT_DRAFT
         if draft.is_file():
             return hash_file(draft)
@@ -878,8 +1190,6 @@ class Case:
         ``$BITIG_SIGNATURE_KEY``). Returns a structured result; the overall
         ``.ok`` is True only if *every* check passes. Pure read-only.
         """
-        from bitig.signatures import verify_hmac_signature
-
         if not self.record.signed:
             return SealVerification(
                 signed=False,
@@ -928,6 +1238,21 @@ class Case:
             )
         )
 
+        checks.append(self._run_outputs_check(payload))
+
+        # A file copied into evidence/ by hand is neither analysed nor sealed;
+        # flag it so nobody mistakes it for covered evidence (N-P1.7).
+        stray = self.unregistered_evidence_files()
+        checks.append(
+            SealCheck(
+                "unregistered_files",
+                not stray,
+                "no unregistered files under evidence/"
+                if not stray
+                else "NOT covered by the seal (never registered): " + ", ".join(stray),
+            )
+        )
+
         mismatches = self.verify_custody()
         checks.append(
             SealCheck(
@@ -940,42 +1265,137 @@ class Case:
             )
         )
 
-        plugin_id = payload.get("signature_plugin_id", "null")
-        sig = payload.get("signature")
-        if plugin_id == "null" or sig is None:
-            checks.append(
-                SealCheck(
-                    "signature",
-                    True,
-                    "no cryptographic signature (Null plugin) — chain-of-custody hashes only",
-                )
-            )
-        elif plugin_id == "hmac":
-            key = signature_key or os.environ.get("BITIG_SIGNATURE_KEY")
-            if not key:
-                checks.append(
-                    SealCheck(
-                        "signature",
-                        False,
-                        "HMAC signature present but no key provided "
-                        "(pass signature_key= or set BITIG_SIGNATURE_KEY)",
-                    )
-                )
-            else:
-                ok = verify_hmac_signature(payload, key=key)
-                checks.append(
-                    SealCheck(
-                        "signature",
-                        ok,
-                        "HMAC signature valid"
-                        if ok
-                        else "HMAC signature INVALID (wrong key or tampered payload)",
-                    )
-                )
-        else:
-            checks.append(SealCheck("signature", False, f"unknown signature plugin {plugin_id!r}"))
+        checks.append(self._signer_check(payload))
+        checks.append(self._signature_check(payload, signature_key))
 
-        return SealVerification(signed=True, checks=checks)
+        return SealVerification(
+            signed=True,
+            checks=checks,
+            plugin_id=str(payload.get("signature_plugin_id") or "null"),
+        )
+
+    def _signer_check(self, payload: dict[str, Any]) -> SealCheck:
+        """case.json's signer / time must match the sealed ones (shown by status and GUI)."""
+        mismatched = [
+            field_name
+            for field_name in ("signed_by", "signed_at")
+            if getattr(self.record, field_name) != payload.get(field_name)
+        ]
+        if mismatched:
+            return SealCheck(
+                "signer",
+                False,
+                f"case.json {', '.join(mismatched)} differ from {_REPORT_SIGNED}",
+            )
+        return SealCheck("signer", True, f"signed by {payload.get('signed_by')!r}")
+
+    def _run_outputs_check(self, payload: dict[str, Any]) -> SealCheck:
+        """Compare the sealed run-output manifest with the files on disk (N-P1.5)."""
+        sealed = payload.get("run_manifest")
+        sig = payload.get("signature")
+        if isinstance(sig, dict) and int(sig.get("scheme", 1)) < 2:
+            # A scheme-1 HMAC does not cover run_manifest, so a manifest in
+            # such a seal could have been added after signing.
+            sealed = None
+        if not isinstance(sealed, dict):
+            return SealCheck(
+                "run_outputs",
+                False,
+                "legacy seal: run outputs (result.json, figures) are not covered; "
+                "re-verify by forking and re-signing",
+            )
+        if payload.get("latest_run") != self.record.latest_run:
+            return SealCheck(
+                "run_outputs",
+                False,
+                f"latest run changed: sealed {payload.get('latest_run')!r}, "
+                f"case.json {self.record.latest_run!r}",
+            )
+        current = self._run_manifest()
+        changed = sorted(k for k in sealed if current.get(k) != sealed[k])
+        added = sorted(set(current) - set(sealed))
+        if changed or added:
+            detail = []
+            if changed:
+                detail.append("altered/missing: " + ", ".join(changed))
+            if added:
+                detail.append("added: " + ", ".join(added))
+            return SealCheck("run_outputs", False, "; ".join(detail))
+        return SealCheck("run_outputs", True, f"{len(sealed)} run file(s) match sealed hashes")
+
+    def _signature_check(
+        self, payload: dict[str, Any], signature_key: bytes | str | None
+    ) -> SealCheck:
+        """Check the cryptographic signature without trusting ``signed.json`` (audit N-P0.2).
+
+        ``signed.json`` and ``case.json`` are both editable by anyone with
+        write access, so neither may downgrade the seal on its own:
+
+        * the plugin ids recorded in the two files must agree;
+        * a non-Null plugin id with a missing signature fails;
+        * a verifier passing ``signature_key`` explicitly always requires a
+          valid HMAC, whatever plugin id the files claim;
+        * a key found only in ``$BITIG_SIGNATURE_KEY`` checks HMAC seals, but
+          does not fail a Null seal: the result stays ``unsigned`` (never
+          ``verified``) with a note that a removed signature looks the same.
+        """
+        from bitig.signatures import verify_hmac_signature
+
+        payload_plugin = payload.get("signature_plugin_id") or "null"
+        record_plugin = self.record.signature_plugin_id or "null"
+        sig = payload.get("signature")
+        env_key = os.environ.get("BITIG_SIGNATURE_KEY")
+        key = signature_key or env_key
+
+        if payload_plugin != record_plugin:
+            return SealCheck(
+                "signature",
+                False,
+                f"plugin mismatch: {_REPORT_SIGNED} says {payload_plugin!r}, "
+                f"case.json says {record_plugin!r}",
+            )
+        null_seal = payload_plugin == "null" and sig is None
+        if key and not (signature_key is None and null_seal):
+            ok = verify_hmac_signature(payload, key=key)
+            if ok:
+                return SealCheck("signature", True, "HMAC signature valid")
+            if sig is None:
+                return SealCheck(
+                    "signature",
+                    False,
+                    "a signature key was supplied but the seal carries no signature",
+                )
+            return SealCheck(
+                "signature", False, "HMAC signature INVALID (wrong key or tampered payload)"
+            )
+        if payload_plugin == "null":
+            if sig is not None:
+                return SealCheck(
+                    "signature", False, "Null plugin seal unexpectedly carries a signature"
+                )
+            detail = (
+                "UNSIGNED (Null plugin): hashes only — anyone with write access can "
+                "recompute them, so this seal is not tamper-evident"
+            )
+            if env_key:
+                detail += (
+                    "; $BITIG_SIGNATURE_KEY is set: if this case was signed with HMAC, "
+                    "its signature has been removed"
+                )
+            return SealCheck("signature", True, detail)
+        if sig is None:
+            return SealCheck(
+                "signature", False, f"plugin {payload_plugin!r} recorded but signature is missing"
+            )
+        if payload_plugin == "hmac":
+            return SealCheck(
+                "signature",
+                False,
+                "CANNOT VERIFY: HMAC signature present but no key provided "
+                "(pass signature_key= or set BITIG_SIGNATURE_KEY)",
+                unverifiable=True,
+            )
+        return SealCheck("signature", False, f"unknown signature plugin {payload_plugin!r}")
 
     # -- convenience --------------------------------------------------------
 
@@ -998,6 +1418,7 @@ def fork_case(
     cases_root: Path | None = None,
     title: str | None = None,
     examiner: str | None = None,
+    acknowledge_mismatch: str | None = None,
 ) -> Case:
     """Clone an existing Case into an unsigned descendant (spec §6).
 
@@ -1006,11 +1427,40 @@ def fork_case(
     The new Case is created under ``cases_root`` (defaults to the parent of
     ``src_dir``, mirroring the source layout) and is freshly hashed.
 
+    If the source's evidence no longer matches its registered hashes, the
+    fork is refused: copying would re-hash altered files into a clean chain
+    of custody (audit 2026-09-26 N-P1.4). Passing ``acknowledge_mismatch``
+    (the reason) allows it. Every fork records ``forked_from`` — the parent
+    id, its registered hashes and any mismatch with the acknowledgement —
+    which is part of the sealed case state and printed in the report.
+
     Raises :class:`CaseError` if the destination already exists.
     """
     source = Case.load(src_dir)
     if cases_root is None:
         cases_root = source.root.parent
+
+    mismatches = [m.path for m in source.verify_custody()]
+    reason = (acknowledge_mismatch or "").strip()
+    if mismatches and not reason:
+        raise CaseError(
+            f"Source case {source.record.id!r} has a chain-of-custody mismatch on "
+            + ", ".join(mismatches)
+            + ". Forking would register the altered files under fresh hashes; pass an "
+            "acknowledgement reason to fork anyway (it is recorded in the fork)."
+        )
+    forked_from: dict[str, Any] = {
+        "case_id": source.record.id,
+        "at": _utcnow_iso(),
+        "case_state_hash": source._case_state_hash(),
+        "evidence": [
+            {"role": e.role, "path": e.path, "sha256": e.sha256}
+            for e in source.record.evidence.all_files()
+        ],
+        "custody_mismatches": mismatches,
+    }
+    if mismatches:
+        forked_from["acknowledged_reason"] = reason
 
     forked = Case.create(
         cases_root,
@@ -1021,47 +1471,66 @@ def fork_case(
         overrides=dict(source.record.overrides),
     )
 
-    for entry in source.record.evidence.questioned:
+    omitted: list[str] = []
+    for entry in source.record.evidence.all_files():
+        src_file = source.root / entry.path
+        if not src_file.is_file():
+            # Only reachable with an acknowledged mismatch: a missing file
+            # cannot be carried over, so the fork records it as omitted.
+            omitted.append(entry.path)
+            continue
         forked.add_evidence(
-            source.root / entry.path,
-            role="questioned",
+            src_file,
+            role=entry.role,
             author=entry.author,
             year=entry.year,
             dest_name=Path(entry.path).name,
         )
-    for entry in source.record.evidence.known:
-        forked.add_evidence(
-            source.root / entry.path,
-            role="known",
-            author=entry.author,
-            year=entry.year,
-            dest_name=Path(entry.path).name,
-        )
+    if omitted:
+        forked_from["omitted_missing"] = omitted
     if source.record.evidence.control is not None:
         c = source.record.evidence.control
         forked.set_control_corpus(c.corpus_id, n_docs=c.n_docs)
 
+    forked.record.forked_from = forked_from
+    forked.save()
     return forked
 
 
-def list_cases(root: Path) -> list[Case]:
-    """Return every Case under ``root`` (one level deep).
+def scan_cases(root: Path) -> tuple[list[Case], list[tuple[Path, str]]]:
+    """Every readable Case under ``root`` (one level deep), and the unreadable ones.
 
-    Skips entries that don't contain a ``case.json``. Returned in
-    alphabetical order by id; the GUI's Case-list landing page can re-sort
-    by created_at / signed status as needed.
+    Returns ``(cases, problems)`` where ``problems`` lists ``(directory,
+    reason)`` for case directories whose ``case.json`` is malformed or
+    rejected by :meth:`Case.load`; one bad case no longer aborts the whole
+    listing (audit 2026-09-26 P2). Directories without ``case.json`` are not
+    cases and are skipped silently.
     """
     root = Path(root)
     if not root.is_dir():
-        return []
-    out: list[Case] = []
+        return [], []
+    cases: list[Case] = []
+    problems: list[tuple[Path, str]] = []
     for child in sorted(root.iterdir()):
-        if not child.is_dir():
+        if not child.is_dir() or not (child / _CASE_JSON).is_file():
             continue
-        if not (child / _CASE_JSON).is_file():
-            continue
-        out.append(Case.load(child))
-    return out
+        try:
+            cases.append(Case.load(child))
+        except (CaseError, KeyError, TypeError, ValueError, OSError) as exc:
+            problems.append((child, f"{type(exc).__name__}: {exc}"))
+    return cases, problems
+
+
+def list_cases(root: Path) -> list[Case]:
+    """Every readable Case under ``root`` (one level deep), alphabetical by id.
+
+    Unreadable case directories are skipped with a warning; use
+    :func:`scan_cases` to get them.
+    """
+    cases, problems = scan_cases(root)
+    for path, reason in problems:
+        _log.warning("skipping unreadable case %s: %s", path, reason)
+    return cases
 
 
 __all__ = [
@@ -1081,4 +1550,5 @@ __all__ = [
     "hash_file",
     "hash_text",
     "list_cases",
+    "scan_cases",
 ]

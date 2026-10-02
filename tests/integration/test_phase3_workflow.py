@@ -34,11 +34,15 @@ def test_phase3_end_to_end_workflow() -> None:
     ).fit_transform(corpus)
     assert len(zeta.tables) == 2
 
+    # loao grouped by the target is degenerate and now refused; stratified CV with
+    # the extractor refit per fold is the leakage-free path.
     report = cross_validate_bitig(
         build_classifier("logreg", random_state=42),
-        fm,
+        None,
         y,
-        cv_kind="loao",
-        groups_from=y,
+        cv_kind="stratified",
+        folds=3,
+        extractor=MFWExtractor(n=50, scale="zscore"),
+        corpus=corpus,
     )
     assert 0.0 <= report["accuracy"] <= 1.0

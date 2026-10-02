@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import shutil
+import traceback
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +15,7 @@ import numpy as np
 import spacy
 
 from bitig.config import StudyConfig, load_config
+from bitig.corpus import Corpus
 from bitig.features import (
     CharNgramExtractor,
     FeatureMatrix,
@@ -39,7 +44,6 @@ from bitig.methods.reduce import MDSReducer, PCAReducer, TSNEReducer, UMAPReduce
 from bitig.methods.rolling_delta import RollingDelta
 from bitig.methods.zeta import ZetaClassic, ZetaEder
 from bitig.plumbing.logging import get_logger
-from bitig.preprocess.pipeline import SpacyPipeline
 from bitig.provenance import Provenance
 from bitig.result import Result
 
@@ -83,23 +87,151 @@ _ZETA_VARIANTS: dict[str, type] = {
 }
 
 
+def _accepted_kwargs(cls: Any) -> set[str] | None:
+    """Keyword names ``cls`` accepts, or ``None`` if it takes ``**kwargs``."""
+    params = inspect.signature(cls).parameters.values()
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params):
+        return None
+    return {p.name for p in params if p.name != "self"}
+
+
+def _reducer_impl(variant: str) -> Any:
+    cls = _REDUCER_VARIANTS.get(variant)
+    if cls is None:
+        return None
+    if variant == "umap":
+        try:
+            import umap
+        except ImportError:
+            return None  # the run itself reports the missing extra
+        return umap.UMAP
+    return getattr(cls, "_impl", None)
+
+
+def validate_study_params(cfg: StudyConfig) -> None:
+    """Reject feature/method params the runner would ignore or crash on.
+
+    Checked against the constructor signatures the runner actually calls, so a
+    typo or a stale key fails loudly at load time instead of being silently
+    dropped (audit 2026-09-26 N-P1.14). ``method:`` on a delta method is a
+    deprecated alias for ``variant:`` and is translated with a warning.
+    Mutates ``cfg`` only for that alias.
+    """
+    errors: list[str] = []
+    for feat in cfg.features:
+        extractor_cls = _FEATURE_BUILDERS.get(feat.type)
+        if extractor_cls is None:
+            errors.append(
+                f"feature {feat.id!r}: type {feat.type!r} is not supported by `bitig run` "
+                f"(supported: {sorted(_FEATURE_BUILDERS)})"
+            )
+            continue
+        _check_keys(errors, f"feature {feat.id!r}", feat.params, _accepted_kwargs(extractor_cls))
+
+    for method in cfg.methods:
+        params = method.params
+        kind = method.kind
+        where = f"method {method.id!r} ({kind})"
+        if kind == "delta" and "method" in params:
+            if "variant" in params:
+                errors.append(
+                    f"{where}: give either 'variant' or the deprecated 'method', not both"
+                )
+            else:
+                warnings.warn(
+                    f"{where}: 'method:' is deprecated; use 'variant: {params['method']}'",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                params["variant"] = params.pop("method")
+        allowed: set[str] | None
+        if kind == "delta":
+            allowed = {"variant"}
+        elif kind == "rolling_delta":
+            allowed = (_accepted_kwargs(RollingDelta) or set()) - {"group_by"}
+        elif kind == "verify":
+            allowed = (_accepted_kwargs(GeneralImposters) or set()) - {"group_by"}
+        elif kind == "zeta":
+            zeta_cls = _ZETA_VARIANTS.get(str(params.get("variant", "classic")), ZetaClassic)
+            allowed = {"variant"} | ((_accepted_kwargs(zeta_cls) or set()) - {"group_by"})
+        elif kind == "reduce":
+            impl = _reducer_impl(str(params.get("variant", "pca")))
+            impl_kwargs = _accepted_kwargs(impl) if impl is not None else None
+            allowed = None if impl_kwargs is None else {"variant"} | impl_kwargs
+        elif kind == "cluster":
+            cluster_cls = _CLUSTER_VARIANTS.get(str(params.get("variant", "hierarchical")))
+            cluster_kwargs = _accepted_kwargs(cluster_cls) if cluster_cls is not None else None
+            allowed = None if cluster_kwargs is None else {"variant"} | cluster_kwargs
+        elif kind == "consensus":
+            allowed = _accepted_kwargs(BootstrapConsensus)
+        elif kind == "bayesian":
+            allowed = {"prior_alpha"}
+        elif kind == "classify":
+            allowed = {"estimator"}
+        else:  # pragma: no cover - MethodKind is a closed Literal
+            allowed = None
+        _check_keys(errors, where, params, allowed)
+
+    if errors:
+        raise ValueError("invalid study configuration:\n  - " + "\n  - ".join(errors))
+
+
+def _check_keys(
+    errors: list[str], where: str, params: dict[str, Any], allowed: set[str] | None
+) -> None:
+    if allowed is None:
+        return
+    unknown = sorted(set(params) - allowed)
+    if unknown:
+        errors.append(f"{where}: unknown parameter(s) {unknown} (accepted: {sorted(allowed)})")
+
+
+def _labelled_mask(labels: np.ndarray, group_by: str | None) -> np.ndarray:
+    """Boolean mask of documents carrying a ``group_by`` label; at least two classes required."""
+    if not group_by:
+        raise ValueError("this method requires group_by (e.g. 'author')")
+    mask = np.array([label is not None for label in labels], dtype=bool)
+    n_classes = len(set(labels[mask]))
+    if n_classes < 2:
+        raise ValueError(
+            f"need labelled documents from at least two {group_by!r} values; found {n_classes}"
+        )
+    return mask
+
+
 def run_study(
     config_path: str | Path,
     *,
     output_dir: str | Path | None = None,
     run_name: str | None = None,
+    corpus: Corpus | None = None,
+    overwrite: bool = False,
 ) -> Path:
     """Execute a full study from a `study.yaml` file and save all results.
+
+    ``overwrite`` lets a run reuse a folder that holds a previous run, removing
+    only that run's own outputs first; otherwise such a folder is refused, so
+    stale method outputs never mix with new ones (audit 2026-09-26 P2).
+
+    ``corpus`` supplies the documents directly instead of loading
+    ``cfg.corpus.path`` (a Forensic Lab Case passes its registered,
+    hash-checked evidence this way). ``cfg.corpus.filter`` still applies.
 
     Returns the path to the run directory (e.g., `results/2026-04-17T10-15-30/`).
     """
     cfg: StudyConfig = load_config(Path(config_path))
-    run_dir = _make_run_dir(cfg, output_dir, run_name)
+    validate_study_params(cfg)
+    run_dir = _make_run_dir(cfg, output_dir, run_name, overwrite=overwrite)
     _log.info("run directory: %s", run_dir)
 
-    corpus = load_corpus(
-        Path(cfg.corpus.path), metadata=Path(cfg.corpus.metadata) if cfg.corpus.metadata else None
-    )
+    if corpus is None:
+        # The study language selects function-word lists, readability formulas
+        # etc.; it defaulted to English here (audit 2026-09-26 N-P1.13).
+        corpus = load_corpus(
+            Path(cfg.corpus.path),
+            metadata=Path(cfg.corpus.metadata) if cfg.corpus.metadata else None,
+            language=cfg.preprocess.language,
+        )
     if cfg.corpus.filter:
         corpus = corpus.filter(**cfg.corpus.filter)
     _log.info("loaded %d documents", len(corpus))
@@ -116,24 +248,37 @@ def run_study(
             )
             continue
         extractor = extractor_cls(**feat_cfg.params)
-        features_by_id[feat_cfg.id] = extractor.fit_transform(corpus)
+        fm = extractor.fit_transform(corpus)
+        bad = np.isnan(fm.X)
+        if bad.any():
+            rows, cols = np.nonzero(bad)
+            cells = ", ".join(
+                f"{fm.document_ids[r]}:{fm.feature_names[c]}"
+                for r, c in zip(rows, cols, strict=True)
+            )
+            raise ValueError(
+                f"feature {feat_cfg.id!r} has undefined (NaN) values for {cells}; drop those "
+                "measures or documents (e.g. lexical-diversity indices need longer texts)"
+            )
+        features_by_id[feat_cfg.id] = fm
         _log.info("built features %s: %s", feat_cfg.id, features_by_id[feat_cfg.id].X.shape)
 
-    # SpacyPipeline resolves `language` → default model/backend via the languages registry.
-    # Explicit model/backend on SpacyConfig override the registry defaults.
-    pipe = SpacyPipeline(
-        language=cfg.preprocess.language,
-        model=cfg.preprocess.spacy.model,
-        backend=cfg.preprocess.spacy.backend,
-        exclude=list(cfg.preprocess.spacy.exclude),
-    )
+    # No feature the runner builds parses with spaCy, so none is recorded: the
+    # earlier SpacyPipeline-for-provenance stamped e.g. en_core_web_trf on runs
+    # where no model was loaded or even installed (audit 2026-09-26 P2).
 
     # Execute each method.
     for method_cfg in cfg.methods:
         method_dir = run_dir / method_cfg.id
         method_dir.mkdir(parents=True, exist_ok=True)
         try:
-            result = _dispatch_method(method_cfg, corpus, features_by_id, seed=cfg.seed)
+            result = _dispatch_method(
+                method_cfg,
+                corpus,
+                features_by_id,
+                seed=cfg.seed,
+                feature_cfgs={f.id: f for f in cfg.features},
+            )
             # Derive feature_hash from the primary feature id used by this method (if any).
             feat_hash: str | None = None
             features_attr = getattr(method_cfg, "features", None)
@@ -145,7 +290,7 @@ def run_study(
                 if fm_primary is not None:
                     feat_hash = fm_primary.provenance_hash or None
             result.provenance = Provenance.current(
-                spacy_model=pipe.model,
+                spacy_model="none (no spaCy parsing in this run)",
                 spacy_version=spacy.__version__,
                 corpus_hash=corpus.hash(),
                 feature_hash=feat_hash,
@@ -158,23 +303,80 @@ def run_study(
                 method_cfg=method_cfg, method_dir=method_dir, result=result, corpus=corpus
             )
         except Exception as exc:
-            _log.error("method %s failed: %s", method_cfg.id, exc)
-            (method_dir / "error.txt").write_text(str(exc))
+            _log.error("method %s failed: %s", method_cfg.id, exc, exc_info=True)
+            # Full traceback; its last line is "ExcType: message" (read by case_run).
+            (method_dir / "error.txt").write_text(traceback.format_exc(), encoding="utf-8")
 
-    (run_dir / "resolved_config.json").write_text(
-        json.dumps(cfg.model_dump(), indent=2, default=str)
-    )
+    (run_dir / _RESOLVED_CONFIG).write_text(json.dumps(cfg.model_dump(), indent=2, default=str))
     return run_dir
 
 
-def _make_run_dir(cfg: StudyConfig, output_dir: str | Path | None, run_name: str | None) -> Path:
+_RESOLVED_CONFIG = "resolved_config.json"
+
+
+def failed_methods(run_dir: Path) -> dict[str, str]:
+    """``{method id: last line of its error.txt}`` for every failed method in a run."""
+    out: dict[str, str] = {}
+    for err in sorted(Path(run_dir).glob("*/error.txt")):
+        lines = err.read_text(encoding="utf-8").strip().splitlines()
+        out[err.parent.name] = lines[-1] if lines else "error"
+    return out
+
+
+def _previous_run_outputs(run_dir: Path, cfg: StudyConfig) -> list[Path]:
+    """Outputs of an earlier bitig run in ``run_dir`` (method dirs + its config file)."""
+    found: list[Path] = []
+    previous_cfg = run_dir / _RESOLVED_CONFIG
+    method_ids = {m.id for m in cfg.methods}
+    if previous_cfg.is_file():
+        found.append(previous_cfg)
+        try:
+            data = json.loads(previous_cfg.read_text(encoding="utf-8"))
+            method_ids |= {str(m.get("id")) for m in data.get("methods", []) if m.get("id")}
+        except (OSError, ValueError, AttributeError):
+            pass
+    for method_id in sorted(method_ids):
+        path = run_dir / method_id
+        # Only plain names directly under run_dir, and only folders bitig wrote.
+        if (
+            path.parent == run_dir
+            and path.is_dir()
+            and ((path / "result.json").exists() or (path / "error.txt").exists())
+        ):
+            found.append(path)
+    return found
+
+
+def _make_run_dir(
+    cfg: StudyConfig,
+    output_dir: str | Path | None,
+    run_name: str | None,
+    *,
+    overwrite: bool = False,
+) -> Path:
     base = Path(output_dir or cfg.output.dir)
     if run_name:
         run_dir = base / run_name
     elif cfg.output.timestamp:
-        run_dir = base / datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        run_dir, n = base / stamp, 2
+        while run_dir.exists():  # two runs in the same second
+            run_dir, n = base / f"{stamp}-{n}", n + 1
     else:
         run_dir = base
+    previous = _previous_run_outputs(run_dir, cfg) if run_dir.is_dir() else []
+    if previous:
+        if not overwrite:
+            raise FileExistsError(
+                f"{run_dir} already holds a previous run ({', '.join(p.name for p in previous)}); "
+                "use a new --name / timestamped output, or pass overwrite=True "
+                "(`bitig run --overwrite`) to replace that run's outputs"
+            )
+        for path in previous:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
@@ -185,6 +387,7 @@ def _dispatch_method(
     features_by_id: dict[str, FeatureMatrix],
     *,
     seed: int,
+    feature_cfgs: dict[str, Any] | None = None,
 ) -> Result:
     kind = method_cfg.kind
 
@@ -193,15 +396,20 @@ def _dispatch_method(
             method_cfg.features if isinstance(method_cfg.features, str) else method_cfg.features[0]
         )
         fm = features_by_id[feat_id]
-        y = np.array(corpus.metadata_column(method_cfg.group_by))
+        y_all = np.array(corpus.metadata_column(method_cfg.group_by), dtype=object)
+        labelled = _labelled_mask(y_all, method_cfg.group_by)
+        y = y_all[labelled]
         variant = str(method_cfg.params.get("variant", "burrows"))
         cls = _DELTA_VARIANTS.get(variant)
         if cls is None:
             raise ValueError(
                 f"unknown delta variant: {variant!r} (known: {sorted(_DELTA_VARIANTS)})"
             )
-        clf = cls().fit(fm, y)
-        preds = clf.predict(fm)
+        # Centroids come from the labelled documents only; documents without
+        # a label (e.g. questioned texts) are attributed, never trained on.
+        clf = cls().fit(fm.X[labelled], y)
+        all_preds = clf.predict(fm)
+        preds = all_preds[labelled]
         # In-sample (train == test): the centroids were fit on these same
         # documents and `fm` was z-scored over the whole corpus, so this is
         # RESUBSTITUTION accuracy — a separability diagnostic, NOT a held-out
@@ -215,6 +423,13 @@ def _dispatch_method(
                 "predictions": preds,
                 "resubstitution_accuracy": float((preds == y).mean()),
                 "evaluation": "resubstitution (in-sample); use `bitig classify` for held-out CV",
+                "attributions": {
+                    doc_id: str(pred)
+                    for doc_id, pred, is_lab in zip(
+                        fm.document_ids, all_preds, labelled, strict=True
+                    )
+                    if not is_lab
+                },
             },
         )
 
@@ -262,8 +477,15 @@ def _dispatch_method(
             raise ValueError(f"unknown zeta variant: {variant!r} (known: {sorted(_ZETA_VARIANTS)})")
         zeta_kwargs = {k: v for k, v in method_cfg.params.items() if k not in ("variant",)}
         zeta_kwargs.setdefault("top_k", 20)
+        # Zeta contrasts labelled groups; unlabelled documents take no part.
+        labelled_corpus = Corpus(
+            documents=[
+                d for d in corpus.documents if d.metadata.get(str(method_cfg.group_by)) is not None
+            ],
+            language=corpus.language,
+        )
         zeta_result: Result = zeta_cls(group_by=method_cfg.group_by, **zeta_kwargs).fit_transform(
-            corpus
+            labelled_corpus
         )
         return zeta_result
 
@@ -280,6 +502,9 @@ def _dispatch_method(
             )
         kwargs = {k: v for k, v in method_cfg.params.items() if k != "variant"}
         kwargs.setdefault("n_components", 2)
+        # Every reducer is stochastic or solver-seeded; thread the study seed
+        # (audit 2026-09-26 N-P1.15).
+        kwargs.setdefault("random_state", seed)
         result: Result = cls(**kwargs).fit_transform(fm)
         return result
 
@@ -295,24 +520,29 @@ def _dispatch_method(
                 f"unknown cluster variant: {variant!r} (known: {sorted(_CLUSTER_VARIANTS)})"
             )
         kwargs = {k: v for k, v in method_cfg.params.items() if k != "variant"}
+        if cluster_cls is KMeansCluster:
+            kwargs.setdefault("random_state", seed)
         cluster_result: Result = cluster_cls(**kwargs).fit_transform(fm)
         return cluster_result
 
     if kind == "consensus":
-        return BootstrapConsensus(
-            mfw_bands=method_cfg.params.get("mfw_bands", [100, 200, 300]),
-            replicates=int(method_cfg.params.get("replicates", 20)),
-        ).fit_transform(corpus)
+        consensus_kwargs = dict(method_cfg.params)
+        consensus_kwargs.setdefault("mfw_bands", [100, 200, 300])
+        consensus_kwargs.setdefault("replicates", 20)
+        consensus_kwargs.setdefault("seed", seed)
+        return BootstrapConsensus(**consensus_kwargs).fit_transform(corpus)
 
     if kind == "bayesian":
         feat_id = (
             method_cfg.features if isinstance(method_cfg.features, str) else method_cfg.features[0]
         )
         fm = features_by_id[feat_id]
-        y = np.array(corpus.metadata_column(method_cfg.group_by))
+        y_all = np.array(corpus.metadata_column(method_cfg.group_by), dtype=object)
+        labelled = _labelled_mask(y_all, method_cfg.group_by)
+        y = y_all[labelled]
         clf = BayesianAuthorshipAttributor(
             prior_alpha=float(method_cfg.params.get("prior_alpha", 1.0))
-        ).fit(fm, y)
+        ).fit(fm.X[labelled], y)
         preds = clf.predict(fm)
         proba = clf.predict_proba(fm)
         return Result(
@@ -320,7 +550,10 @@ def _dispatch_method(
             params=dict(method_cfg.params),
             values={
                 "predictions": preds,
-                "accuracy": float((preds == y).mean()),
+                # In-sample, like the delta branch: a separability diagnostic, not a
+                # held-out estimate (audit 2026-09-26 P2).
+                "resubstitution_accuracy": float((preds[labelled] == y).mean()),
+                "evaluation": "resubstitution (in-sample); use kind: classify for held-out CV",
                 "proba": proba,
                 "classes": clf.classes_,
                 "document_ids": list(fm.document_ids),
@@ -343,14 +576,23 @@ def _dispatch_method(
                     "(a metadata column naming the grouping unit, e.g. 'author')"
                 )
             groups = np.array(corpus.metadata_column(groups_col))
-        clf = build_classifier(method_cfg.params.get("estimator", "logreg"))
+        clf = build_classifier(method_cfg.params.get("estimator", "logreg"), random_state=seed)
+        # Refit the feature extractor inside each training fold so held-out
+        # documents never shape the vocabulary or z-scores (audit 2026-09-26 P2).
+        feat_cfg = (feature_cfgs or {}).get(feat_id)
+        extractor = (
+            _FEATURE_BUILDERS[feat_cfg.type](**feat_cfg.params) if feat_cfg is not None else None
+        )
         report = cross_validate_bitig(
             clf,
-            fm,
+            None if extractor is not None else fm,
             y,
             cv_kind=cv_kind,
             groups_from=groups,
+            folds=(method_cfg.cv.folds if method_cfg.cv and method_cfg.cv.folds else 5),
             seed=seed,
+            extractor=extractor,
+            corpus=corpus if extractor is not None else None,
         )
         from bitig.metrics.calibration import brier_score, expected_calibration_error
 
@@ -488,10 +730,16 @@ def _emit_default_plot(
 
         elif kind in ("delta", "bayesian"):
             preds = result.values.get("predictions")
-            if preds is None or groups is None:
+            if preds is None or groups is None or group_by is None:
+                return
+            # Predictions cover the labelled documents only (unlabelled ones are
+            # attributed, not scored), so compare against those labels.
+            labelled = [str(v) for v in corpus.metadata_column(group_by) if v is not None]
+            truth = labelled if len(labelled) == len(preds) else groups
+            if len(truth) != len(preds):
                 return
             fig = plot_confusion_matrix(
-                np.asarray(groups),
+                np.asarray(truth),
                 np.asarray(preds),
                 title=str(result.method_name),
             )

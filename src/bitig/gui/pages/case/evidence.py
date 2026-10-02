@@ -121,12 +121,24 @@ def _render_role_dropzone(
             ui.space()
             ui.label(f"{len(bucket)} file(s)").classes("bitig-mono bitig-muted text-xs")
 
+        # Known texts need an author label: verification picks the candidate
+        # and the impostors by it (audit 2026-09-26 N-P0.1).
+        author_input = (
+            ui.input("Author label", placeholder="e.g. Alice").classes("w-64")
+            if role == "known"
+            else None
+        )
+
         async def add_files() -> None:
             chosen = await pick_file(f"Select {role} file", file_types=("All files (*.*)",))
             if not chosen:
                 return
             try:
-                case.add_evidence(Path(chosen), role=role)
+                author = (author_input.value or "").strip() if author_input is not None else ""
+                if role == "known" and not author:
+                    ui.notify("Enter an author label for the known file first.", type="warning")
+                    return
+                case.add_evidence(Path(chosen), role=role, author=author or None)
             except (CaseError, FileNotFoundError) as exc:
                 ui.notify(str(exc), type="negative")
                 return
@@ -143,13 +155,50 @@ def _render_role_dropzone(
                 btn.tooltip("Native file picker required (run without --no-native).")
 
         for entry in bucket:
+            mismatched = entry.path in mismatch_paths
             render_evidence_card(
                 title=Path(entry.path).name,
                 meta=f"{entry.tokens} tokens · " + (f"{entry.author}" if entry.author else "—"),
                 provenance=f"{short_hash(entry.sha256)} role={entry.role}",
                 # mismatch_paths already reflects the single verify_custody pass.
-                state="err" if entry.path in mismatch_paths else "default",
+                state="err" if mismatched else "default",
             )
+            if mismatched and not case.record.signed:
+                ui.button(
+                    "Re-acknowledge…",
+                    icon="fact_check",
+                    on_click=lambda e=entry: _open_reacknowledge_dialog(case, e.path, rerender),
+                ).props("flat color=amber")
+
+
+def _open_reacknowledge_dialog(case: Case, path: str, rerender: Callable[[], None]) -> None:
+    """Record why a changed evidence file is legitimate (sealed custody log)."""
+    with ui.dialog() as dialog, ui.card().classes("w-[36rem]"):
+        ui.label(f"Re-acknowledge {path}").classes("text-lg font-semibold")
+        ui.label(
+            "This file no longer matches its registered hash. If the change is legitimate, "
+            "state why. The old and new hashes, your reason, name and the time are recorded "
+            "in the chain-of-custody log, which is sealed and printed in the report. The "
+            "analysis must be re-run before signing. If the file should not have changed, "
+            "fork the case instead (`bitig case fork`)."
+        ).classes("bitig-muted text-sm")
+        reason = ui.textarea("Reason (required)").classes("w-full")
+        by = ui.input("Acknowledged by", value=case.record.examiner).classes("w-full")
+
+        def confirm() -> None:
+            try:
+                case.reacknowledge_evidence(path, reason=reason.value or "", by=by.value or None)
+            except CaseError as exc:
+                ui.notify(str(exc), type="negative")
+                return
+            dialog.close()
+            ui.notify(f"re-acknowledged {path}; re-run before signing", type="warning")
+            rerender()
+
+        with ui.row().classes("w-full justify-end gap-2"):
+            ui.button("Cancel", on_click=dialog.close).props("flat")
+            ui.button("Re-acknowledge", on_click=confirm).props("color=amber")
+    dialog.open()
 
 
 def _render_control_corpus(case: Case, *, rerender: Callable[[], None]) -> None:

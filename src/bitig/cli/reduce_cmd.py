@@ -26,7 +26,7 @@ _REDUCERS = {
 def reduce_command(
     path: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),  # noqa: B008
     metadata: Path | None = typer.Option(None, "--metadata", "-m", exists=True, dir_okay=False),  # noqa: B008
-    method: str = typer.Option("pca", "--method"),
+    method: str = typer.Option("pca", "--method", help="pca | mds | tsne | umap"),
     n_components: int = typer.Option(2, "--n-components"),
     mfw: int = typer.Option(500, "--mfw"),
     output: Path = typer.Option(Path("reduce.parquet"), "--output", "-o"),  # noqa: B008

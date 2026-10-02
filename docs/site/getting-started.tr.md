@@ -21,55 +21,72 @@ bitig Python 3.11+ gerektirir.
 ### İsteğe bağlı eklentiler
 
 ```bash
-uv pip install "bitig[bayesian]"    # PyMC + arviz for hierarchical models
-uv pip install "bitig[embeddings]"  # sentence-transformers + contextual BERT
+uv pip install "bitig[cluster]"     # reduce/cluster için UMAP + HDBSCAN
+uv pip install "bitig[bayesian]"    # hiyerarşik modeller için PyMC + arviz
+uv pip install "bitig[embeddings]"  # sentence-transformers + bağlamsal BERT
 uv pip install "bitig[viz]"         # plotly, kaleido, ete3
-uv pip install "bitig[reports]"     # weasyprint for PDF report export
-uv pip install "bitig[docs]"        # mkdocs + material theme (build this site)
+uv pip install "bitig[reports]"     # PDF rapor dışa aktarımı için weasyprint
+uv pip install "bitig[gui]"         # `bitig gui` için NiceGUI + pywebview
+uv pip install "bitig[turkish]"     # Türkçe için Stanza arka ucu
+uv pip install "bitig[docs]"        # mkdocs + material teması (bu siteyi derlemek için)
 ```
+
+spaCy modeli yalnızca `bitig ingest` ve Python API'sindeki ayrıştırmaya dayalı öznitelikler
+için gereklidir; `bitig run` ham metin üzerinde çalışır.
 
 ## Beş komutla bir çalışma
 
 ```bash
-bitig init my-study          # (1) scaffold a project directory
+bitig init my-study          # (1) bir proje dizini oluşturun
 cd my-study
-# (2) drop .txt files into corpus/
-# (3) fill in corpus/metadata.tsv — one row per file with filename → author, group, year, ...
-bitig ingest corpus/ --metadata corpus/metadata.tsv  # (4) parse + cache
-bitig info                    # (5a) verify the ingest
-bitig run study.yaml --name demo   # (5b) run the declared study
+# (2) .txt dosyalarını corpus/ içine bırakın ve corpus/metadata.tsv ekleyin
+#     (sekmeyle ayrılmış: bir filename sütunu ve author, group, year, ...)
+# (3) study.yaml içinde `metadata: corpus/metadata.tsv` satırının yorumunu kaldırın
+bitig info                         # (4) sürümleri ve yapılandırılmış dili denetleyin
+bitig run study.yaml --name demo   # (5) bildirilen çalışmayı çalıştırın
 bitig report results/demo --output results/demo/report.html
 ```
 
-`bitig init` ile oluşturulan proje iskeleti, 200 en sık sözcük üzerinde Burrows Delta
-+ PCA + Zeta içeren çalışan bir `study.yaml` içerir; dolayısıyla yukarıdaki adım dizisi,
-aldığınız herhangi bir derlemde baştan sona çalışır.
+`bitig init`; `corpus/`, `results/`, `reports/`, `.bitig/cache/`, bir `.gitignore`, kısa bir
+`README.md` ve `author` üst veri sütununa göre gruplanmış 1000 en sık sözcük üzerinde Burrows
+Delta çalıştıran bir `study.yaml` oluşturur. `metadata.tsv` oluşturmaz; Delta, `author`
+sütunu içeren bir üst veri dosyası gerektirir. `bitig info`; bitig, Python, platform ve spaCy
+sürümlerini ve bir proje içinde çalıştırıldığında `study.yaml` dosyasında ayarlı dili
+yazdırır. `study.yaml` dosyasına başka yöntemler eklemek için
+[şema başvurusuna](reference/config.md) bakın.
 
 ## İlk Python oturumunuz
 
+`.txt` dosyalarından oluşan bir `corpus/` klasörü ve bir `corpus/metadata.tsv` içeren bir
+dizinden çalıştırın (örneğin tartışmalı makalenin `Unknown` olarak etiketlendiği
+[`examples/quickstart/`](https://github.com/fatihbozdag/bitig/tree/main/examples/quickstart)
+klasörünün bir kopyası):
+
 ```python
-from bitig import (
-    Corpus, Document,
-    MFWExtractor, BurrowsDelta,
-    PCAReducer, plot_scatter_2d,
-)
+from pathlib import Path
 
-corpus = Corpus(documents=[
-    Document(id="d1", text=open("doc1.txt").read(), metadata={"author": "Alice"}),
-    Document(id="d2", text=open("doc2.txt").read(), metadata={"author": "Alice"}),
-    Document(id="d3", text=open("doc3.txt").read(), metadata={"author": "Bob"}),
-    Document(id="d4", text=open("doc4.txt").read(), metadata={"author": "Bob"}),
-    Document(id="q",  text=open("questioned.txt").read(), metadata={"author": "?"}),
-])
+import numpy as np
 
-# 1. Extract the most-frequent-word feature matrix.
+from bitig import BurrowsDelta, MFWExtractor, PCAReducer, load_corpus, plot_scatter_2d
+
+# corpus/ altındaki her .txt dosyasını üst veri satırıyla birlikte yükleyin (filename → author, role, ...).
+corpus = load_corpus(Path("corpus"), metadata=Path("corpus/metadata.tsv"))
+
+# 1. En sık sözcük öznitelik matrisini çıkarın.
 fm = MFWExtractor(n=200, scale="zscore", lowercase=True).fit_transform(corpus)
 
-# 2. Train Burrows Delta on the known docs and predict the questioned one.
-import numpy as np
-y = np.array(corpus.metadata_column("author"))
-train_mask = y != "?"
-clf = BurrowsDelta().fit_predict(fm)  # sklearn-compatible
+# 2. Burrows Delta'yı bilinen belgeler üzerinde eğitin ve sorgulanan belgeyi atfedin.
+authors = np.array(corpus.metadata_column("author"))
+known = authors != "Unknown"
+delta = BurrowsDelta().fit(fm.X[known], authors[known])
+questioned = [d for d, k in zip(fm.document_ids, known) if not k]
+print(dict(zip(questioned, delta.predict(fm.X[~known]).tolist())))
+# {'fed_50': 'Madison'}
+
+# 3. PCA ile iki boyuta indirgeyin ve çizdirin.
+pca = PCAReducer(n_components=2).fit_transform(fm)
+fig = plot_scatter_2d(pca.values["coordinates"], labels=fm.document_ids, groups=list(authors))
+fig.savefig("pca.png")
 ```
 
 ## Örnek veri: Federalist örneği
@@ -81,7 +98,9 @@ Depo ile birlikte çalıştırmaya hazır iki örnek gelir:
 - [`examples/federalist/`](https://github.com/fatihbozdag/bitig/tree/main/examples/federalist)
   — Mosteller & Wallace (1964) sonucunu yeniden üreten 85 makalenin tam analizi.
 
-Hızlı başlangıç, ilk çalıştırmada şu PCA grafiğini üretir:
+Hızlı başlangıç çalışması, sekiz eğitim makalesinin şu PCA grafiğini yazar (50. makale
+`role: [train]` filtresiyle dışarıda tutulur ve ayrıca
+`bitig delta ... --test-filter role=test` ile atfedilir):
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/fatihbozdag/bitig/main/examples/quickstart/results/demo/pca/pca.png" alt="Hamilton ve Madison'ın PCA grafiği" style="max-width: 82%;">

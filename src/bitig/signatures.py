@@ -2,9 +2,10 @@
 
 Sign & lock in bitig is a chain-of-custody anchor: it freezes the Case,
 writes ``report/signed.json`` with the canonical state hash, and stamps
-the PDF footer. That's enough for an analyst to defend the artefact
-against later tampering, because anyone re-running the same Case must
-produce the same hashes.
+the PDF footer. On its own (the default Null plugin) that is NOT
+tamper-evident: anyone with write access can edit the case and recompute
+every hash. Tamper-evidence needs a keyed signature plugin (HMAC) and a
+verifier who holds the key.
 
 A *signature plugin* wraps that anchor with an additional cryptographic
 binding — for example, a hardware-key digital signature over the
@@ -16,7 +17,8 @@ Built-in plugins:
 * :class:`NullSignaturePlugin` — default. Passes the payload through
   untouched. ``mark_signed`` behaves exactly as before.
 * :class:`HmacSignaturePlugin` — pure-stdlib demonstration. Computes an
-  HMAC-SHA256 over ``case_state_hash + report_html_hash`` with a shared
+  HMAC-SHA256 over the canonical JSON of the whole seal payload (scheme 2;
+  scheme-1 seals over the two hashes still verify) with a shared
   secret loaded from ``BITIG_SIGNATURE_KEY`` (or passed at construction).
   Useful for CI / internal audit pipelines; not a substitute for an
   HSM-backed signature in adversarial settings.
@@ -36,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -82,7 +85,7 @@ class NullSignaturePlugin:
 
 
 class HmacSignaturePlugin:
-    """HMAC-SHA256 signature over the case state hash + report HTML hash.
+    """HMAC-SHA256 signature over the canonical JSON of the seal payload.
 
     The key may be passed at construction or read from the
     ``BITIG_SIGNATURE_KEY`` environment variable. The signed payload
@@ -117,22 +120,37 @@ class HmacSignaturePlugin:
         self._key: bytes = key
 
     def sign(self, payload: SignaturePayload, *, case: Case) -> SignaturePayload:
-        message_parts = [
-            str(payload.get("case_state_hash", "")),
-            str(payload.get("report_html_hash") or ""),
-            str(payload.get("signed_at", "")),
-        ]
-        message = "\n".join(message_parts).encode("utf-8")
+        message = _hmac_message(payload, scheme=2)
         digest = hmac.new(self._key, message, hashlib.sha256).hexdigest()
         fingerprint = hashlib.sha256(self._key).hexdigest()[:16]
 
         out = dict(payload)
         out["signature"] = {
             "algorithm": "HMAC-SHA256",
+            "scheme": 2,
             "key_fingerprint": fingerprint,
             "value": digest,
         }
         return out
+
+
+def _hmac_message(payload: SignaturePayload, *, scheme: int) -> bytes:
+    """Bytes the HMAC covers.
+
+    Scheme 2 (bitig 0.3.2+): canonical JSON of the whole payload except the
+    signature itself — signer, run manifest, plugin id and bitig version
+    included. Scheme 1 covered only case_state_hash, report_html_hash and
+    signed_at, so signed_by could be edited after signing (audit 2026-09-26 P2).
+    """
+    if scheme >= 2:
+        body = {k: v for k, v in payload.items() if k != "signature"}
+        return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    parts = [
+        str(payload.get("case_state_hash", "")),
+        str(payload.get("report_html_hash") or ""),
+        str(payload.get("signed_at", "")),
+    ]
+    return "\n".join(parts).encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -169,22 +187,22 @@ def get_signature_plugin(plugin_id: str | None) -> SignaturePlugin:
 def verify_hmac_signature(signed_payload: SignaturePayload, *, key: bytes | str) -> bool:
     """Standalone verifier for HMAC-signed payloads.
 
-    Returns True iff the payload's signature value matches a fresh
-    HMAC-SHA256 over the same ``(case_state_hash, report_html_hash,
-    signed_at)`` triple using ``key``. False on missing signature, key
-    mismatch, or tampered fields.
+    Returns True iff the signature value matches a fresh HMAC-SHA256 over the
+    message its scheme defines (scheme 2: the whole payload minus the
+    signature; scheme 1, legacy: the case_state_hash / report_html_hash /
+    signed_at triple). False on missing signature, key mismatch, or tampered
+    fields.
     """
     sig = signed_payload.get("signature")
     if not isinstance(sig, dict) or sig.get("algorithm") != "HMAC-SHA256":
         return False
     if isinstance(key, str):
         key = key.encode("utf-8")
-    message_parts = [
-        str(signed_payload.get("case_state_hash", "")),
-        str(signed_payload.get("report_html_hash") or ""),
-        str(signed_payload.get("signed_at", "")),
-    ]
-    message = "\n".join(message_parts).encode("utf-8")
+    try:
+        scheme = int(sig.get("scheme", 1))
+    except (TypeError, ValueError):
+        return False
+    message = _hmac_message(signed_payload, scheme=scheme)
     expected = hmac.new(key, message, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, str(sig.get("value", "")))
 

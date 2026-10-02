@@ -60,7 +60,7 @@ Her `Result`, şunları içeren bir `Provenance` kaydı taşır:
 
 Bunlara ek olarak altı isteğe bağlı adli dilbilim alanı (sorgulanan / bilinen belgeler için açıklamalar, hipotez çifti, elde etme + delil zinciri notları, kaynak dosyaların SHA-256 özetleri) bulunur.
 
-Aynı `study.yaml`'ın aynı derlem üzerinde iki ayrı çalıştırılması, eşleşen seed değerleriyle bayt düzeyinde özdeş `result.json` üretir. Bkz. [Sonuçlar ve köken bilgisi](results.md).
+Aynı `study.yaml`'ın aynı derlem üzerinde iki ayrı çalıştırılması, eşleşen seed değerleriyle özdeş sonuç değerleri üretir (kayan nokta yuvarlaması dışında). Bkz. [Sonuçlar ve köken bilgisi](results.md).
 
 ## Sonraki adım
 

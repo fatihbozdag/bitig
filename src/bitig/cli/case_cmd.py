@@ -20,7 +20,7 @@ from bitig.cases import (
     CaseError,
     _validate_case_id,
     fork_case,
-    list_cases,
+    scan_cases,
 )
 from bitig.recipes import RECIPES
 from bitig.signatures import SIGNATURE_PLUGINS, get_signature_plugin
@@ -74,7 +74,7 @@ def case_new(
         help="Root directory holding all cases (default: ~/.bitig/cases/).",
     ),
 ) -> None:
-    """Create a new Case directory under ``--cases-dir``."""
+    """Create a new Case directory under --cases-dir."""
     try:
         case = Case.create(
             cases_dir,
@@ -93,9 +93,11 @@ def case_new(
     )
     console.print("  next:")
     console.print(f"    bitig case status {case.record.id}")
-    if case.record.mode == "forensic":
-        console.print("  drop questioned/known files into:")
-        console.print(f"    {case.evidence_dir}/")
+    console.print("  register evidence (only registered files are analysed and sealed):")
+    console.print(f"    bitig case add-evidence {case.record.id} <files…> --role questioned")
+    console.print(
+        f"    bitig case add-evidence {case.record.id} <files…> --role known --author <name>"
+    )
     console.print(f"  resolved study config: {case.study_yaml_path}")
 
 
@@ -110,8 +112,10 @@ def case_list(
         DEFAULT_CASES_DIR, "--cases-dir", help="Cases root (default: ~/.bitig/cases/)."
     ),
 ) -> None:
-    """List every Case under ``--cases-dir`` in a Rich table."""
-    cases = list_cases(cases_dir)
+    """List every Case under --cases-dir in a table."""
+    cases, problems = scan_cases(cases_dir)
+    for path, reason in problems:
+        console.print(f"[red]unreadable case[/red] {path.name}: {reason}")
     if not cases:
         console.print(f"[yellow]no cases found under[/yellow] {cases_dir}")
         return
@@ -154,11 +158,7 @@ def case_open(
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
 ) -> None:
-    """Print the case path + one-line summary.
-
-    Intended as the shell-side "enter the Case" hook; the GUI build will
-    use the same Case.load() under the hood, so behaviour stays consistent.
-    """
+    """Print the case path and a short summary (mode, recipe, examiner, signed, latest run)."""
     case = _resolve_case(cases_dir, id)
     r = case.record
     console.print(f"[bold]{r.id}[/bold] — {r.title}")
@@ -240,6 +240,14 @@ def case_status(
                 console.print(f"  - {m.path}  ([yellow]role={m.role}[/yellow])")
             raise typer.Exit(code=2)
         console.print("  [green]custody: OK[/green]")
+        stray = case.unregistered_evidence_files()
+        if stray:
+            console.print(
+                "  [yellow]⚠ unregistered files under evidence/ (not analysed, not sealed; "
+                "use `bitig case add-evidence`):[/yellow]"
+            )
+            for path in stray:
+                console.print(f"    - {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -264,17 +272,138 @@ def case_fork(
         "--examiner",
         help="Examiner for the forked case (default: copy from source).",
     ),
+    acknowledge_mismatch: str | None = typer.Option(
+        None,
+        "--acknowledge-mismatch",
+        help=(
+            "Fork even though the source's evidence fails chain-of-custody; the value is "
+            "the reason, recorded permanently in the fork."
+        ),
+    ),
 ) -> None:
-    """Clone a Case into an unsigned descendant for further iteration (spec §6)."""
-    src_dir = cases_dir / id
+    """Clone a Case into an unsigned descendant for further iteration."""
     try:
-        forked = fork_case(src_dir, new_id, title=title, examiner=examiner)
+        _validate_case_id(id)  # the source id is a path component too (audit P1.3)
+        forked = fork_case(
+            cases_dir / id,
+            new_id,
+            cases_root=cases_dir,
+            title=title,
+            examiner=examiner,
+            acknowledge_mismatch=acknowledge_mismatch,
+        )
     except (CaseError, FileNotFoundError) as exc:
         console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(
         f"[green]forked[/green] {id} → {forked.record.id} at {forked.root} (signed=no, runs=0)"
     )
+
+
+# ---------------------------------------------------------------------------
+# add-evidence / reacknowledge
+# ---------------------------------------------------------------------------
+
+
+@case_app.command("add-evidence")
+def case_add_evidence(
+    id: str = typer.Argument(..., help="Case id."),
+    files: list[Path] = typer.Argument(..., help="Evidence file(s) to register."),  # noqa: B008
+    role: str = typer.Option(..., "--role", help="questioned | known"),
+    author: str | None = typer.Option(
+        None, "--author", help="Author label (required for known files)."
+    ),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Copy file(s) into the case, hash them and register them as evidence.
+
+    Only registered evidence is analysed and covered by the seal; files copied
+    into evidence/ by hand are not.
+    """
+    if role not in {"questioned", "known"}:
+        console.print("[red]error:[/red] --role must be 'questioned' or 'known'")
+        raise typer.Exit(code=1)
+    if role == "known" and not author:
+        console.print("[red]error:[/red] known evidence needs --author")
+        raise typer.Exit(code=1)
+    case = _resolve_case(cases_dir, id)
+    for f in files:
+        try:
+            entry = case.add_evidence(f, role=role, author=author)  # type: ignore[arg-type]
+        except (CaseError, FileNotFoundError) as exc:
+            console.print(f"[red]error:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]registered[/green] {entry.path}  sha256={entry.sha256[:12]}…")
+
+
+@case_app.command("reacknowledge")
+def case_reacknowledge(
+    id: str = typer.Argument(..., help="Case id."),
+    path: str = typer.Argument(..., help="Registered evidence path, e.g. evidence/known/a.txt."),
+    reason: str = typer.Option(..., "--reason", help="Why the changed file is legitimate."),
+    by: str | None = typer.Option(None, "--by", help="Who acknowledges (default: examiner)."),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Accept a changed evidence file's new hash, recorded in the sealed custody log.
+
+    The case must be re-run afterwards before it can be signed.
+    """
+    case = _resolve_case(cases_dir, id)
+    try:
+        log = case.reacknowledge_evidence(path, reason=reason, by=by)
+    except CaseError as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[yellow]re-acknowledged[/yellow] {log['path']}: "
+        f"{log['old_sha256'][:12]}… → {log['new_sha256'][:12]}… by {log['by']}"
+    )
+    console.print(f"  Re-run the analysis before signing: bitig case run {case.record.id}")
+
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+
+@case_app.command("run")
+def case_run(
+    id: str = typer.Argument(..., help="Case id to run."),
+    cases_dir: Path = typer.Option(  # noqa: B008
+        DEFAULT_CASES_DIR, "--cases-dir"
+    ),
+) -> None:
+    """Run the Case's analysis on its registered evidence.
+
+    Same guards as the GUI Run step: refuses a signed case, a custody mismatch,
+    an edited study.yaml or incomplete verification inputs. Exit codes:
+    0 = every method succeeded, 1 = some or all methods failed,
+    2 = run blocked (nothing was run).
+    """
+    from bitig.case_run import perform_run
+
+    case = _resolve_case(cases_dir, id)
+    outcome = perform_run(case)
+    for m in outcome.methods:
+        if m.ok:
+            console.print(f"  [green]✓[/green] {m.method_id}")
+        else:
+            console.print(f"  [red]✗[/red] {m.method_id} — {m.error}")
+    if outcome.run_id and outcome.status != "blocked":
+        console.print(f"  run: {case.runs_dir / outcome.run_id}")
+    if outcome.status == "succeeded":
+        console.print(f"[green]succeeded[/green] — {outcome.message}")
+        return
+    if outcome.status == "blocked":
+        console.print(f"[red]blocked[/red] — {outcome.message}")
+        raise typer.Exit(code=2)
+    color = "yellow" if outcome.status == "partial" else "red"
+    console.print(f"[{color}]{outcome.status}[/{color}] — {outcome.message}")
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +430,7 @@ def case_sign(
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
 ) -> None:
-    """Sign & lock a Case (spec §6). The Case becomes read-only after this."""
+    """Sign & lock a Case. The Case becomes read-only after this."""
     case = _resolve_case(cases_dir, id)
     try:
         plugin = get_signature_plugin(signature_plugin)
@@ -346,25 +475,49 @@ def case_verify(
         DEFAULT_CASES_DIR, "--cases-dir"
     ),
 ) -> None:
-    """Verify a signed Case's chain-of-custody seal (audit P1.1).
+    """Verify a signed Case's chain-of-custody seal.
 
     Recomputes every sealed quantity from disk and compares it to signed.json.
-    Exit codes: 0 = seal intact, 1 = case is not signed (nothing to verify),
-    2 = seal broken (tamper / mismatch). Scriptable in CI.
+    Exit codes: 0 = seal verified (valid HMAC signature), 1 = case is not
+    signed, 2 = seal broken (tamper / mismatch), 3 = hashes intact but the seal
+    is a Null seal (not tamper-evident), 4 = hashes intact but the HMAC
+    signature cannot be checked (no key). Scriptable in CI.
+
+    An explicit --key always requires a valid HMAC signature. A key found only
+    in $BITIG_SIGNATURE_KEY checks HMAC seals but leaves a Null seal at exit 3.
     """
     case = _resolve_case(cases_dir, id)
     result = case.verify_seal(signature_key=key)
+    status = result.status
 
-    if not result.signed:
+    if status == "not_signed":
         console.print(f"[yellow]{id} is not signed — nothing to verify.[/yellow]")
         raise typer.Exit(code=1)
 
     for c in result.checks:
-        mark = "[green]✓[/green]" if c.ok else "[red]✗[/red]"
+        if c.ok:
+            mark = "[green]✓[/green]"
+        elif c.unverifiable:
+            mark = "[yellow]?[/yellow]"
+        else:
+            mark = "[red]✗[/red]"
         console.print(f"  {mark} {c.name}: {c.detail}")
 
-    if result.ok:
+    if status == "verified":
         console.print(f"[green]seal verified[/green] — {case.record.id} is intact")
+    elif status == "unsigned":
+        console.print(
+            f"[yellow]UNSIGNED[/yellow] — hashes consistent, but {case.record.id} has a Null "
+            "seal: this is not evidence against tampering by anyone with write access. "
+            "Sign with --signature-plugin hmac for a tamper-evident seal."
+        )
+        raise typer.Exit(code=3)
+    elif status == "unverifiable":
+        console.print(
+            f"[yellow]CANNOT VERIFY[/yellow] — hashes consistent, but {case.record.id} carries "
+            "an HMAC signature and no key was given (--key or $BITIG_SIGNATURE_KEY)."
+        )
+        raise typer.Exit(code=4)
     else:
         console.print(f"[red]SEAL BROKEN[/red] — {case.record.id} failed verification")
         raise typer.Exit(code=2)

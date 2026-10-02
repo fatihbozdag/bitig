@@ -1,11 +1,11 @@
-"""Stamatatos (2013) text distortion for topic-invariant authorship attribution.
+"""Stamatatos (2017) text distortion for topic-invariant authorship attribution.
 
 Distortion pre-processes text by masking *content* while preserving *style* — function
 words, punctuation, and the skeleton of spacing and word lengths. Features extracted from
 distorted text (character n-grams, MFW, etc.) are decoupled from topic and therefore much
 more robust in cross-domain forensic settings.
 
-Two variants (Stamatatos 2013):
+Two variants (Stamatatos 2017):
 
 - **DV-MA** (Distortion View — Multiple Asterisks): every alphanumeric character of every
   content word is replaced by ``*``. Spaces, punctuation, and function words are kept
@@ -15,14 +15,18 @@ Two variants (Stamatatos 2013):
   single ``*``. Word length is lost; only the pattern of function words and punctuation
   remains. More aggressive distortion; useful when topic is strongly confounding.
 
+Deviations from Stamatatos (2017), which masks digits too (``#``) and keeps the k most
+frequent words of a reference corpus (the BNC): bitig leaves digits as they are and keeps
+a function-word list derived from Universal Dependencies part-of-speech tags.
+
 Both variants target the *document text* — downstream feature extractors operate on the
 distorted text without modification. Use :func:`distort_corpus` to produce a new Corpus,
 then hand it to any bitig extractor.
 
 References
 ----------
-Stamatatos, E. (2013). On the robustness of authorship attribution based on character
-    n-gram features. Journal of Law and Policy, 21(2), 421-439.
+Stamatatos, E. (2017). Authorship attribution using text distortion. Proceedings of
+    EACL 2017, 1138-1149.
 """
 
 from __future__ import annotations

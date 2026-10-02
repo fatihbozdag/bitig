@@ -6,7 +6,7 @@ and an auditable HTML artefact.
 *Don't use when:* you want an exploratory research figure — use the standard
 reporting path in `concepts/results.md`.
 *Expect:* a rendered HTML report with fixed sections: case metadata, hypothesis
-pair, feature pipeline, calibrated LR, verbal-scale statement, and a Tippett plot.
+pair, feature pipeline, calibrated LR and its verbal-scale statement.
 
 Forensic reports need more than a score — they need the **hypothesis pair** under test,
 the **known and questioned** material identified, a **chain-of-custody** trail back to
@@ -15,13 +15,13 @@ analysis conditions.
 
 ## build_forensic_report
 
-*Use when:* you want a single-call path from `Result` to court-ready HTML — hands the
-chain-of-custody fields, calibrated scores, verbal scale, and Tippett plot into a
+*Use when:* you want a single-call path from `Result` to HTML — hands the
+chain-of-custody fields, calibrated LRs and their verbal-scale statements into a
 Jinja2 template.
 *Don't use when:* you're producing a research paper figure — use the standard
 `bitig report` CLI or the plotting helpers in `concepts/methods.md`.
-*Expect:* a path to the rendered HTML file; optional PDF export requires
-`bitig[reports]`.
+*Expect:* a path to the rendered HTML file (HTML only; for a Tippett plot use
+`bitig.forensic.tippett` with your own plotting, as in the PAN-CLEF tutorial).
 
 ```python
 from bitig.report import build_forensic_report
@@ -104,14 +104,18 @@ expected in a forensic report (ENFSI 2015 / Nordgaard et al. 2012).
 its `C_llr` directly.
 *Expect:* a one-line verbal statement keyed to the log-LR magnitude.
 
-| log₁₀(LR) range | Verbal descriptor |
+| \|log₁₀(LR)\| range | Verbal descriptor |
 |---|---|
 | 0 – 1 | weak support |
 | 1 – 2 | moderate support |
 | 2 – 3 | moderately strong support |
 | 3 – 4 | strong support |
-| 4 – 5 | very strong support |
-| > 5 | extremely strong support |
+| 4 – 6 | very strong support |
+| ≥ 6 | extremely strong support |
+
+The scale is two-sided: LR > 1 supports the same-author proposition (Hp), LR < 1 the
+different-author proposition (Hd), with the same strength for an LR and its reciprocal.
+It is defined once, in `bitig.forensic.verbal_scale.LR_LADDER`; reports render it from there.
 
 ## Reference
 

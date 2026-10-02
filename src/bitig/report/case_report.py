@@ -30,11 +30,12 @@ from bitig.forensic.verbal_scale import (
 )
 from bitig.report.context import (
     ChainOfCustodyEntry,
+    CustodyLogEntry,
     HeadlineScalar,
     ProvenanceFooter,
     ReportContext,
 )
-from bitig.report.scalars import fmt_scalar, headline_scalars, load_latest_result
+from bitig.report.scalars import fmt_scalar, gi_scores, headline_scalars, load_latest_result
 from bitig.result import Result
 
 Format = Literal["html", "pdf"]
@@ -75,25 +76,44 @@ def build_case_report(
     signed_html = case.report_dir / "signed.html"
     draft_path = case.report_dir / "draft.html"
 
-    if signed_html.is_file():
-        # Sealed — serve the immutable snapshot verbatim, never re-render.
+    if case.record.signed:
+        # Sealed — serve the immutable snapshot verbatim, never re-render, and
+        # only while the seal still holds (audit 2026-09-26 N-P1.6). The
+        # signature check is skipped here: exporting must not need the HMAC
+        # key; `bitig case verify` covers it.
+        if not signed_html.is_file():
+            raise ReportRendererError(
+                "Case is signed but report/signed.html is missing; refusing to render a "
+                "replacement for a sealed report."
+            )
+        failed = [c for c in case.verify_seal().checks if c.name != "signature" and not c.ok]
+        if failed:
+            raise ReportRendererError(
+                "Seal verification failed; refusing to export: "
+                + "; ".join(f"{c.name}: {c.detail}" for c in failed)
+            )
         html = signed_html.read_text(encoding="utf-8")
         report_path = signed_html
     else:
-        context = _build_context(case)
-        html = _render_html(context)
+        # Unsigned: always render fresh. A stray signed.html (e.g. left by an
+        # interrupted sign) is never served for an unsigned case (N-P1.3).
+        html = render_case_report_html(case)
         draft_path.write_text(html, encoding="utf-8")
         report_path = draft_path
 
     if format == "html":
         return report_path
 
-    # PDF path. base_url is the CASE ROOT because _list_figure_paths emits
-    # figure src paths relative to the case root (runs/<ts>/.../fig.png), not
-    # relative to report_dir (audit P1.8).
+    # PDF path. Figure src paths are relative to report/ (../runs/<ts>/...),
+    # where draft.html / signed.html live, so base_url is report_dir.
     out_pdf = output_path if output_path is not None else case.report_dir / "final.pdf"
-    _export_pdf(html, out_pdf, base_url=case.root)
+    _export_pdf(html, out_pdf, base_url=case.report_dir)
     return out_pdf
+
+
+def render_case_report_html(case: Case) -> str:
+    """Render ``case``'s report to an HTML string without writing any file."""
+    return _render_html(_build_context(case))
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +125,8 @@ def _build_context(case: Case) -> ReportContext:
     result = load_latest_result(case)
     scalars = _build_headline_scalars(case, result)
     coc = _build_chain_of_custody(case)
+    log = [CustodyLogEntry(**e) for e in case.record.custody_log]
+    fork_note = _fork_note(case)
     provenance = _build_provenance_footer(case, result)
     figures = _list_figure_paths(case)
     case_state_hash = case._case_state_hash()
@@ -115,6 +137,10 @@ def _build_context(case: Case) -> ReportContext:
         # display-rounded string (audit P1.11). lr_value/ladder are populated
         # only when a calibrated LR actually exists (audit P1.10).
         lr = lr_from_values(result.values) if result is not None else None
+        values = result.values if result is not None else {}
+        gi_rows = [] if lr is not None else gi_scores(values)
+        candidate = values.get("candidate")
+        chance = values.get("chance")
         return ReportContext(
             mode="forensic",
             title=case.record.title,
@@ -126,17 +152,36 @@ def _build_context(case: Case) -> ReportContext:
             headline_scalars=scalars,
             figures=figures,
             chain_of_custody=coc,
+            custody_log=log,
+            forked_from=fork_note,
             provenance=provenance,
             signed=case.record.signed,
             signed_at=case.record.signed_at,
             signed_by=case.record.signed_by,
-            hypothesis_p="The questioned text and the known texts share an author.",
-            hypothesis_d="The questioned text and the known texts do not share an author.",
+            # Hp/Hd framing only accompanies an actual likelihood ratio.
+            hypothesis_p=(
+                "The questioned text and the known texts share an author."
+                if lr is not None
+                else None
+            ),
+            hypothesis_d=(
+                "The questioned text and the known texts do not share an author."
+                if lr is not None
+                else None
+            ),
+            verification_question=(
+                f"Whether the questioned document(s) were written by the candidate author "
+                f"{candidate!r}."
+                if lr is None and candidate
+                else None
+            ),
+            gi_rows=[(doc_id, fmt_scalar(score)) for doc_id, score in gi_rows],
+            gi_chance=fmt_scalar(chance) if gi_rows and chance is not None else None,
             lr_value=fmt_scalar(lr) if lr is not None else None,
             lr_verbal_rung=lr_verbal_rung(lr) if lr is not None else None,
             lr_statement=lr_verbal_statement(lr) if lr is not None else None,
             lr_ladder_rows=ladder_rows() if lr is not None else [],
-            method_paragraph=_forensic_method_paragraph(result),
+            method_paragraph=forensic_method_paragraph(result, has_lr=lr is not None),
         )
 
     return ReportContext(
@@ -150,6 +195,8 @@ def _build_context(case: Case) -> ReportContext:
         headline_scalars=scalars,
         figures=figures,
         chain_of_custody=coc,
+        custody_log=log,
+        forked_from=fork_note,
         provenance=provenance,
         signed=case.record.signed,
         signed_at=case.record.signed_at,
@@ -196,6 +243,30 @@ def _build_chain_of_custody(case: Case) -> list[ChainOfCustodyEntry]:
     return coc
 
 
+def _fork_note(case: Case) -> str | None:
+    parent = case.record.forked_from
+    if not parent:
+        return None
+    note = f"Forked from case {parent.get('case_id')!r} on {parent.get('at')}."
+    mismatches = parent.get("custody_mismatches") or []
+    if mismatches:
+        note += (
+            " The source case had a chain-of-custody MISMATCH on "
+            + ", ".join(str(m) for m in mismatches)
+            + "; the fork was made with that mismatch explicitly acknowledged"
+            + (
+                f" ({parent.get('acknowledged_reason')})"
+                if parent.get("acknowledged_reason")
+                else ""
+            )
+            + "."
+        )
+    omitted = parent.get("omitted_missing") or []
+    if omitted:
+        note += " Missing from the source and not carried over: " + ", ".join(omitted) + "."
+    return note
+
+
 def _build_provenance_footer(case: Case, result: Result | None) -> ProvenanceFooter | None:
     if result is None or result.provenance is None:
         # No run yet — surface what the Case alone knows.
@@ -227,16 +298,16 @@ def _list_figure_paths(case: Case) -> list[str]:
     figures: list[Path] = []
     for ext in (".png", ".svg"):
         figures.extend(sorted(run_dir.rglob(f"*{ext}")))
-    # Emit <img src=...> paths relative to the CASE ROOT (e.g.
-    # runs/<ts>/<method>/fig.png). build_case_report passes base_url=case.root
-    # so WeasyPrint and a browser opening the HTML both resolve them (P1.8).
+    # Emit <img src=...> paths relative to report/ (../runs/<ts>/<method>/fig.png),
+    # the directory draft.html / signed.html live in, so a browser opening the
+    # HTML and WeasyPrint (base_url=report_dir) both resolve them (P1.8).
+    # Figures must lie inside the run dir: latest_run comes from case.json.
     out: list[str] = []
     for fig in figures:
-        try:
-            rel = fig.relative_to(case.root)
-        except ValueError:
-            rel = fig
-        out.append(rel.as_posix() if isinstance(rel, Path) else str(rel))
+        resolved = fig.resolve()
+        if not resolved.is_relative_to(run_dir.resolve()):
+            continue
+        out.append("../" + resolved.relative_to(case.root.resolve()).as_posix())
     return out
 
 
@@ -257,6 +328,8 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
     """Render ``html`` to PDF via WeasyPrint, or surface a clear error."""
     try:
         from weasyprint import HTML  # type: ignore[import-not-found]
+    except OSError as exc:  # native libs (pango/cairo) missing at import time
+        raise ReportRendererError(f"WeasyPrint cannot load its system libraries: {exc}") from exc
     except ImportError as exc:
         raise ReportRendererError(
             "PDF export requires WeasyPrint. Install with: uv pip install 'bitig[reports]'"
@@ -271,13 +344,22 @@ def _export_pdf(html: str, output: Path, *, base_url: Path) -> None:
         raise ReportRendererError(f"PDF rendering failed: {exc}") from exc
 
 
-def _forensic_method_paragraph(result: Result | None) -> str:
+def forensic_method_paragraph(result: Result | None, *, has_lr: bool) -> str:
     if result is None:
-        return "(no run yet — execute Step 3 to populate the LR.)"
+        return "(no run yet — execute the analysis to populate the findings.)"
+    if has_lr:
+        return (
+            f"Authorship verification was performed via {result.method_name}. "
+            "The likelihood ratio above expresses how much more probable the observed "
+            "evidence is under H_p than under H_d, under the model's assumptions."
+        )
     return (
-        f"Authorship verification was performed via {result.method_name}. "
-        "The likelihood ratio above expresses how much more probable the observed "
-        "evidence is under H_p than under H_d, under the model's assumptions."
+        f"Authorship verification was performed via {result.method_name} "
+        "(General Impostors; Koppel & Winter 2014). For each questioned document the "
+        "score is the fraction of randomised iterations in which the candidate's known "
+        "texts were closer to it than every sampled impostor author. The chance level is "
+        "the score expected when style carries no authorship signal. This score is "
+        "uncalibrated: it is not a likelihood ratio and no verbal (ENFSI) scale applies to it."
     )
 
 

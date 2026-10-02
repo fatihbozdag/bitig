@@ -176,7 +176,17 @@ print(f"mean score (target trials): {scores[labels == 1].mean():.3f}")
 print(f"mean score (non-target):    {scores[labels == 0].mean():.3f}")
 ```
 
-Bu yapay kurulumda iki ortalama açıkça ayrılmış olmalıdır (≈ 0,8 / ≈ 0,2).
+Bu yapay kurulumdaki çıktı (bitig 0.3.1, numpy 2.4.6, scikit-learn 1.9.1):
+
+```
+Corpus: 80 documents from 40 authors
+80 trials (40 target / 40 non-target)
+mean score (target trials): 1.000
+mean score (non-target):    0.101
+```
+
+Aynı-yazar denemelerinin hepsi 100 yinelemenin tümünü kazanır; yapay yazarları ayırt etmek
+gerçek PAN verisine göre çok daha kolaydır.
 
 ## 5. Kalibre edin
 
@@ -201,6 +211,19 @@ print(f"calibrated posterior range: [{test_probs.min():.2f}, {test_probs.max():.
 print(f"log-LR range:               [{test_log_lrs.min():.2f}, {test_log_lrs.max():.2f}]")
 ```
 
+```
+calibrated posterior range: [0.11, 0.81]
+log-LR range:               [-0.79, 0.73]
+```
+
+`predict_log_lr` kalibrasyon kümesinin önsel oranını (burada 21 hedef / 27 hedef-dışı
+deneme) böler; bu yüzden log-LR, posterior'un logit'i ile aynı değildir. Her değer **tek bir
+denemenin** LR'sidir: buradaki her aynı-yazar test denemesi log₁₀ LR = +0,73 (LR ≈ 5,4)
+alır, farklı-yazar denemeleri −0,79 ile +0,15 arasında kalır (LR ≈ 0,16 ile 1,4). Platt
+ölçekleme (`sklearn` `LogisticRegression`, varsayılan düzenlileştirmesiyle) puanlar
+sınıfları kusursuz ayırsa bile posterior'ları (0, 1) aralığının epey içinde tutar; bu
+nedenle bu LR'ler ılımlıdır.
+
 ## 6. PAN değerlendirmesi
 
 ```python
@@ -219,18 +242,25 @@ for k, v in report.to_dict().items():
         print(f"  {k:12s} {v}")
 ```
 
-Yapay kurulumda beklenen çıktı (yaklaşık):
+Yapay kurulumdaki çıktı:
 
 ```
-  auc          0.97
-  c_at_1       0.92
-  f05u         0.91
-  brier        0.10
-  ece          0.04
-  cllr_bits    0.24
-  n_target     20
-  n_nontarget  20
+  auc          1.000
+  c_at_1       0.999
+  f05u         0.960
+  brier        0.043
+  ece          0.192
+  cllr_bits    0.324
+  n_target     19
+  n_nontarget  13
 ```
+
+Rastgele 60/40 bölme 32 test denemesi bırakır (19 aynı-yazar, 13 farklı-yazar). Bir
+farklı-yazar denemesi p = 0,524 ile 0,05'lik bandın içinde kalır, yani yanıtsız sayılır.
+PAN değerlendiricisi yalnızca tam p = 0,5'i yanıtsız sayar; varsayılan budur
+(`c_at_1_margin=0.0`, `f05u_margin=0.0`) ve yayımlanmış PAN puanlarıyla yalnızca
+varsayılan karşılaştırılabilir. AUC kusursuzdur, ancak ECE (0,19) ve C_llr (0,32 bit)
+kalibre edilmiş çıktıların fazla temkinli (düşük güvenli) olduğunu gösterir.
 
 ## 7. Tippett grafiği
 
@@ -258,8 +288,8 @@ ve hedef-dışı CDF'nin hızla düşmesini gösterir.
 
 ## 8. Adli HTML raporu
 
-Test kümesi sonuçlarını bitig `Result` olarak kaydedin, `Provenance` üzerine delil zinciri
-meta verisi damgalayın ve LR çerçeveli adli raporu oluşturun.
+Vaka olarak bir test denemesi seçin, sonucunu bitig `Result` olarak kaydedin, `Provenance`
+üzerine delil zinciri meta verisi damgalayın ve LR çerçeveli adli raporu oluşturun.
 
 ```python
 import json
@@ -272,13 +302,21 @@ from bitig.report import build_forensic_report
 run_dir = Path("pan_demo")
 (run_dir / "gi").mkdir(parents=True, exist_ok=True)
 
+# An LR is a statement about ONE trial (one Q against one K), never an average
+# over a mixed set of same- and different-author trials. Report one case here.
+test_ids = [trials[i].trial_id for i in test_idx]
+case = 0
+case_log_lr = float(test_log_lrs[case])
+print(f"case {test_ids[case]}: log10 LR = {case_log_lr:+.2f}, LR = {10 ** case_log_lr:.2f}")
+
 result = Result(
     method_name="general_impostors",
     params={"n_iterations": 100, "feature_subsample_rate": 0.5, "seed": 42},
     values={
-        "score_mean_target":    float(test_probs[test_labels == 1].mean()),
-        "score_mean_nontarget": float(test_probs[test_labels == 0].mean()),
-        "n_trials": int(len(test_labels)),
+        "trial_id": test_ids[case],
+        "gi_score": float(scores[test_idx][case]),
+        "calibrated_posterior": float(test_probs[case]),
+        "log10_lr": case_log_lr,
     },
     provenance=Provenance.current(
         spacy_model="n/a",
@@ -287,8 +325,8 @@ result = Result(
         feature_hash=fm.provenance_hash,
         seed=42,
         resolved_config={"method": "pan_tutorial"},
-        questioned_description="PAN-style verification trials (synthetic corpus)",
-        known_description="one known sample per candidate, 40 authors",
+        questioned_description=f"questioned document of trial {test_ids[case]} (synthetic corpus)",
+        known_description="one known sample of the candidate author",
         hypothesis_pair="H1: candidate wrote Q; H0: different author wrote Q",
         acquisition_notes="synthetic Dirichlet-multinomial profiles, seed 42",
         custody_notes="reproducible from tutorial code above",
@@ -301,15 +339,25 @@ build_forensic_report(
     output=run_dir / "report.html",
     title="PAN-style verification — demo",
     lr_summaries={"general_impostors": {
-        "log_lr": f"{test_log_lrs.mean():.2f}",
-        "lr":     f"{10 ** test_log_lrs.mean():.1f}",
+        "log_lr": f"{case_log_lr:.2f}",
+        "lr":     f"{10 ** case_log_lr:.2f}",
     }},
 )
 print(f"report: {run_dir / 'report.html'}")
 ```
 
+```
+case T_A30_same: log10 LR = +0.73, LR = 5.37
+report: pan_demo/report.html
+```
+
+Rapora test kümesinin ortalama log-LR'sini koymayın: test kümesi aynı- ve farklı-yazar
+denemelerini karıştırır ve bunların ortalaması hiçbir vakanın LR'si değildir. Size sorulan
+denemenin LR'sini raporlayın; sistemi çok sayıda deneme üzerinden betimlemek için PAN
+ölçütlerini ve Tippett grafiğini kullanın.
+
 HTML'yi tarayıcıda açın: hipotez bloğu, delil zinciri bloğu, ENFSI sözel ölçeği yorumuyla
-yöntem düzeyinde LR özeti ve yeniden üretilebilirlik köken bilgisini içeren tek sayfalık adli
+raporlanan denemenin LR'si ve yeniden üretilebilirlik köken bilgisini içeren tek sayfalık adli
 bir rapor elde edersiniz.
 
 ## Gerçek PAN verilerine geçiş
@@ -342,8 +390,8 @@ derlemleri en büyük kamuya açık aynı-yazar kıyaslama veri kümeleri arası
 
 - Bu öğreticideki her rastgele seçim tohumlanmıştır (`rng = np.random.default_rng(42)` +
   `GeneralImpostors(seed=42)` + deterministik olan `scorer.method="platt"`).
-- Aynı Python + numpy + scikit-learn sürümleriyle yeniden çalıştırma, bayt düzeyinde özdeş
-  `Result.values` üretir.
+- Aynı Python + numpy + scikit-learn sürümleriyle yeniden çalıştırma, özdeş `Result.values`
+  üretir (kayan nokta yuvarlaması dışında).
 - `Provenance` kaydı tüm sürümleri yakalar; herhangi bir sapma tespit edilebilir.
 
 Her bileşenin daha ayrıntılı belgeleri için bkz. [Adli araç seti](../forensic/index.tr.md).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from bitig.report.case_report import (
 )
 from bitig.report.context import ReportContext
 from bitig.result import Result
+from tests._signable import make_signable
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -108,8 +110,8 @@ def test_forensic_report_handles_no_run(tmp_path: Path) -> None:
     html = draft.read_text(encoding="utf-8")
     # Headline strip falls back to a placeholder; no LR card.
     assert "no run yet" in html
-    # Hypotheses still present (those are intrinsic to forensic mode).
-    assert "prosecution" in html
+    # No LR, so no Hp/Hd likelihood-ratio framing (audit 2026-09-26 N-P1.8).
+    assert "prosecution" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +158,7 @@ def test_research_report_falls_back_when_no_run(tmp_path: Path) -> None:
 def test_signed_case_toolbar_shows_signed_badge(tmp_path: Path) -> None:
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="signed-forensic")
     _attach_run(case, method_name="verify", values={"lr": 5.0})
+    make_signable(case)
     case.mark_signed()
 
     draft = build_case_report(case, format="html")
@@ -181,17 +184,19 @@ def test_build_on_signed_case_serves_frozen_snapshot(tmp_path: Path) -> None:
     never rewrites draft.html (audit P1.7)."""
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="frozen")
     _attach_run(case, method_name="verify", values={"lr": 5.0})
+    make_signable(case)
     case.mark_signed()
 
     signed_html = case.report_dir / "signed.html"
     frozen_bytes = signed_html.read_bytes()
-    draft_before = (case.report_dir / "draft.html").read_bytes()
+    draft = case.report_dir / "draft.html"
+    draft_before = draft.read_bytes() if draft.is_file() else None
 
     out = build_case_report(case, format="html")
     assert out == signed_html
     # Serving the frozen report must not mutate either artefact.
     assert signed_html.read_bytes() == frozen_bytes
-    assert (case.report_dir / "draft.html").read_bytes() == draft_before
+    assert (draft.read_bytes() if draft.is_file() else None) == draft_before
     # And the seal still verifies.
     assert case.verify_seal().ok
 
@@ -295,15 +300,31 @@ def _has_weasyprint() -> bool:
     return True
 
 
-@pytest.mark.skipif(not _has_weasyprint(), reason="WeasyPrint not installed")
-def test_pdf_export_writes_pdf(tmp_path: Path) -> None:
+# CI's extras job sets BITIG_REQUIRE_PDF=1 so a broken WeasyPrint install fails
+# the test instead of silently skipping it (audit P1.19).
+_REQUIRE_PDF = bool(os.environ.get("BITIG_REQUIRE_PDF"))
+
+
+@pytest.mark.skipif(not _has_weasyprint() and not _REQUIRE_PDF, reason="WeasyPrint not installed")
+def test_pdf_export_writes_pdf_with_embedded_figure(tmp_path: Path) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     case = _seed_case(tmp_path, recipe="imposters_lr", mode_label="pdf-test")
-    _attach_run(case, method_name="verify", values={"lr": 5.0})
+    run_id = _attach_run(case, method_name="verify", values={"lr": 5.0})
+    fig, ax = plt.subplots(figsize=(2, 2))
+    ax.plot([0, 1], [0, 1])
+    fig.savefig(case.runs_dir / run_id / "verify" / "plot.png")
+    plt.close(fig)
 
     pdf = build_case_report(case, format="pdf")
     assert pdf.name == "final.pdf"
-    assert pdf.is_file()
-    assert pdf.stat().st_size > 1000  # rough sanity floor
+    data = pdf.read_bytes()
+    assert data.startswith(b"%PDF-")
+    # The figure must resolve against the case root and be embedded (P1.8).
+    assert b"/Image" in data
 
 
 def test_pdf_export_error_when_weasyprint_missing(

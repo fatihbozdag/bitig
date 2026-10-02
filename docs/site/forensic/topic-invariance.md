@@ -24,9 +24,10 @@ topic-sensitive whole-word n-grams — keeping only affixes, punctuation-adjacen
 space-adjacent categories.
 *Don't use when:* your corpus is so small that further filtering collapses the
 feature space below ~500 dimensions.
-*Expect:* a sparse count matrix with only the chosen categories; default
-`("prefix","suffix","punct")` is the affix-only recipe that generalises best across
-topics.
+*Expect:* a dense count matrix (unscaled by default, `scale="none"`) with only the
+chosen categories. The default `categories=None` keeps **all seven** categories, so it
+filters nothing; pass `("prefix", "suffix", "punct")` explicitly for the cross-topic
+subset.
 
 `CategorizedCharNgramExtractor` classifies each character n-gram **occurrence** (not just
 the string) by its position in the source text. Feature columns are named
@@ -45,8 +46,9 @@ Seven categories:
 | `punct` | contains any punctuation character |
 | `space` | contains whitespace but not enough for multi_word |
 
-Sapkota et al. (2015) showed that selecting only **affix (prefix + suffix) + punct**
-dramatically improves cross-topic attribution — the forensic default.
+Sapkota et al. (2015) found that **affix (prefix + suffix) + punct** n-grams work best
+in their cross-topic attribution experiments. This subset is not the default: you must
+request it, as below.
 
 ```python
 from bitig.forensic import CategorizedCharNgramExtractor
@@ -67,14 +69,21 @@ content words with placeholders while preserving function words, morphology, and
 punctuation.
 *Don't use when:* you need any content-word signal downstream (e.g., Zeta on
 distinctive vocabulary).
-*Expect:* a new `Corpus` object you pass to any existing extractor. Modes: `"dv_ma"`
-masks *all* content words, `"dv_sa"` masks selectively by POS.
+*Expect:* a new `Corpus` object you pass to any existing extractor. Both modes
+mask every word that is not on the function-word list; `"dv_ma"` (default) keeps each
+masked word's length, `"dv_sa"` collapses it to one `*`. Neither mode looks at POS
+tags.
 
 `distort_corpus` pre-processes documents to mask **content** while preserving **style**:
 function words, punctuation, digits, and whitespace remain verbatim; content-word
 characters are replaced.
 
 ### Two modes
+
+Both come from Stamatatos (2017). bitig deviates from the paper in two ways: digits are
+left as they are (the paper masks them with `#`), and the words kept are a bundled
+function-word list for the corpus language (`en`, `tr`, `de`, `es`, `fr`) rather than
+the k most frequent words of a reference corpus.
 
 **DV-MA** (*Distortion View — Multiple Asterisks*): each content-word character → `*`.
 Length-preserving — morphological habits (typical word lengths) remain visible.
@@ -109,7 +118,8 @@ distorted = distort_corpus(
 )
 ```
 
-Pass `frozenset()` to treat every word as content (DV-MA will produce an all-`*` text).
+Pass `frozenset()` to treat every word as content (DV-MA then masks every word; digits,
+punctuation and whitespace still remain).
 
 ## Combining the two
 
@@ -123,9 +133,11 @@ extractor = CategorizedCharNgramExtractor(
 fm = extractor.fit_transform(distorted)
 ```
 
-This produces a feature set that is **doubly** topic-invariant — affix-and-punctuation
-n-grams extracted from content-masked text — and routinely outperforms unfiltered
-character n-grams on cross-genre PAN tasks.
+Note what this keeps. The `*` mask is a punctuation character for `classify_ngram`, so
+every n-gram that touches a masked word falls in the `punct` category; `prefix` and
+`suffix` n-grams then come only from the function words left in clear. On
+`"The cat was running."` distorted with DV-MA and the code above, all seven kept
+features are `punct` n-grams (`***|punct`, `* w|punct`, `s *|punct`, …).
 
 ## Reference
 

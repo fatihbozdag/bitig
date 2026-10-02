@@ -76,6 +76,7 @@ plugins:
             Methods: Yöntemler
             Results & provenance: Sonuçlar ve köken bilgisi
             Forensic toolkit: Adli Araç Seti
+            Forensic Lab (cases): Adli Laboratuvar (vakalar)
             Verification: Doğrulama
             Calibration & LR output: Kalibrasyon ve OO çıktısı
             Topic-invariant features: Konudan Bağımsız Öznitelikler
@@ -142,6 +143,7 @@ nav:
       - Results & provenance: concepts/results.md
   - Forensic toolkit:
       - forensic/index.md
+      - Forensic Lab (cases): forensic/case-workflow.md
       - Verification: forensic/verification.md
       - Calibration & LR output: forensic/calibration.md
       - Topic-invariant features: forensic/topic-invariance.md

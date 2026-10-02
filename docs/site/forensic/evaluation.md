@@ -39,8 +39,9 @@ $$
 \text{c@1} = \frac{1}{n}\!\left( n_\text{correct} + n_\text{unanswered} \cdot \frac{n_\text{correct}}{n} \right)
 $$
 
-where *unanswered* trials are those with calibrated probability inside
-`[0.5 − margin, 0.5 + margin]`. Margin = 0 (default) reduces c@1 to raw accuracy.
+where *unanswered* trials are those with `|p − 0.5| ≤ margin`. With the default margin 0
+exactly `p = 0.5` is a non-answer, as in the PAN evaluator; with no such outputs c@1
+equals accuracy. A positive margin widens the abstention band but is not PAN-comparable.
 
 The PAN verification shared task has used c@1 as its primary metric since 2013 because it
 rewards systems that know when to abstain — directly aligned with the forensic notion
@@ -113,15 +114,16 @@ being calibrated.
 
 *Use when:* your system can abstain ("don't know") and you want to credit that
 honestly — accuracy plus a partial-credit bonus for abstention.
-*Don't use when:* your system always outputs a decision; `c@1` reduces to accuracy.
+*Don't use when:* your system never outputs exactly 0.5 (its abstention signal); `c@1` then equals accuracy.
 *Expect:* a single number in `[0, 1]`. Dominates accuracy only when abstention rate > 0.
 
 ::: bitig.forensic.metrics.c_at_1
 
 ### F0.5u
 
-*Use when:* you're scoring a PAN-CLEF verification track — it's the official metric
-since PAN 2022, precision-weighted and with a non-answer penalty.
+*Use when:* you're scoring a PAN-CLEF verification track — PAN's precision-weighted
+F-measure, `1.25·TP / (1.25·TP + 0.25·(FN + N_u) + FP)`, where `N_u` counts every
+non-answer (`p = 0.5`) whatever its label (Bevendorff et al. 2019/2020).
 *Don't use when:* you're reporting to a non-PAN audience; it's a specialist metric.
 *Expect:* a single number in `[0, 1]`.
 

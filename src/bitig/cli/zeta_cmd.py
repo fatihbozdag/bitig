@@ -20,8 +20,12 @@ def zeta_command(
     group_by: str = typer.Option("author", "--group-by"),
     variant: str = typer.Option("classic", "--variant", help="classic | eder"),
     top_k: int = typer.Option(20, "--top-k"),
-    group_a: str | None = typer.Option(None, "--group-a"),
-    group_b: str | None = typer.Option(None, "--group-b"),
+    group_a: str | None = typer.Option(
+        None, "--group-a", help="First group label (default: the two largest groups are used)"
+    ),
+    group_b: str | None = typer.Option(
+        None, "--group-b", help="Second group label (default: the two largest groups are used)"
+    ),
 ) -> None:
     """Extract contrastive vocabulary between two groups via Craig's Zeta."""
     cls = {"classic": ZetaClassic, "eder": ZetaEder}.get(variant)

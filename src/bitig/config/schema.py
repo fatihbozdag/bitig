@@ -13,7 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from bitig.languages import LANGUAGES
 
-CvKind = Literal["stratified", "loao", "group_kfold", "leave_one_text_out"]
+# group_kfold was accepted here but never implemented (it failed at run time).
+CvKind = Literal["stratified", "loao", "leave_one_text_out"]
 MethodKind = Literal[
     "delta",
     "rolling_delta",

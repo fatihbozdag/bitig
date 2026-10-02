@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from bitig.cases import (
     list_cases,
 )
 from bitig.config.schema import StudyConfig
+from tests._signable import make_signable
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,10 +54,7 @@ def _render_stub_report(case: Case) -> None:
     these tests exercise signing semantics, not report rendering, so a stub
     draft.html stands in for the real bitig.report.build_case_report output.
     """
-    case.report_dir.mkdir(parents=True, exist_ok=True)
-    (case.report_dir / "draft.html").write_text(
-        "<html><body>stub report</body></html>", encoding="utf-8"
-    )
+    make_signable(case)
 
 
 # ---------------------------------------------------------------------------
@@ -286,9 +285,9 @@ def test_regenerate_study_yaml_writes_validated_study(cases_root: Path):
     case = Case.create(cases_root, id="sy", title="t", examiner="x", recipe="imposters_lr")
     study = yaml.safe_load(case.study_yaml_path.read_text(encoding="utf-8"))
     StudyConfig.model_validate(study)
-    # study.yaml's corpus.path points at the Case's evidence dir, so a
-    # `bitig run study.yaml` from inside the Case works.
-    assert study["corpus"]["path"] == str(case.evidence_dir)
+    # corpus.path is case-relative and informational: Case runs load the
+    # registered evidence, so a moved case never reads another machine's files.
+    assert study["corpus"]["path"] == "evidence"
 
 
 def test_study_hash_changes_when_recipe_changes(cases_root: Path):
@@ -371,6 +370,7 @@ def test_mark_signed_always_binds_a_report(cases_root: Path):
     """A signed case always binds a rendered report — mark_signed renders and
     freezes signed.html itself, so report_html_hash is never null (audit P1.5)."""
     case = Case.create(cases_root, id="noreport", title="t", examiner="x", recipe="exploration")
+    make_signable(case)
     payload = case.mark_signed()
     assert payload["report_html_hash"]  # non-null
     assert (case.report_dir / "signed.html").is_file()
@@ -527,3 +527,12 @@ def test_case_record_dict_round_trip():
         overrides={"seed": 7},
     )
     assert CaseRecord.from_dict(r.to_dict()) == r
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+def test_atomic_writes_keep_the_umask_mode(cases_root: Path) -> None:
+    """mkstemp creates 0600 files; case.json must get the mode a plain open() gives."""
+    case = Case.create(cases_root, id="m", title="t", examiner="x", recipe="exploration")
+    mask = os.umask(0)
+    os.umask(mask)
+    assert (case.case_json_path.stat().st_mode & 0o777) == (0o666 & ~mask)

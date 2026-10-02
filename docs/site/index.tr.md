@@ -23,8 +23,8 @@ hide:
 
 Her katman `sklearn` uyumludur; her `Result` tam köken bilgisi taşır (derlem özeti,
 öznitelik özeti, tohum, spaCy sürümü, zaman damgası, çözümlenmiş yapılandırma); böylece
-`study.yaml` olarak yazılan bir çalışma, yıllar sonra bile tam aynı rastgele çekime
-yeniden üretilebilir.
+`study.yaml` olarak yazılan bir çalışma, aynı tohum ve kütüphane sürümleriyle aynı
+değerlere yeniden üretilebilir (bkz. [Sonuçlar ve köken bilgisi](concepts/results.md)).
 
 ## Hızlı gezinti
 
@@ -92,12 +92,14 @@ treebank'ı) aracılığıyla `spacy-stanza` üzerinden çözümlenerek her özn
 İşlev sözcüğü listeleri, UD kapalı-sınıf belirteçlerinden yeniden üretilebilir biçimde oluşturulur.
 
 **Dokümantasyon sitesi yayında** — Kavramlar, Adli dilbilim araç takımı, Federalist + PAN-CLEF +
-Türkçe öğreticileri ve CLI/API referansını içeren bu MkDocs Material sitesi. **417 test geçiyor.**
+Türkçe öğreticileri ve CLI/API referansını içeren bu MkDocs Material sitesi.
 
 **Dokümantasyon sitesi çok dilli** — İngilizce (varsayılan) ve Türkçe (`/tr/`) `mkdocs-static-i18n`
 ile yayında; DE/ES/FR altyapısı hazır, çeviri içeriği sonraya bırakıldı.
 
-**Kalan** — PyPI yayını.
+**Adli Laboratuvar** — vaka iş akışı (delil zinciri, reçete çalıştırmaları, mühürlü raporlar) [Adli Laboratuvar (vakalar)](forensic/case-workflow.md) sayfasında anlatılıyor.
+
+**PyPI'da yayında** — `pip install bitig`.
 
 ## Lisans ve atıf
 

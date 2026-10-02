@@ -54,9 +54,10 @@ log_lrs = scorer.predict_log_lr(test_scores, base=10.0)
 | Method | When |
 |---|---|
 | `"platt"` | Small calibration sets (< 100 / class). Parametric; assumes sigmoidal mapping. Robust. |
-| `"isotonic"` | Larger calibration sets (≥ 100 / class). Non-parametric; flexible. |
+| `"isotonic"` | Larger calibration sets (≥ 100 / class advisable; ≥ 20 / class enforced). Non-parametric; flexible. |
 
-Both are monotone — rank order of inputs is preserved, so AUC is unchanged.
+Platt is strictly monotone, so it preserves rank order and AUC. Isotonic is only
+non-decreasing: it merges scores into tied steps, which can lower AUC slightly.
 
 ### Platt calibration
 
@@ -71,10 +72,17 @@ probabilities via `1 / (1 + exp(a*score + b))`.
 ### Isotonic calibration
 
 *Use when:* your scorer's decision boundary is non-linear and you have enough
-labelled trials (≥500) to fit a non-parametric curve.
-*Don't use when:* your dev set is small — isotonic overfits with few points.
+labelled trials (≥ 100 per class advisable) to fit a non-parametric curve.
+*Don't use when:* your dev set is small — fewer than 20 trials per class is refused.
 *Expect:* a piecewise-constant calibration function; `predict_proba` outputs the
-monotone increasing step function.
+monotone non-decreasing step function.
+
+Safeguards: one pseudo-trial per class is added at the opposite extreme, so the
+calibrated probability never reaches exactly 0 or 1, and `|log₁₀ LR|` is capped at
+`log₁₀(n)` for a calibration set of `n` trials (`scorer.log_lr_cap_`); `predict_log_lr`
+warns when an output hits the cap. Without these, a small separable calibration set
+produced log₁₀ LR = ±12 ("extremely strong support"). Expect isotonic LRs to be
+conservative at the extremes.
 
 ## Log-LR conversion
 
@@ -92,22 +100,27 @@ log_lrs = log_lr_from_probs(probs)                                # flat priors
 log_lrs = log_lr_from_probs_with_priors(probs, prior_target=0.3)  # non-flat
 ```
 
-Use `log_lr_from_probs_with_priors` when the calibration set was NOT balanced — the
-function corrects the reported LR back to prior-free magnitudes.
+`CalibratedScorer.predict_log_lr` does this for you: `fit` records the calibration set's
+share of target trials (`scorer.prior_target_`) and the LR divides out its prior odds, so
+it does not depend on how many trials of each class you calibrated on. Call the two
+functions above directly only when you have posteriors from elsewhere.
 
 ## Verbal scale
 
 Report log-LR magnitudes alongside the six-band Nordgaard et al. (2012) / ENFSI (2015)
 scale:
 
-| log₁₀(LR) | Verbal support |
+| \|log₁₀(LR)\| | Verbal support |
 |---|---|
 | 0 – 1 | weak |
 | 1 – 2 | moderate |
 | 2 – 3 | moderately strong |
 | 3 – 4 | strong |
-| 4 – 5 | very strong |
-| > 5 | extremely strong |
+| 4 – 6 | very strong |
+| ≥ 6 | extremely strong |
+
+LR > 1 supports the same-author proposition, LR < 1 the different-author proposition;
+the strength is the same for an LR and its reciprocal (`bitig.forensic.verbal_scale`).
 
 The `build_forensic_report` template renders this scale automatically beside each
 method's LR value. See [Reporting](reporting.md).

@@ -37,7 +37,7 @@ methods:
   #    it measures how similar their word-frequency profiles are. Smaller = closer.
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 

@@ -93,3 +93,40 @@ def test_corpus_hash_differs_by_language() -> None:
     en = Corpus(documents=[doc], language="en")
     tr = Corpus(documents=[doc], language="tr")
     assert en.hash() != tr.hash()
+
+
+def test_hash_binds_texts_to_their_ids_and_labels() -> None:
+    """Swapping two documents' texts must change the hash (audit 2026-09-26 N-P1.16)."""
+    a = Corpus(
+        documents=[
+            Document(id="a", text="upon upon whilst", metadata={"author": "Hamilton"}),
+            Document(id="b", text="while while whilst", metadata={"author": "Madison"}),
+        ]
+    )
+    swapped = Corpus(
+        documents=[
+            Document(id="a", text="while while whilst", metadata={"author": "Hamilton"}),
+            Document(id="b", text="upon upon whilst", metadata={"author": "Madison"}),
+        ]
+    )
+    assert a.hash() != swapped.hash()
+    # Still independent of document order.
+    assert a.hash() == Corpus(documents=list(reversed(a.documents))).hash()
+
+
+def test_provenance_records_corpus_hash_scheme() -> None:
+    from bitig.corpus.corpus import CORPUS_HASH_SCHEME
+    from bitig.provenance import Provenance
+
+    p = Provenance.current(
+        spacy_model="m",
+        spacy_version="v",
+        corpus_hash="h",
+        feature_hash=None,
+        seed=1,
+        resolved_config={},
+    )
+    assert p.corpus_hash_scheme == CORPUS_HASH_SCHEME == 2
+    legacy = p.to_dict()
+    legacy.pop("corpus_hash_scheme")
+    assert Provenance.from_dict(legacy).corpus_hash_scheme == 1

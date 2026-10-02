@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from nicegui import run as nicegui_run
 from nicegui import ui
 
 from bitig.case_run import perform_run
 from bitig.cases import Case
+from bitig.gui.background import io_bound
 from bitig.gui.case_layout import case_shell
 from bitig.gui.pages.case._helpers import resolve_case, short_hash
 from bitig.gui.state import get_state
@@ -72,7 +72,15 @@ def _render_body(case: Case) -> None:
         log_box.clear()
         log_box.push("Running study (this can take a while)…")
 
-        outcome = await nicegui_run.io_bound(perform_run, case)
+        try:
+            outcome = await io_bound(perform_run, case)
+        except Exception as exc:
+            # perform_run classifies runner failures itself; this catches the
+            # rest (e.g. the app shutting down) so the button is not left dead.
+            status_label.set_text("failed")
+            log_box.push(f"{type(exc).__name__}: {exc}")
+            run_btn.set_enabled(not case.record.signed)
+            return
 
         for m in outcome.methods:
             mark = "✓" if m.ok else "✗"

@@ -43,9 +43,9 @@ log_lrs = scorer.predict_log_lr(test_scores, base=10.0)
 | Yöntem | Ne zaman kullanılır |
 |---|---|
 | `"platt"` | Küçük kalibrasyon kümeleri (sınıf başına < 100). Parametrik; sigmoid eşleme varsayar. Sağlamdır. |
-| `"isotonic"` | Daha büyük kalibrasyon kümeleri (sınıf başına ≥ 100). Parametrik olmayan; esnek. |
+| `"isotonic"` | Daha büyük kalibrasyon kümeleri (sınıf başına ≥ 100 önerilir; ≥ 20 zorunludur). Parametrik olmayan; esnek. |
 
-Her ikisi de monotondur — girdilerin sıra düzeni korunur, dolayısıyla AUC değişmez.
+Platt kesin monotondur; sıra düzenini ve AUC'yi korur. İzotonik yalnızca azalmayandır: puanları eşit basamaklarda birleştirir ve AUC'yi biraz düşürebilir.
 
 ### Platt kalibrasyonu
 
@@ -55,9 +55,11 @@ Her ikisi de monotondur — girdilerin sıra düzeni korunur, dolayısıyla AUC 
 
 ### Izotonik kalibrasyon
 
-*Şu durumda kullanın:* puanlayıcınızın karar sınırı doğrusal değilse ve parametrik olmayan bir eğri uydurmak için yeterli etiketli denemeniz varsa (≥500).
-*Şu durumda kullanmayın:* geliştirme kümeniz küçükse — izotonik kalibrasyon az nokta ile aşırı uyum sağlar.
-*Beklenen sonuç:* parçalı sabit kalibrasyon işlevi; `predict_proba` monoton artan adım fonksiyonu üretir.
+*Şu durumda kullanın:* puanlayıcınızın karar sınırı doğrusal değilse ve parametrik olmayan bir eğri uydurmak için yeterli etiketli denemeniz varsa (sınıf başına ≥ 100 önerilir).
+*Şu durumda kullanmayın:* geliştirme kümeniz küçükse — sınıf başına 20'den az deneme reddedilir.
+*Beklenen sonuç:* parçalı sabit kalibrasyon işlevi; `predict_proba` monoton azalmayan adım fonksiyonu üretir.
+
+Güvenlik önlemleri: her sınıf için karşı uca bir sahte deneme eklenir, böylece kalibre edilmiş olasılık hiçbir zaman tam 0 veya 1 olmaz; `n` denemelik bir kalibrasyon kümesi için `|log₁₀ LR|`, `log₁₀(n)` ile sınırlanır (`scorer.log_lr_cap_`) ve sınıra ulaşan çıktılar için `predict_log_lr` uyarı verir. Bu önlemler olmadan küçük, ayrılabilir bir kalibrasyon kümesi log₁₀ LR = ±12 ("son derece güçlü destek") üretiyordu. İzotonik LR'lerin uç değerlerde temkinli olmasını bekleyin.
 
 ## Log-LR dönüşümü
 
@@ -74,20 +76,22 @@ log_lrs = log_lr_from_probs(probs)                                # düz önsel 
 log_lrs = log_lr_from_probs_with_priors(probs, prior_target=0.3)  # düz olmayan
 ```
 
-Kalibrasyon kümesi dengeli değilse `log_lr_from_probs_with_priors` kullanın; bu işlev bildirilen LR'yi önsel olasılık etkisinden arındırır.
+`CalibratedScorer.predict_log_lr` bunu sizin için yapar: `fit`, kalibrasyon kümesindeki hedef deneme oranını (`scorer.prior_target_`) kaydeder ve LR bu önsel oranı bölerek çıkarır; böylece LR, her sınıftan kaç deneme ile kalibrasyon yaptığınıza bağlı olmaz. Yukarıdaki iki işlevi doğrudan yalnızca başka bir kaynaktan gelen sonsal olasılıklar için kullanın.
 
 ## Sözel ölçek
 
 Log-LR büyüklüklerini altı bantlı Nordgaard et al. (2012) / ENFSI (2015) sözel ölçeği (verbal scale) ile birlikte raporlayın:
 
-| log₁₀(LR) | Sözel destek |
+| \|log₁₀(LR)\| | Sözel destek |
 |---|---|
 | 0 – 1 | zayıf |
 | 1 – 2 | ılımlı |
 | 2 – 3 | ılımlı güçlü |
 | 3 – 4 | güçlü |
-| 4 – 5 | çok güçlü |
-| > 5 | son derece güçlü |
+| 4 – 6 | çok güçlü |
+| ≥ 6 | son derece güçlü |
+
+LR > 1 aynı yazar önermesini, LR < 1 farklı yazar önermesini destekler; bir LR ile tersi için destek gücü aynıdır (`bitig.forensic.verbal_scale`).
 
 `build_forensic_report` şablonu, bu ölçeği her yöntemin LR değerinin yanında otomatik olarak oluşturur. Bkz. [Raporlama](reporting.md).
 

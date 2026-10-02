@@ -8,6 +8,7 @@ import pytest
 
 from bitig.cases import Case
 from bitig.recipes import apply_param_target, read_param_target, resolve_recipe
+from tests._signable import make_signable
 
 # ---------------------------------------------------------------------------
 # read_param_target / apply_param_target
@@ -23,13 +24,13 @@ def test_read_target_top_level_scalar():
 
 def test_read_target_into_feature_list():
     study = resolve_recipe("imposters_lr", corpus_path="/x")
-    assert read_param_target(study, "features[mfw].top_n") == 500
+    assert read_param_target(study, "features[mfw].n") == 500
 
 
 def test_read_target_into_method_list():
     study = resolve_recipe("imposters_lr", corpus_path="/x")
-    assert read_param_target(study, "methods[verify].iterations") == 100
-    assert read_param_target(study, "methods[verify].delta") == "cosine"
+    assert read_param_target(study, "methods[verify].n_iter") == 100
+    assert read_param_target(study, "methods[verify].base_delta") == "cosine"
 
 
 def test_read_target_missing_returns_none():
@@ -40,9 +41,9 @@ def test_read_target_missing_returns_none():
 
 def test_apply_target_does_not_mutate_input():
     study = resolve_recipe("imposters_lr", corpus_path="/x")
-    new = apply_param_target(study, "features[mfw].top_n", 1000)
-    assert new["features"][0]["top_n"] == 1000
-    assert study["features"][0]["top_n"] == 500  # original untouched
+    new = apply_param_target(study, "features[mfw].n", 1000)
+    assert new["features"][0]["n"] == 1000
+    assert study["features"][0]["n"] == 500  # original untouched
 
 
 def test_apply_target_top_level_scalar():
@@ -54,12 +55,12 @@ def test_apply_target_top_level_scalar():
 def test_read_and_apply_target_nested_params_form():
     """In the validated nested form (extras folded into 'params'), reads/writes
     must hit params[field], not create a flat duplicate (audit P2)."""
-    study = {"methods": [{"id": "verify", "kind": "verify", "params": {"iterations": 100}}]}
-    assert read_param_target(study, "methods[verify].iterations") == 100
+    study = {"methods": [{"id": "verify", "kind": "verify", "params": {"n_iter": 100}}]}
+    assert read_param_target(study, "methods[verify].n_iter") == 100
 
-    new = apply_param_target(study, "methods[verify].iterations", 200)
-    assert new["methods"][0]["params"]["iterations"] == 200
-    assert "iterations" not in new["methods"][0]  # no flat duplicate created
+    new = apply_param_target(study, "methods[verify].n_iter", 200)
+    assert new["methods"][0]["params"]["n_iter"] == 200
+    assert "n_iter" not in new["methods"][0]  # no flat duplicate created
 
 
 def test_apply_target_unknown_id_raises():
@@ -82,14 +83,14 @@ def test_apply_target_malformed_path_raises():
 def test_case_set_param_persists_into_study_yaml(tmp_path: Path):
     case = Case.create(tmp_path / "cases", id="sp", title="t", examiner="x", recipe="imposters_lr")
 
-    case.set_param("features[mfw].top_n", 750)
-    case.set_param("methods[verify].iterations", 200)
+    case.set_param("features[mfw].n", 750)
+    case.set_param("methods[verify].n_iter", 200)
     case.set_param("seed", 1234)
 
     reloaded = Case.load(case.root)
     resolved = reloaded.resolved_study_dict()
-    assert resolved["features"][0]["top_n"] == 750
-    assert resolved["methods"][0]["iterations"] == 200
+    assert resolved["features"][0]["n"] == 750
+    assert resolved["methods"][0]["n_iter"] == 200
     assert resolved["seed"] == 1234
 
 
@@ -97,7 +98,7 @@ def test_case_set_param_signed_case_rejects(tmp_path: Path):
     from bitig.cases import CaseError
 
     case = Case.create(tmp_path / "cases", id="lock", title="t", examiner="x", recipe="exploration")
-    (case.report_dir / "draft.html").write_text("<html>stub</html>", encoding="utf-8")
+    make_signable(case)
     case.mark_signed()
     with pytest.raises(CaseError):
         case.set_param("seed", 1)

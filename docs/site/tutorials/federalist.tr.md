@@ -6,14 +6,22 @@ Mosteller & Wallace'ın (1964) 85 Federalist Papers üzerindeki klasik yazar tes
 ## Arka plan
 
 Federalist Papers (1787–1788), ABD Anayasası'nın onaylanması için *Publius* takma adıyla
-yayımlandı. 73 makalenin yazarlığı bilinmektedir (Hamilton, Madison, Jay); 12 makale Hamilton
-ile Madison arasında tartışmalıdır. Mosteller & Wallace (1964), sözcük sıklığı Bayesian çıkarımını
-kullanarak tartışmalı 12 makaleyi Madison'a atadı — bu sonuç sonraki tüm stilometrik analizlerle
-doğrulandı.
+yayımlandı. 73 makalenin yazarlığı bilinmektedir (Hamilton, Madison, Jay); geri kalanlar ya ortak
+çalışmadır ya da Hamilton ile Madison arasında tartışmalıdır. Mosteller & Wallace (1964), sözcük
+sıklığı Bayesian çıkarımını kullanarak tartışmalı makaleleri Madison'a atadı — sonraki stilometrik
+çalışmalar bu sonucu genel olarak desteklemiştir.
 
-Bu öğretici, bitig'yı kullanarak çalışmanın özünü yeniden üretir: bilinen Hamilton / Madison
-makaleleri üzerinde Burrows Delta eğitimi, tartışmalı makalelerin öğrenilen uzaya yansıtılması
-ve PCA ile Ward dendrogramı aracılığıyla ayrışımın görselleştirilmesi.
+Literatür genellikle 12 tartışmalı makale sayar (49–58, 62, 63). bitig ile gelen derlem 58 numaralı
+makaleyi Madison olarak etiketler; bu nedenle derlemde **11 tartışmalı makale** (49–57, 62, 63) ve
+3 ortak Hamilton–Madison makalesi (18–20) bulunur.
+
+Bu öğretici, bitig'yı kullanarak çalışmanın özünü iki adımda yeniden üretir:
+
+1. 71 tek yazarlı makaleyi Burrows Delta, PCA, Ward dendrogramı ve Craig's Zeta ile inceleyen
+   bildirimsel bir `study.yaml`. Tartışmalı makaleler bu adımın dışında tutulur: PCA'ya
+   yansıtılmazlar ve şekillerinde görünmezler.
+2. Bilinen makaleler üzerinde eğitip her tartışmalı makaleyi bir adaya atayan ayrı bir yazar
+   tespiti adımı (`--test-filter` ile `bitig delta` / `bitig bayesian`).
 
 ## Ne oluşturacaksınız
 
@@ -39,10 +47,15 @@ Bu komut, boş bir `corpus/` ve başlangıç `study.yaml` içeren bir proje dizi
 Deponun [`examples/federalist/`](https://github.com/fatihbozdag/bitig/tree/main/examples/federalist)
 dizininde 85 makalenin tamamı ayrı `.txt` dosyaları olarak ve hazır bir `metadata.tsv` ile
 mevcuttur. `corpus/` ile `metadata.tsv` dosyalarını kopyalayın ya da örnekteki kendi
-`README.md` dosyasını takip ederek Project Gutenberg'den oluşturun.
+`README.md` dosyasını takip ederek Project Gutenberg'den oluşturun. Her dosya yalnızca deneme
+metnini içerir ve "To the People of the State of New York" hitabıyla başlar: Project Gutenberg
+başlığı (makale numarası, başlık, gazete ve tarih, yazar imzası) çıkarılmıştır; böylece buradaki
+yazar adları özniteliklere sızamaz.
 
-`metadata.tsv`'de her makale için şu sütunlar bulunur: `filename`, `author`, `number`, `role`
-(bilinen-yazarlı makaleler için `train`, tartışmalı olanlar için `test`).
+`metadata.tsv`'de her makale için şu sütunlar bulunur: `filename`, `author`, `role`, `notes`.
+`role`, 71 tek yazarlı makale için `train`, 11 tartışmalı makale için `test` (`author` =
+`Disputed`) ve 3 ortak makale için `excluded` (`author` = `Joint_HM`) değerini alır. Aşağıdaki
+çalışma dosyayı `corpus/metadata.tsv` konumundan okur; bu yüzden onu `corpus/` içine kopyalayın.
 
 ## 3. study.yaml dosyasını düzenleyin
 
@@ -69,7 +82,7 @@ features:
 methods:
   - id: burrows
     kind: delta
-    method: burrows
+    variant: burrows
     features: mfw200
     group_by: author
 
@@ -92,8 +105,11 @@ methods:
       group_b: Madison
 ```
 
-`filter: role: [train]` satırı, eğitim sırasında tartışmalı makaleleri gizler; böylece Delta
-temiz bir Hamilton / Madison merkezi elde eder. Tartışmalı kümeyi analiz adımında geri yansıtırız.
+`filter: role: [train]` satırı, çalışmadaki **her** yöntem için yalnızca 71 tek yazarlı makaleyi
+(Hamilton, Madison, Jay) tutar. Tartışmalı ve ortak makaleler hiç yüklenmez; dolayısıyla hiçbir şey
+geri yansıtılmaz: Delta burada yalnızca örneklem içi (yeniden ikame) doğruluğunu raporlar, PCA ve
+dendrogram da yalnızca yazarı bilinen makaleleri gösterir. Tartışmalı makalelerin yazar tespiti
+5. adımdadır.
 
 ## 4. Çalışmayı çalıştırın
 
@@ -107,42 +123,98 @@ bitig run study.yaml --name demo
 results/demo/
 ├── resolved_config.json
 ├── burrows/
-│   └── result.json
+│   ├── result.json
+│   └── confusion_matrix.png
 ├── pca/
-│   └── result.json
+│   ├── result.json
+│   ├── scatter.png
+│   └── pca_biplot.png
 ├── ward/
-│   └── result.json
+│   ├── result.json
+│   └── dendrogram.png
 └── zeta_hamilton_madison/
     ├── result.json
     ├── table_0.parquet     # Hamilton'ın tercih ettiği sözcük dağarcığı
-    └── table_1.parquet     # Madison'ın tercih ettiği sözcük dağarcığı
+    ├── table_1.parquet     # Madison'ın tercih ettiği sözcük dağarcığı
+    └── zeta.png
 ```
 
-## 5. Şekilleri oluşturun
+Her `result.json` kendi köken bilgisi bloğunu (derlem özeti, seed, çözümlenmiş yapılandırma)
+taşır. Bir yöntem başarısız olursa dizininde bunun yerine bir `error.txt` bulunur ve `bitig run`
+1 durum koduyla çıkar.
 
-Matplotlib oluşturma, ince bir son işlem adımıdır (tam entegrasyon sonraki bir aşamada gelir).
-Örnek, çağırabileceğiniz bir `render_figures.py` içerir:
+## 5. Tartışmalı makaleleri atayın
+
+Bildirimsel çalışma henüz bir alt küme üzerinde eğitip başka birini puanlayamaz; bu yüzden yazar
+tespiti, `--test-filter` ile `bitig delta` ve `bitig bayesian` komutlarını kullanır:
 
 ```bash
-python examples/federalist/render_figures.py results/demo metadata.tsv
+bitig delta corpus --method burrows --mfw 200 \
+    --metadata corpus/metadata.tsv --group-by author --test-filter role=test
+
+bitig bayesian corpus --mfw 200 \
+    --metadata corpus/metadata.tsv --group-by author --test-filter role=test
 ```
 
-Bu komut her yöntem dizinine `pca.png`, `ward.png` ve `zeta.png` üretir.
+Her iki komut da **`--test-filter` ile seçilmeyen her makale** üzerinde eğitilir: 71 tek yazarlı
+makale *ve* Hamilton, Madison ve Jay'in yanında dördüncü bir `Joint_HM` sınıfı oluşturan 3 ortak
+makale. Hiçbir komut ortak makaleleri dışarıda bırakamaz; bunun için onları verdiğiniz derlem
+dizininden çıkarın.
 
-## 6. Rapor
+`bitig bayesian` bir `max p(author)` sütunu yazdırır. Bunlar her sözcük geçişini bağımsız sayan
+Naive Bayes sonsal değerleridir; bu nedenle 0'a ya da 1'e itilirler ve **kalibre edilmiş
+olasılıklar değildir**. Bunları bir kesinlik ölçüsü olarak değil, adayların sıralaması olarak
+okuyun.
+
+## 6. Şekilleri oluşturun
+
+`bitig run` yukarıda listelenen varsayılan şekilleri zaten yazar, ancak PCA dağılım grafiği yazara
+göre renklendirilmez. Örnek, PCA dağılım grafiğini yazara göre renklendirerek yeniden çizen, ayrıca
+dendrogramı ve Zeta grafiğini üreten bir `render_figures.py` içerir:
+
+```bash
+python examples/federalist/render_figures.py results/demo corpus/metadata.tsv
+```
+
+Bu komut ilgili yöntem dizinlerine `pca.png`, `ward.png` ve `zeta.png` üretir. Betik örneğin kendi
+`study.yaml` dosyası için yazıldığından şekil başlıklarında "MFW=500" yazar.
+
+## 7. Rapor
 
 ```bash
 bitig report results/demo --output results/demo/report.html
 ```
 
-HTML'yi tarayıcıda açın — yöntem bölümleri, gömülü şekiller ve tam köken bilgisi JSON'u içeren
+HTML'yi tarayıcıda açın — yöntem bölümleri, gömülü şekiller ve bir köken bilgisi bölümü içeren
 tek sayfalık bir rapor elde edersiniz.
 
 ## Beklenen sonuç
 
-PCA'da Hamilton ve Madison makaleleri ilk iki bileşen boyunca iki sıkı küme oluşturur
-(birlikte ~%35 varyans); Jay'in beş denemesi kenarda yer alır. MFW=200'de Burrows Delta,
-tartışmalı her makaleyi Madison'a atfeder — Mosteller & Wallace'ın 1964 sonucuyla örtüşür.
+Yukarıdaki adımlar, gelen derlem üzerinde çalıştırıldığında şu sayıları verir:
+
+- **PCA** (71 makale, MFW 200): ilk iki bileşen varyansın %7,4'ünü ve %5,9'unu açıklar (toplam
+  %13,3). PC1 esas olarak Jay'in beş denemesini diğer tüm makalelerden ayırır. Hamilton ve
+  Madison büyük ölçüde örtüşür: Madison makaleleri PC2'de ortalamada daha yukarıda yer alır,
+  ancak temiz bir ayrım yoktur. Örneğin kendi MFW 500 çalışmasında iki bileşen %5,6 ve %4,5
+  açıklar.
+- **Ward** (3 küme): Madison makaleleri kendi başına bir küme oluşturmaz. Dokuzu, 45 Hamilton ve
+  2 Jay makalesiyle birlikte en büyük kümede yer alır; diğer altısı 6 Hamilton makalesiyle ikinci
+  bir küme oluşturur. Kalan 3 Jay makalesi üçüncü kümeyi oluşturur.
+- **Çalışmadaki Burrows Delta**: yeniden ikame doğruluğu 1,0. Bu bir yazar tespiti sonucu değil,
+  örneklem içi bir ayrışabilirlik denetimidir.
+- **Zeta**: Hamilton'ın tercih ettiği sözcükler listesinin başında `upon`, `kind`, `community`,
+  `intended` ve `men`; Madison'ın listesinin başında `few`, `consequently`, `whilst`,
+  `proceedings` ve `particularly` yer alır. `upon` ve `whilst`, Mosteller & Wallace'ın
+  dayandığı belirteçler arasındadır.
+- **Yazar tespiti (5. adım)**: `bitig delta` (MFW 200) 11 tartışmalı makalenin tamamını
+  Madison'a atar. `bitig bayesian` da 11 makalenin hepsi için Madison'ı seçer ve her biri için
+  `max p(author)` = 1.000 yazdırır. Yukarıda açıklandığı gibi bu 1.000 kalibre edilmiş bir
+  olasılık değildir. `--mfw 500` ile (örnek dizinindeki `README.md` komutları) `bitig bayesian`
+  yine 11 makalenin hepsi için Madison'ı seçer, ancak `bitig delta` 50 numaralı makaleyi dördüncü
+  sınıf olan `Joint_HM`'ye, diğer 10 makaleyi Madison'a atar. İki ayarda da hiçbir tartışmalı
+  makale Hamilton'a atanmaz.
+
+Madison ataması Mosteller & Wallace'ın 1964 sonucuyla örtüşür.
 
 Bu öğreticinin hızlı başlangıç mini sürümü önce yalnızca 9 makale üzerinde işlem hattını
 çalıştırmak isteyenler için

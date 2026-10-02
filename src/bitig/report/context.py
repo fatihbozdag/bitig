@@ -41,6 +41,17 @@ class ChainOfCustodyEntry(BaseModel):
     n_docs: int | None = None  # control corpus only
 
 
+class CustodyLogEntry(BaseModel):
+    """One re-acknowledged evidence change (``Case.reacknowledge_evidence``)."""
+
+    at: str
+    by: str
+    path: str
+    old_sha256: str
+    new_sha256: str
+    reason: str
+
+
 class ProvenanceFooter(BaseModel):
     """Provenance row at the bottom of every report (spec §5.5a footer)."""
 
@@ -70,6 +81,8 @@ class ReportContext(BaseModel):
     headline_scalars: list[HeadlineScalar] = Field(default_factory=list)
     figures: list[str] = Field(default_factory=list)
     chain_of_custody: list[ChainOfCustodyEntry] = Field(default_factory=list)
+    custody_log: list[CustodyLogEntry] = Field(default_factory=list)
+    forked_from: str | None = None  # one-line description of the parent case
     provenance: ProvenanceFooter | None = None
 
     signed: bool = False
@@ -84,6 +97,11 @@ class ReportContext(BaseModel):
     lr_statement: str | None = None  # full two-sided statement incl. which proposition
     lr_ladder_rows: list[tuple[str, str, str]] = Field(default_factory=list)
     method_paragraph: str | None = None
+    # General Impostors result when no calibrated LR exists (N-P1.8 / N-P1.9):
+    # one (document id, score) row per questioned document, never aggregated.
+    verification_question: str | None = None
+    gi_rows: list[tuple[str, str]] = Field(default_factory=list)
+    gi_chance: str | None = None
 
     # ---- research-only ----
     research_question: str | None = None

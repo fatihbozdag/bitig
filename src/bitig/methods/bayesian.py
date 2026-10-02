@@ -68,12 +68,30 @@ def _build_author_to_group_idx(
     return np.array([author_to_group[a] for a in unique_authors])
 
 
+def _checked_counts(X: FeatureMatrix | np.ndarray) -> np.ndarray:  # noqa: N803
+    """The rate model is only meaningful for non-negative, finite count features.
+
+    Reject z-scored / mean-centred or NaN input loudly — at fit AND predict time —
+    rather than producing confident but invalid attributions (audit P1.15).
+    """
+    counts = _as_array(X)
+    if np.isnan(counts).any():
+        raise ValueError("BayesianAuthorshipAttributor: input contains NaN values.")
+    if np.any(counts < 0):
+        raise ValueError(
+            "BayesianAuthorshipAttributor requires non-negative count features, but the "
+            "input contains negative values (it looks z-scored / mean-centred). Build the "
+            "feature with scale='none' or scale='l1' — e.g. MFWExtractor(scale='none')."
+        )
+    return counts
+
+
 class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
     """Wallace-Mosteller-style Bayesian authorship attribution.
 
-    Expects count-valued features (raw word counts or equivalent). If z-scored features are
-    passed, predictions will still work but the "rate" interpretation breaks down — use
-    `MFWExtractor(scale="none")` to produce the right input.
+    Expects non-negative count-valued features (raw word counts or equivalent), e.g.
+    ``MFWExtractor(scale="none")``. Negative (z-scored) or NaN input is rejected in
+    ``fit`` and in ``predict`` / ``predict_proba`` / ``decision_function``.
     """
 
     def __init__(self, *, prior_alpha: float = 1.0) -> None:
@@ -86,17 +104,7 @@ class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
         X: FeatureMatrix | np.ndarray,  # noqa: N803 (sklearn convention)
         y: np.ndarray,
     ) -> BayesianAuthorshipAttributor:
-        counts = _as_array(X)
-        # The rate model is only meaningful for non-negative count features.
-        # Reject z-scored / mean-centred input loudly rather than silently
-        # clipping negatives to 1e-12 (which yields confident but invalid
-        # attributions). Build the feature with scale='none' or scale='l1'.
-        if np.any(counts < 0):
-            raise ValueError(
-                "BayesianAuthorshipAttributor requires non-negative count features, but the "
-                "input contains negative values (it looks z-scored / mean-centred). Build the "
-                "feature with scale='none' or scale='l1' — e.g. MFWExtractor(scale='none')."
-            )
+        counts = _checked_counts(X)
         y_arr = np.asarray(y)
         self.classes_ = np.unique(y_arr)
 
@@ -118,7 +126,7 @@ class BayesianAuthorshipAttributor(ClassifierMixin, BaseEstimator):
         return self
 
     def decision_function(self, X: FeatureMatrix | np.ndarray) -> np.ndarray:  # noqa: N803
-        counts = _as_array(X)
+        counts = _checked_counts(X)
         scores = np.column_stack([counts @ self.log_rates_[str(cls)] for cls in self.classes_])
         return scores
 
@@ -194,14 +202,22 @@ class HierarchicalGroupComparison:
 
         results = []
         for col in range(X.shape[1]):
-            observations = X[:, col]
+            # Standardise so the unit-scale priors below suit any feature scale
+            # (Yule's K ~ 100, readability ~ 60); summaries are on this scale and
+            # the mean / SD are returned to map them back (audit 2026-09-26 P2).
+            raw = X[:, col].astype(float)
+            col_mean = float(raw.mean())
+            col_sd = float(raw.std(ddof=0)) or 1.0
+            observations = (raw - col_mean) / col_sd
             with pm.Model():
                 mu_group = pm.Normal("mu_group", mu=0, sigma=5, shape=len(unique_groups))
-                pm.HalfNormal("sigma_group", sigma=1, shape=len(unique_groups))
+                sigma_group = pm.HalfNormal("sigma_group", sigma=1, shape=len(unique_groups))
+                # theta_author ~ Normal(mu_group, sigma_group), as documented; sigma_group
+                # used to be created and never used (sigma was hard-coded to 1).
                 theta_author = pm.Normal(
                     "theta_author",
                     mu=mu_group[author_to_group_idx],
-                    sigma=1,
+                    sigma=sigma_group[author_to_group_idx],
                     shape=len(unique_authors),
                 )
                 obs_sigma = pm.HalfNormal("obs_sigma", sigma=1)
@@ -219,12 +235,14 @@ class HierarchicalGroupComparison:
                     progressbar=False,
                     return_inferencedata=True,
                 )
-            summary = az.summary(trace, var_names=["mu_group"])
+            summary = az.summary(trace, var_names=["mu_group", "sigma_group"])
             results.append(
                 {
                     "feature": fm.feature_names[col],
                     "mu_group_summary": summary.to_dict(),
                     "groups": list(unique_groups),
+                    # mu_group is in SD units of the feature; original = mean + sd * mu.
+                    "standardisation": {"mean": col_mean, "sd": col_sd},
                 }
             )
         return {"results": results}

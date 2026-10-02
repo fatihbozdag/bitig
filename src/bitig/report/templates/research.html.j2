@@ -106,10 +106,28 @@
       <tr><th>role</th><th>document</th><th>tokens</th></tr>
       {% for e in chain_of_custody %}
         {% if e.role == "control" %}
-        <tr><td>{{ e.role }}</td><td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }})</span></td><td>—</td></tr>
+        <tr><td>{{ e.role }}</td><td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }}; not used by the analysis)</span></td><td>—</td></tr>
         {% else %}
         <tr><td>{{ e.role }}</td><td>{{ e.label }}</td><td>{{ e.tokens }}</td></tr>
         {% endif %}
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if forked_from %}
+    <p class="muted">{{ forked_from }}</p>
+    {% endif %}
+    {% if custody_log %}
+    <h3>Re-acknowledged evidence changes</h3>
+    <table>
+      <tr><th>when</th><th>by</th><th>document</th><th>old → new sha256</th><th>reason</th></tr>
+      {% for c in custody_log %}
+      <tr>
+        <td>{{ c.at }}</td>
+        <td>{{ c.by }}</td>
+        <td>{{ c.path }}</td>
+        <td class="mono">{{ c.old_sha256[:12] }}… → {{ c.new_sha256[:12] }}…</td>
+        <td>{{ c.reason }}</td>
+      </tr>
       {% endfor %}
     </table>
     {% endif %}

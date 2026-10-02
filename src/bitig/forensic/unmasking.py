@@ -38,24 +38,25 @@ from bitig.result import Result
 def _chunk_text(text: str, *, chunk_size: int, id_prefix: str) -> list[Document]:
     """Split ``text`` into Documents of ``chunk_size`` whitespace-separated words each.
 
-    Trailing tokens below ``chunk_size`` are included as a final (shorter) chunk if they
-    exist — keeping the short tail avoids discarding data on documents that aren't an exact
-    multiple of chunk_size.
+    A trailing remainder of at least half a chunk becomes its own (shorter) chunk.
+    A shorter remainder is merged into the previous chunk: kept on its own, a
+    1-word tail counted as a full sample toward ``min_chunks_per_class`` and was
+    trivially separable, distorting the accuracy curve (audit 2026-09-26 P2).
     """
     words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size):
-        chunk_words = words[i : i + chunk_size]
-        if not chunk_words:
-            continue
-        chunks.append(
-            Document(
-                id=f"{id_prefix}_{i // chunk_size}",
-                text=" ".join(chunk_words),
-                metadata={"source_prefix": id_prefix},
-            )
+    groups = [words[i : i + chunk_size] for i in range(0, len(words), chunk_size)]
+    if len(groups) > 1 and len(groups[-1]) < chunk_size / 2:
+        tail = groups.pop()
+        groups[-1] = groups[-1] + tail
+    return [
+        Document(
+            id=f"{id_prefix}_{i}",
+            text=" ".join(chunk_words),
+            metadata={"source_prefix": id_prefix},
         )
-    return chunks
+        for i, chunk_words in enumerate(groups)
+        if chunk_words
+    ]
 
 
 def _normalise_to_corpus(

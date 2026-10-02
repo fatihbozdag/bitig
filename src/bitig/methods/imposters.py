@@ -7,13 +7,20 @@ sampled impostors; the candidate "wins" the iteration if it is nearest. The
 aggregate score is the win fraction in [0, 1].
 
 Sampling the impostors per iteration (rather than always comparing against the
-whole author set) is the defining feature of *General* Impostors and is what
-keeps the score interpretable: with one impostor per iteration (the default,
-``impostor_n=1``) the comparison is candidate-vs-one-impostor, so under no
-signal the candidate wins half the time — ``chance == 0.5`` — and the default
-0.5 threshold sits exactly at chance. Larger ``impostor_n`` approximates the
-stricter "nearer than every impostor" test with ``chance == 1/(1+impostor_n)``;
-``chance`` is reported on the Result so the score is always read against it.
+whole author set) is the defining feature of *General* Impostors. The candidate
+must be nearer than every one of the ``m`` sampled impostors, so under no
+signal it wins with probability ``chance == 1/(1+m)``. The default
+``m = ceil(sqrt(pool))`` follows Kestemont et al. (2016) and bitig's
+``forensic.verify.GeneralImpostors``; the earlier default of one impostor put
+chance at 0.5 and the 0.5 threshold exactly on it, so unrelated authors were
+"verified" about half the time (audit 2026-09-26 N-P1.10). ``chance`` is
+reported on the Result so the score is always read against it, and the
+``verified`` threshold must lie above it (default: halfway from chance to 1).
+
+This is the corpus-level variant (author centroids, its own MFW fit);
+:class:`bitig.forensic.verify.GeneralImpostors` is the document-level variant for
+precomputed feature matrices. ``tests/forensic/test_gi_parity.py`` checks that
+they agree on clear same-author / different-author cases.
 
 The score is an uncalibrated similarity statistic, NOT a likelihood ratio —
 turning it into an LR requires a calibration set (see the forensic-domain
@@ -24,11 +31,13 @@ from the MFW vocabulary and z-score statistics so frequencies do not leak.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
 from bitig.corpus import Corpus
-from bitig.features.mfw import MFWExtractor, _tokenise
+from bitig.features.mfw import MFWExtractor
 from bitig.methods.delta import (
     ArgamonLinearDelta,
     BurrowsDelta,
@@ -69,11 +78,10 @@ class GeneralImposters:
         Fraction of MFW columns sampled per iteration. The classical GI
         value is 0.5; lower values produce noisier per-iteration votes but
         stabilise the aggregate score.
-    impostor_n : int
-        Impostors sampled per iteration from the pool. Default 1 → pairwise
-        candidate-vs-impostor comparison, so ``chance == 0.5`` and the 0.5
-        threshold is principled. Larger values give a stricter test with
-        ``chance == 1/(1+impostor_n)`` (reported on the Result).
+    impostor_n : int, optional
+        Impostors sampled per iteration from the pool (capped at the pool
+        size). Default ``ceil(sqrt(pool))``. The candidate must be nearer than
+        all of them, so ``chance == 1/(1+impostor_n)`` (reported on the Result).
     base_delta : str
         Distance kernel; one of `burrows`, `cosine`, `argamon_linear`,
         `quadratic`, `eder`, `eder_simple`.
@@ -81,9 +89,12 @@ class GeneralImposters:
         Top-N MFW vocabulary size (fit on training only).
     lowercase : bool
         Case-fold during tokenisation.
-    threshold : float
+    threshold : float, optional
         Decision cutoff; targets whose score >= threshold are reported as
-        verified. Stored on Result.values so downstream code can re-decide.
+        verified. Must exceed ``chance`` (``ValueError`` otherwise); default is
+        halfway between chance and 1. The score is uncalibrated, so the flag is
+        a screening aid, not an evidential conclusion. Stored on Result.values
+        so downstream code can re-decide.
     seed : int
         Seed for the per-iteration feature subsample.
     """
@@ -96,11 +107,11 @@ class GeneralImposters:
         group_by: str,
         n_iter: int = 100,
         feature_frac: float = 0.5,
-        impostor_n: int = 1,
+        impostor_n: int | None = None,
         base_delta: str = "burrows",
         mfw_n: int = 200,
         lowercase: bool = True,
-        threshold: float = 0.5,
+        threshold: float | None = None,
         seed: int = 42,
     ) -> None:
         if base_delta not in _BASE_DELTA:
@@ -111,18 +122,20 @@ class GeneralImposters:
             raise ValueError("feature_frac must be in (0, 1]")
         if n_iter < 1:
             raise ValueError("n_iter must be >= 1")
-        if impostor_n < 1:
+        if impostor_n is not None and impostor_n < 1:
             raise ValueError("impostor_n must be >= 1")
+        if threshold is not None and not (0.0 < threshold <= 1.0):
+            raise ValueError("threshold must be in (0, 1]")
         self.target_ids = list(target_ids)
         self.candidate = candidate
         self.group_by = group_by
         self.n_iter = int(n_iter)
         self.feature_frac = float(feature_frac)
-        self.impostor_n = int(impostor_n)
+        self.impostor_n = None if impostor_n is None else int(impostor_n)
         self.base_delta = base_delta
         self.mfw_n = int(mfw_n)
         self.lowercase = lowercase
-        self.threshold = float(threshold)
+        self.threshold = None if threshold is None else float(threshold)
         self.seed = int(seed)
 
     def fit_transform(self, corpus: Corpus) -> Result:
@@ -153,23 +166,9 @@ class GeneralImposters:
                 "general_imposters needs at least 2 distinct authors in the training corpus"
             )
 
-        # Project each target into the same MFW space (counts -> l1 -> z-score).
-        # Direct internal-state access is intentional -- both classes ship in this package.
-        vocab_index = {tok: i for i, tok in enumerate(mfw._vocabulary)}
-        means = mfw._column_means
-        stds = mfw._column_stds
-        if means is None or stds is None:
-            raise RuntimeError("MFW fit did not produce z-score statistics")
-        target_vectors: list[np.ndarray] = []
-        for doc in target_docs:
-            counts = np.zeros(len(vocab_index), dtype=float)
-            for tok in _tokenise(doc.text, self.lowercase):
-                j = vocab_index.get(tok)
-                if j is not None:
-                    counts[j] += 1
-            row_sum = counts.sum() or 1.0
-            rel = counts / row_sum
-            target_vectors.append((rel - means) / stds)
+        # Project each target into the training MFW space (relative frequency
+        # by document length, z-scored with training statistics).
+        target_vectors = [mfw.project_tokens(mfw.tokenise(doc.text)) for doc in target_docs]
 
         delta_cls = _BASE_DELTA[self.base_delta]
         rng = np.random.default_rng(self.seed)
@@ -177,13 +176,22 @@ class GeneralImposters:
         k = max(1, round(n_features * self.feature_frac))
 
         impostors = [a for a in authors if a != self.candidate]
-        # Impostors sampled per iteration. With m == 1 (default) each iteration
-        # is a candidate-vs-one-random-impostor comparison, so under no signal
-        # the candidate wins half the time and the 0.5 threshold sits exactly at
-        # chance. Larger m approximates the stricter Koppel "nearer than all of
-        # a sampled impostor set" test, with chance 1/(1 + m).
-        m = min(self.impostor_n, len(impostors))
+        # Impostors sampled per iteration; the candidate must be nearer than all
+        # of them, so the no-signal win rate is 1/(1 + m).
+        pool = len(impostors)
+        m = (
+            min(self.impostor_n, pool)
+            if self.impostor_n is not None
+            else math.ceil(math.sqrt(pool))
+        )
         chance = 1.0 / (1 + m)
+        threshold = self.threshold if self.threshold is not None else chance + 0.5 * (1 - chance)
+        if threshold <= chance:
+            raise ValueError(
+                f"threshold {threshold:g} is at or below chance {chance:g} "
+                f"({m} impostor(s) per iteration): a 'verified' flag there would "
+                "accept unrelated authors"
+            )
 
         rows: list[dict[str, object]] = []
         for doc, tgt in zip(target_docs, target_vectors, strict=True):
@@ -194,7 +202,9 @@ class GeneralImposters:
                 # (Seidman 2013; Koppel & Winter 2014). Sampling impostors —
                 # not always comparing against the whole author set — is what
                 # makes this General Impostors and what calibrates the score.
-                cols = rng.choice(n_features, size=k, replace=False)
+                # Sorted so rank-weighted base deltas (Eder) see columns in
+                # frequency order.
+                cols = np.sort(rng.choice(n_features, size=k, replace=False))
                 sampled = rng.choice(np.asarray(impostors, dtype=object), size=m, replace=False)
                 keep = {self.candidate, *(str(a) for a in sampled)}
                 mask = np.array([str(a) in keep for a in y_train])
@@ -214,7 +224,8 @@ class GeneralImposters:
                     "n_iter": self.n_iter,
                     "n_features_per_iter": int(k),
                     "impostors_per_iter": int(m),
-                    "verified": bool(score >= self.threshold),
+                    "threshold": float(threshold),
+                    "verified": bool(score >= threshold),
                 }
             )
 
@@ -227,18 +238,19 @@ class GeneralImposters:
                 "group_by": self.group_by,
                 "n_iter": self.n_iter,
                 "feature_frac": self.feature_frac,
-                "impostor_n": self.impostor_n,
+                "impostor_n": m,
                 "base_delta": self.base_delta,
                 "mfw_n": self.mfw_n,
                 "lowercase": self.lowercase,
-                "threshold": self.threshold,
+                "threshold": threshold,
                 "seed": self.seed,
             },
             values={
                 "candidate": self.candidate,
                 "imposters": impostors,
-                "threshold": self.threshold,
+                "threshold": threshold,
                 "chance": float(chance),
+                "impostors_per_iter": int(m),
                 "scores": {row["target_id"]: row["score"] for row in rows},
             },
             tables=[table],

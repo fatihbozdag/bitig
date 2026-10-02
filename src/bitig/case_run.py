@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
-from bitig.cases import Case
+from bitig.cases import Case, _evidence_doc_id
 from bitig.runner import run_study
 
 RunStatus = Literal["succeeded", "partial", "failed", "blocked"]
@@ -61,9 +61,12 @@ def unique_run_id(case: Case, *, now: datetime | None = None) -> str:
 def perform_run(case: Case) -> RunOutcome:
     """Execute the Case's study and classify the outcome. Pure (no GUI).
 
-    Order of guards: signed → chain-of-custody → run. A run is recorded
-    (``register_run``) only when at least one method produced a result, so an
-    all-failed run never becomes ``latest_run`` and never unlocks Findings.
+    Order of guards: signed → chain-of-custody → study.yaml integrity →
+    verify inputs → run. The corpus is built from the registered evidence
+    only (:meth:`Case.build_corpus`), never by globbing ``evidence/``. A run
+    is recorded (``register_run``) only when at least one method produced a
+    result, so an all-failed run never becomes ``latest_run`` and never
+    unlocks Findings.
     """
     if case.record.signed:
         return RunOutcome("blocked", "Case is signed; cannot re-run. Fork it for further work.")
@@ -73,12 +76,43 @@ def perform_run(case: Case) -> RunOutcome:
         return RunOutcome(
             "blocked",
             f"Chain-of-custody mismatch on {len(mismatches)} file(s); aborting run. "
-            "Re-acknowledge on the Evidence step.",
+            "Re-acknowledge legitimately changed files on the Evidence step (or "
+            "`bitig case reacknowledge`), or fork the case if a file is missing or "
+            "should not have changed.",
         )
+
+    # A study.yaml edited outside bitig must not be run (audit 2026-09-26 N-P1.1).
+    if case.study_yaml_path.is_file() and not case.study_yaml_intact():
+        return RunOutcome(
+            "blocked",
+            "study.yaml was modified outside bitig (hash differs from the one recorded "
+            "in case.json); aborting run. Re-apply the method settings to regenerate it.",
+        )
+
+    try:
+        study = case.resolved_study()
+    except Exception as exc:
+        return RunOutcome("blocked", f"Invalid study configuration: {exc}")
+    for method in study.methods:
+        if method.kind != "verify":
+            continue
+        problem = _verify_inputs_problem(case, method.params, method.group_by)
+        if problem:
+            return RunOutcome("blocked", problem)
 
     run_id = unique_run_id(case)
     try:
-        run_dir = run_study(case.study_yaml_path, output_dir=case.runs_dir, run_name=run_id)
+        # Rewrite study.yaml from the recipe (translating pre-0.3.2 parameter
+        # names) so the file that is run and hashed is the resolved study.
+        case.regenerate_study_yaml()
+        case.save()
+        corpus = case.build_corpus(language=study.preprocess.language)
+        # The state this run is computed on; signing refuses it once the case
+        # changes (audit 2026-09-26 N-P1.2).
+        state_hash = case._case_state_hash()
+        run_dir = run_study(
+            case.study_yaml_path, output_dir=case.runs_dir, run_name=run_id, corpus=corpus
+        )
     except Exception as exc:
         return RunOutcome("failed", f"{type(exc).__name__}: {exc}", run_id=run_id)
 
@@ -103,7 +137,7 @@ def perform_run(case: Case) -> RunOutcome:
         )
 
     # Only record a run that produced at least one result.
-    case.register_run(run_id)
+    case.register_run(run_id, case_state_hash=state_hash)
     if n_ok < len(methods):
         return RunOutcome(
             "partial",
@@ -117,6 +151,49 @@ def perform_run(case: Case) -> RunOutcome:
         run_id=run_id,
         methods=methods,
     )
+
+
+def _verify_inputs_problem(case: Case, params: dict[str, Any], group_by: str | None) -> str | None:
+    """Why a verify method cannot run on this Case's evidence, or None if it can."""
+    evidence = case.record.evidence
+    if not evidence.questioned:
+        return "Authorship verification needs at least one questioned document."
+    if (group_by or "author") != "author":
+        return f"Case verification groups known documents by author, not {group_by!r}."
+    if any(e.author is None for e in evidence.known):
+        return "Every known document needs an author label for verification."
+    candidate = str(params.get("candidate") or "").strip()
+    if not candidate:
+        return "Set the 'Candidate author' parameter (the author label of the suspect's texts)."
+    authors = sorted({str(e.author) for e in evidence.known})
+    if candidate not in authors:
+        return f"Candidate {candidate!r} does not match any known-document author {authors}."
+    if len(authors) < 2:
+        return (
+            "Verification needs known documents from the candidate AND at least one other "
+            "author (the impostors)."
+        )
+    # An explicit target list must name exactly the registered questioned
+    # documents: an untargeted questioned document has no author label, so the
+    # runner would treat it as unlabelled training data and every method fails.
+    targets = params.get("target_ids")
+    if targets:
+        questioned = {_evidence_doc_id(e) for e in evidence.questioned}
+        untargeted = sorted(questioned - {str(t) for t in targets})
+        unknown = sorted({str(t) for t in targets} - questioned)
+        if untargeted or unknown:
+            parts = []
+            if untargeted:
+                parts.append(f"questioned document(s) {untargeted} are not targeted")
+            if unknown:
+                parts.append(f"target(s) {unknown} are not registered questioned documents")
+            return (
+                "The verify method's target list does not match the questioned evidence: "
+                + "; ".join(parts)
+                + ". Clear or update 'target_ids' (an empty list targets every questioned "
+                "document)."
+            )
+    return None
 
 
 __all__ = ["MethodOutcome", "RunOutcome", "RunStatus", "perform_run", "unique_run_id"]

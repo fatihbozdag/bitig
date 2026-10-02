@@ -8,7 +8,7 @@ from pathlib import Path
 from nicegui import ui
 
 from bitig._version import __version__
-from bitig.cases import Case, CaseError, list_cases
+from bitig.cases import Case, CaseError, scan_cases
 from bitig.gui.case_layout import TOKENS
 from bitig.gui.state import get_state
 from bitig.recipes import RECIPES
@@ -61,10 +61,12 @@ def case_landing_page() -> None:
 def _render_case_list(cases_dir: Path) -> None:
     """Render the rows of cases under ``cases_dir``."""
     try:
-        cases = list_cases(cases_dir)
+        cases, problems = scan_cases(cases_dir)
     except OSError as exc:
         ui.label(f"error reading {cases_dir}: {exc}").classes("bitig-err")
         return
+    for path, reason in problems:
+        ui.label(f"unreadable case {path.name}: {reason}").classes("bitig-err bitig-mono text-xs")
 
     if not cases:
         with ui.column().classes("w-full bitig-panel p-6 items-center gap-2"):

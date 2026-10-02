@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from bitig.corpus import Corpus
-from bitig.features.mfw import MFWExtractor, _tokenise
+from bitig.features.mfw import MFWExtractor
 from bitig.methods.delta import (
     ArgamonLinearDelta,
     BurrowsDelta,
@@ -110,17 +110,11 @@ class RollingDelta:
         clf = _BASE_DELTA[self.base_delta]().fit(train_fm, y_train)
         authors = [str(a) for a in clf.classes_]
 
-        # Frozen MFW state: vocabulary and z-score statistics from training only.
-        # Direct internal access is intentional -- both classes live in this package.
-        vocab_index = {tok: i for i, tok in enumerate(mfw._vocabulary)}
-        means = mfw._column_means
-        stds = mfw._column_stds
-        if means is None or stds is None:
-            raise RuntimeError("MFW fit did not produce z-score statistics")
+        # Windows are projected with the training vocabulary and z-score statistics.
 
         rows: list[dict[str, object]] = []
         for doc in target_docs:
-            tokens = _tokenise(doc.text, self.lowercase)
+            tokens = mfw.tokenise(doc.text)
             n_tokens = len(tokens)
             if n_tokens < self.window_size:
                 raise ValueError(
@@ -129,14 +123,7 @@ class RollingDelta:
                 )
             for w_idx, start in enumerate(range(0, n_tokens - self.window_size + 1, self.step)):
                 window = tokens[start : start + self.window_size]
-                counts = np.zeros(len(vocab_index), dtype=float)
-                for tok in window:
-                    j = vocab_index.get(tok)
-                    if j is not None:
-                        counts[j] += 1
-                row_sum = counts.sum() or 1.0
-                rel = counts / row_sum
-                vec = (rel - means) / stds
+                vec = mfw.project_tokens(window)
                 # decision_function returns -distance; invert to recover the distance.
                 neg_dists = clf.decision_function(vec.reshape(1, -1))[0]
                 dists = -neg_dists

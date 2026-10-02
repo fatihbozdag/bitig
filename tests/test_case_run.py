@@ -15,10 +15,16 @@ import pytest
 from bitig.case_run import perform_run, unique_run_id
 from bitig.cases import Case
 from bitig.result import Result
+from tests._signable import make_signable
+
+_MINI = Path(__file__).parent / "fixtures" / "mini_corpus"
 
 
 def _case(tmp_path: Path, recipe: str = "exploration") -> Case:
-    return Case.create(tmp_path / "cases", id="c", title="t", examiner="x", recipe=recipe)
+    case = Case.create(tmp_path / "cases", id="c", title="t", examiner="x", recipe=recipe)
+    case.add_evidence(_MINI / "alice_one.txt", role="known", author="alice")
+    case.add_evidence(_MINI / "bob_one.txt", role="known", author="bob")
+    return case
 
 
 def _fake_run_study(method_specs: list[tuple[str, bool]]):
@@ -27,7 +33,7 @@ def _fake_run_study(method_specs: list[tuple[str, bool]]):
     Each (method_id, ok): ok=True writes result.json, ok=False writes error.txt.
     """
 
-    def fake(config_path, *, output_dir, run_name):
+    def fake(config_path, *, output_dir, run_name, corpus=None):
         run_dir = Path(output_dir) / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
         for method_id, ok in method_specs:
@@ -80,6 +86,7 @@ def test_perform_run_all_failed_is_not_recorded(tmp_path, monkeypatch) -> None:
 
 def test_perform_run_blocked_when_signed(tmp_path, monkeypatch) -> None:
     case = _case(tmp_path)
+    make_signable(case)
     case.mark_signed()  # renders + freezes its own report
     called = {"ran": False}
     monkeypatch.setattr(

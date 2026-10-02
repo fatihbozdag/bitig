@@ -149,3 +149,31 @@ def test_has_forensic_metadata_true_when_any_field_populated() -> None:
     ):
         p = Provenance.current(**base, **extra)
         assert p.has_forensic_metadata is True, f"{extra} did not set the flag"
+
+
+def test_provenance_records_library_versions_and_cmudict_checksum() -> None:
+    from bitig.provenance import library_versions
+
+    versions = library_versions()
+    assert "numpy" in versions and "scikit-learn" in versions and "textstat" in versions
+    assert len(versions.get("nltk_data:cmudict.zip sha256", "")) == 64
+
+
+def test_missing_cmudict_raises_without_downloading(monkeypatch) -> None:
+    """English readability must never trigger textstat's nltk.download (audit 2026-09-26)."""
+    import nltk
+    import pytest
+
+    from bitig.corpus import Corpus, Document
+    from bitig.features.readability import ReadabilityExtractor
+
+    def missing(resource: str):  # type: ignore[no-untyped-def]
+        raise LookupError(resource)
+
+    def no_network(*a, **k):  # type: ignore[no-untyped-def]
+        raise AssertionError("bitig must not download NLTK data")
+
+    monkeypatch.setattr(nltk.data, "find", missing)
+    monkeypatch.setattr(nltk, "download", no_network)
+    with pytest.raises(RuntimeError, match="cmudict"):
+        ReadabilityExtractor().fit(Corpus(documents=[Document(id="d", text="A text.")]))

@@ -59,16 +59,18 @@ class Provenance:
 
 ### Reproducibility contract
 
-Two runs of the same `study.yaml` against the same corpus with the same seed produce
-**byte-identical** `result.json`. The runner threads `cfg.seed` through:
+Two runs of the same `study.yaml` against the same corpus with the same seed, in the same
+environment (Python, numpy, scikit-learn versions), produce **identical result values** —
+up to floating-point rounding in the last digits, which multithreaded BLAS can vary.
+`result.json` is not byte-identical: `provenance.timestamp` records when each run happened.
+The runner threads `cfg.seed` (unless a method sets its own) into:
 
-- numpy's default RNG in any sampling method
-- scikit-learn's `random_state` on every stochastic estimator (k-means, LogReg
-  cross-validation, RandomForest, …)
-- PyMC's `random_seed` on every Bayesian `pm.sample()` call
-- The Stratified K-Fold shuffle
+- `random_state` of every reducer (PCA, MDS, t-SNE, UMAP) and of k-means
+- `random_state` of every `classify` estimator, and the Stratified K-Fold shuffle
+- the `seed` of `consensus` and `verify` (General Impostors)
 
-Non-determinism would be a bug — please report.
+Hierarchical clustering, HDBSCAN and Delta are deterministic. Non-determinism beyond
+floating-point rounding would be a bug — please report.
 
 ## Loading multi-method runs
 

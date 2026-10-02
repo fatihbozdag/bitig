@@ -54,7 +54,9 @@ viz = ["plotly>=5.20", "kaleido>=0.2.1", "ete3>=3.1.3"]
 interactive = ["plotly>=5.20"]
 reports = ["weasyprint>=61"]
 gui = [
-    "nicegui>=2",
+    # Upper-bounded: a NiceGUI major release changed run.io_bound's typing and
+    # turned the extras CI gate red unnoticed (audit 2026-09-26, P1.19).
+    "nicegui>=2,<4",
     "pywebview>=5",
 ]
 turkish = [
@@ -139,6 +141,7 @@ ignore = ["E501"]       # handled by formatter
 "tests/languages/test_readability_es.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/languages/test_readability_fr.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/integration/test_turkish_end_to_end.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/test_runner_language.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -4,26 +4,18 @@ Amstad, T. (1978). Wie verständlich sind unsere Zeitungen? Zurich: Studenten-Sc
 Bamberger, R., & Vanecek, E. (1984). Lesen — Verstehen — Lernen — Schreiben: Die
 Schwierigkeitsstufen von Texten in deutscher Sprache. Wien: Jugend und Volk.
 
-Syllable count uses pyphen's German hyphenation dictionary (de_DE).
+Syllables are counted as vowel nuclei (``bitig.languages._syllables``); hyphenation
+dictionaries undercount them.
 """
 
 from __future__ import annotations
 
 import re
 
-import pyphen
+from bitig.languages._syllables import count_syllables_de
 
 _WORD_RE = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 _SENTENCE_RE = re.compile(r"[.!?…]+")
-_PYPHEN_DE = pyphen.Pyphen(lang="de_DE")
-
-
-def count_syllables_de(word: str) -> int:
-    """Count German syllables via Liang-hyphenation (pyphen de_DE)."""
-    if not word:
-        return 0
-    # Pyphen returns hyphens between syllables; count chunks.
-    return len(_PYPHEN_DE.inserted(word).split("-"))
 
 
 def _words(text: str) -> list[str]:

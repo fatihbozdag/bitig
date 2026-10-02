@@ -95,6 +95,22 @@
 {% if lr_statement %}<p><strong>Interpretation:</strong> {{ lr_statement }}.</p>{% endif %}
 {% endif %}
 
+{% if verification_question %}
+<h2>Question</h2>
+<p>{{ verification_question }}</p>
+{% endif %}
+
+{% if gi_rows %}
+<h2>General Impostors scores</h2>
+<table>
+  <tr><th>questioned document</th><th>GI score</th>{% if gi_chance %}<th>chance level</th>{% endif %}</tr>
+  {% for doc_id, score in gi_rows %}
+  <tr><td>{{ doc_id }}</td><td class="mono">{{ score }}</td>{% if gi_chance %}<td class="mono">{{ gi_chance }}</td>{% endif %}</tr>
+  {% endfor %}
+</table>
+<p class="muted">Uncalibrated General Impostors score in [0, 1] — not a likelihood ratio; no ENFSI verbal scale applies.</p>
+{% endif %}
+
 {% if headline_scalars %}
 <h2>Headline scalars</h2>
 <table>
@@ -117,7 +133,7 @@
         {% if e.role == "control" %}
         <tr>
           <td>{{ e.role }}</td>
-          <td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }})</span></td>
+          <td>{{ e.label }} <span class="muted">(corpus, n_docs={{ e.n_docs }}; not used by the analysis)</span></td>
           <td>—</td>
           <td class="mono muted">—</td>
         </tr>
@@ -133,6 +149,24 @@
     </table>
     {% else %}
     <p class="muted">No evidence registered yet.</p>
+    {% endif %}
+    {% if forked_from %}
+    <p class="muted">{{ forked_from }}</p>
+    {% endif %}
+    {% if custody_log %}
+    <h3>Re-acknowledged evidence changes</h3>
+    <table>
+      <tr><th>when</th><th>by</th><th>document</th><th>old → new sha256</th><th>reason</th></tr>
+      {% for c in custody_log %}
+      <tr>
+        <td>{{ c.at }}</td>
+        <td>{{ c.by }}</td>
+        <td>{{ c.path }}</td>
+        <td class="mono">{{ c.old_sha256[:12] }}… → {{ c.new_sha256[:12] }}…</td>
+        <td>{{ c.reason }}</td>
+      </tr>
+      {% endfor %}
+    </table>
     {% endif %}
   </div>
 </div>

@@ -19,9 +19,13 @@ console = Console()
 def classify_command(
     path: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),  # noqa: B008
     metadata: Path = typer.Option(..., "--metadata", "-m", exists=True, dir_okay=False),  # noqa: B008
-    estimator: str = typer.Option("logreg", "--estimator"),
+    estimator: str = typer.Option(
+        "logreg", "--estimator", help="logreg | svm_linear | svm_rbf | rf | hgbm"
+    ),
     group_by: str = typer.Option("author", "--group-by"),
-    cv_kind: str = typer.Option("stratified", "--cv-kind"),
+    cv_kind: str = typer.Option(
+        "stratified", "--cv-kind", help="stratified | loao | leave_one_text_out"
+    ),
     groups_by: str | None = typer.Option(
         None,
         "--groups-by",
@@ -53,12 +57,14 @@ def classify_command(
             )
             raise typer.Exit(code=1)
 
-    fm = MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True).fit_transform(corpus)
     clf = build_classifier(estimator, random_state=seed)
+    # The MFW extractor is refit inside every training fold (no test-fold leakage).
     report = cross_validate_bitig(
         clf,
-        fm,
+        None,
         y,
+        extractor=MFWExtractor(n=mfw, min_df=2, scale="zscore", lowercase=True),
+        corpus=corpus,
         cv_kind=cv_kind,
         groups_from=groups,
         folds=folds,

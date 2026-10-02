@@ -60,11 +60,12 @@ img.figure { max-width: 100%; display: block; margin: 1em 0; }
 {% if result.lr_summary %}
 <p><strong>Log<sub>10</sub>-LR:</strong> <span class="lr-value">{{ result.lr_summary.log_lr }}</span>
 (Likelihood ratio: <span class="lr-value">{{ result.lr_summary.lr }}</span>)</p>
+{% if result.lr_statement %}<p><strong>Interpretation:</strong> {{ result.lr_statement }}.</p>{% endif %}
 <p class="footnote">
-Interpreted under the flat-prior convention: positive log<sub>10</sub>-LR favours the
-same-author hypothesis; negative favours different-author. Magnitudes follow the six-band
-verbal scale of Nordgaard et al. (2012), adopted in ENFSI (2015): 0–1 weak, 1–2 moderate,
-2–3 moderately strong, 3–4 strong, 4–5 very strong, &gt;5 extremely strong.
+Interpreted under the flat-prior convention: LR &gt; 1 supports the same-author proposition,
+LR &lt; 1 the different-author proposition. Strength follows the order-of-magnitude verbal
+scale of Nordgaard et al. (2012), adopted in ENFSI (2015), applied to max(LR, 1/LR):
+{% for label, lo, hi in ladder_rows %}{{ label }} {{ lo }}–{{ hi }}{{ "; " if not loop.last else "." }}{% endfor %}
 </p>
 {% endif %}
 

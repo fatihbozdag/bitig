@@ -23,7 +23,9 @@ and a pool of impostor documents I drawn from other authors, repeatedly:
 2. Sample m impostors from the pool.
 3. Check whether Q is closer to K than to any sampled impostor.
 
-The fraction of winning iterations is the verification score in [0, 1].
+The fraction of winning iterations is the verification score in [0, 1]. Q must beat
+all m sampled impostors, so with no authorship signal it wins about `1/(1+m)` of the
+time: that chance level, not 0.5, is the baseline to read a score against.
 
 ```python
 from bitig.features import MFWExtractor
@@ -31,6 +33,8 @@ from bitig.forensic import GeneralImpostors
 
 # Build features over the pooled corpus so Q, K, and impostors share one vocabulary.
 fm = MFWExtractor(n=200, scale="zscore", lowercase=True).fit_transform(pooled_corpus)
+# slice_by_ids is not part of bitig: write a small helper that returns a FeatureMatrix
+# with the chosen rows (see slice_fm in the PAN-CLEF tutorial).
 q_fm      = slice_by_ids(fm, ["questioned"])
 known_fm  = slice_by_ids(fm, known_doc_ids)
 impostors = slice_by_ids(fm, impostor_doc_ids)
@@ -49,13 +53,26 @@ result.values["wins"]        # raw winning-iteration count
 | `feature_subsample_rate` | 0.5 | Fraction of features sampled per iteration |
 | `impostor_sample_size` | `ceil(sqrt(pool_size))` | Impostors per iteration — scales sub-linearly so large pools don't trivialise the test |
 | `similarity` | `"cosine"` | `"cosine"` (real-valued) or `"minmax"` (non-negative features only) |
-| `aggregate` | `"centroid"` | `"centroid"` (mean of K) or `"nearest"` (most-similar known — conservative under within-author style heterogeneity) |
+| `aggregate` | `"centroid"` | `"centroid"` (mean of K) or `"nearest"` (most-similar known; gives the candidate its best of k chances per iteration, so it biases scores toward same-author — calibrate under the same setting) |
 | `seed` | 42 | RNG seed (feature + impostor sampling) |
 
 ### Ties
 
 Ties break **toward the impostors** (strict `>`). If Q is equally close to K and an
 impostor, the iteration counts as a loss — the forensically conservative choice.
+
+### Two implementations
+
+`bitig.forensic.GeneralImpostors` (this page) compares Q with individual impostor
+**documents** in feature matrices you build. `bitig.methods.imposters.GeneralImposters`,
+used by `bitig run` (`kind: verify`) and Forensic Lab Cases, fits its own MFW space and
+compares Q with author **centroids**. Both sample `ceil(sqrt(pool))` impostors per
+iteration by default and return an uncalibrated win fraction in [0, 1] — read it against
+its chance level, never as a likelihood ratio. Only the corpus-level variant reports
+`chance` (= `1/(1+m)`) and a `verified` flag; its `threshold` defaults to halfway
+between chance and 1 and must exceed chance (a lower value raises `ValueError`). Their
+scores differ; a parity test checks
+they reach the same verdict on unambiguous cases.
 
 ## Unmasking
 
@@ -101,7 +118,7 @@ result.values["eliminated_per_round"]   # auditable per-round feature removal
 |---|---|
 | Short CMC / threat texts (< ~2000 words total) | `GeneralImpostors`. Unmasking needs more text per side to run CV meaningfully. |
 | Long prose (novels, essays, blog archives) | `Unmasking` — the accuracy-drop curve is directly interpretable. Pair with GI as a second opinion. |
-| Building an evidential report | Run both, calibrate both with `CalibratedScorer`. Agreement between the two is itself evidential signal (Juola-style multi-method verdict). |
+| Building an evidential report | Run both, calibrate both with `CalibratedScorer`. Report each method's result; do not average their scores. |
 
 ## Reference
 
