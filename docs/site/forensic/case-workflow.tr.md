@@ -131,24 +131,36 @@ registered evidence/questioned/letter.txt  sha256=5d57c5c6828e…
   custody: OK
 ```
 
-**3. Analizi çalıştırın.** CLI'da bir `case run` komutu **yoktur**. Arayüzün Run adımını
-kullanın ya da Python'dan `perform_run` çağırın:
+**3. Parametreleri ayarlayın ve analizi çalıştırın.** `imposters_lr` bir *Candidate
+author* (aday yazar) ister. Parametreler için CLI komutu olmadığından onları Python'dan
+(ya da arayüzün Method adımında) ayarlayın:
 
-```python title="run_case.py"
-from bitig.case_run import perform_run
+```python title="set_params.py"
 from bitig.cases import Case
 
 case = Case.load("cases/letter-2026")
 case.set_param("methods[verify].candidate", "Alice")  # şüphelinin yazar etiketi
 case.set_param("methods[verify].mfw_n", 50)           # küçük örnek metinler
-outcome = perform_run(case)
-print(outcome.status, "-", outcome.message)
+```
+
+Ardından vakayı `bitig case run` ile çalıştırın:
+
+```bash
+python set_params.py
+bitig case run letter-2026 --cases-dir cases
 ```
 
 ```text
-$ python run_case.py
-succeeded - All 1 method(s) succeeded.
+  ✓ verify
+  run: cases/letter-2026/runs/2026-10-02T10-28-12Z
+succeeded — All 1 method(s) succeeded.
 ```
+
+Çalıştırıcının ilerleme günlüğü stderr'e gider ve yukarıda gösterilmemiştir. Aday yazar
+parametresi olmadan aynı komut `blocked — Set the 'Candidate author' parameter …`
+yazdırır ve 2 koduyla çıkar. Arayüzün Run adımı da, Python'dan
+`bitig.case_run.perform_run(case)` de aynı işi yapar (bkz.
+[Analizi çalıştırma](#analizi-calstrma)).
 
 **4. İmzalayın ve doğrulayın.**
 
@@ -166,10 +178,13 @@ bitig case verify letter-2026 --cases-dir cases
   ✓ signer: signed by 'J. Doe'
   ✓ signature: UNSIGNED (Null plugin): hashes only — anyone with write access can
 recompute them, so this seal is not tamper-evident
-hashes consistent — but letter-2026 is UNSIGNED (Null plugin): this is not evidence
+UNSIGNED — hashes consistent, but letter-2026 has a Null seal: this is not evidence
 against tampering by anyone with write access. Sign with --signature-plugin hmac for a
 tamper-evident seal.
 ```
+
+Komut **3** koduyla çıkar: özet değerleri sağlamdır, ancak Null mührü kurcalamayı ortaya
+koymaz (bkz. [Mührü doğrulama](#muhru-dogrulama)).
 
 **5. Bir çatalda devam edin.** İmzalı vaka artık salt okunurdur.
 
@@ -225,7 +240,7 @@ bitig case reacknowledge letter-2026-b evidence/known/bob_1.txt \
 
 ```text
 re-acknowledged evidence/known/bob_1.txt: 5d9655fb4ba4… → f4b35d03c52f… by J. Doe
-  Re-run the analysis before signing.
+  Re-run the analysis before signing: bitig case run letter-2026-b
 ```
 
 Bu işlem `custody_log` kaydına `at`, `by` (varsayılan: inceleyen kişi ya da `--by`),
@@ -247,8 +262,13 @@ kaydedin (bkz. [Çatallama](#catallama)).
 
 ## Analizi çalıştırma
 
-Arayüzün Run adımını `bitig.case_run.perform_run(case)` yürütür. Şu ön koşulları sırayla
-denetler ve ilk başarısız olanda bir mesajla birlikte `blocked` döndürür:
+```bash
+bitig case run <id> --cases-dir cases
+```
+
+`bitig case run`, arayüzün Run adımı ve Python'daki `bitig.case_run.perform_run(case)`
+aynı işi yapar. Şu ön koşulları sırayla denetler ve ilk başarısız olanda bir mesajla
+birlikte `blocked` döndürürler:
 
 1. vaka imzalı;
 2. bir delil zinciri uyuşmazlığı var;
@@ -258,7 +278,9 @@ denetler ve ilk başarısız olanda bir mesajla birlikte `blocked` döndürür:
     - en az bir sorgulanan belge kayıtlı;
     - her bilinen belgenin bir yazar etiketi var;
     - *Candidate author* parametresi ayarlı ve bilinen bir yazarla eşleşiyor;
-    - sahte yazar (impostor) görevi gören en az bir başka yazar var.
+    - sahte yazar (impostor) görevi gören en az bir başka yazar var;
+    - açıkça verilmiş bir `target_ids` listesi tam olarak kayıtlı sorgulanan belgeleri
+      adlandırıyor.
 
 Ön koşullar geçildikten sonra bitig `study.yaml` dosyasını yeniden üretir, derlemi kayıtlı
 delilden kurar ve çalıştırmanın üzerinde hesaplandığı vaka durumu özet değerini kaydeder.
@@ -272,14 +294,29 @@ biridir:
 | `failed` | Hiçbir yöntem başarılı olmadı; çalıştırma dizini diskte kalır ama **kaydedilmez**. |
 | `blocked` | Bir ön koşul çalıştırmayı reddetti; hiçbir şey yürütülmedi. |
 
-!!! note "Doğrulama parametrelerini tüm sorgulanan belgeleri kaydettikten sonra ayarlayın"
-    `target_ids` boş olduğunda `verify` yöntemi her kayıtlı sorgulanan belgeyi hedefler.
-    Ancak `Case.set_param` (ve arayüzdeki çekmece) çözümlenmiş yöntemin tamamını,
-    o anda geçerli olan `target_ids` dahil, `overrides` içine kaydeder. Sonradan
-    kaydedilen bir sorgulanan belge bu durumda hedef **olmaz**. Yazar etiketi de
-    olmadığından General Impostors "some training documents lack metadata column
-    'author'" hatasıyla başarısız olur. Önce tüm sorgulanan belgeleri kaydedin ya da
-    ardından `methods[verify].target_ids` değerini açıkça ayarlayın.
+`bitig case run` her yöntem için `✓` ya da (hatasıyla birlikte) `✗` yazdırır, ardından
+çalıştırma dizinini ve durumu gösterir. Çıkış kodu, her yöntem başarılıysa **0**,
+`partial` ya da `failed` için **1**, `blocked` için **2**'dir.
+
+!!! note "Sorgulanan belgeler ve `target_ids`"
+    `target_ids` boş ya da ayarlanmamışsa `verify` yöntemi, parametreleri ayarladıktan
+    sonra kaydedilenler dahil, her kayıtlı sorgulanan belgeyi hedefler. `Case.set_param`
+    ve arayüzdeki çekmece otomatik doldurulan hedef listesini kaydetmez.
+
+    `overrides` içinde açıkça verilmiş bir `target_ids` listesi tam olarak kayıtlı
+    sorgulanan belgeleri adlandırmalıdır. Böyle bir liste ya siz ayarladığınız için ya da
+    daha eski bir bitig sürümü `set_param` çağrısında onu dondurduğu için oradadır. Liste
+    bir sorgulanan belgeyi dışarıda bırakıyorsa ya da kayıtlı bir sorgulanan belge
+    olmayan bir kimlik içeriyorsa, çalıştırma hiçbir şey yürütülmeden engellenir:
+
+    ```text
+    blocked — The verify method's target list does not match the questioned evidence:
+    questioned document(s) ['alice_2'] are not targeted. Clear or update 'target_ids'
+    (an empty list targets every questioned document).
+    ```
+
+    Her sorgulanan belgeyi hedeflemek için `case.set_param("methods[verify].target_ids",
+    [])` ile düzeltin ya da listenin tamamını verin.
 
 ## Raporlar
 
@@ -348,7 +385,7 @@ kapsamında değildir.
 | Eklediği | hiçbir şey: yalnızca özet değerleri | imzalayan dahil tüm `signed.json` yükü üzerinde bir HMAC-SHA256 `signature` bloğu (`scheme: 2`) ve bir anahtar parmak izi |
 | Anahtar | yok | `BITIG_SIGNATURE_KEY` ortam değişkeninden paylaşılan bir gizli anahtar (anahtar yoksa imzalama başarısız olur) |
 | Kurcalamayı ortaya koyar mı? | **Hayır.** Yazma erişimi olan herkes vakayı düzenleyip tüm özet değerlerini yeniden hesaplayabilir. | Evet, anahtara sahip olmayan herkese karşı. Bu, paylaşılan gizli anahtara dayalı bir şemadır; açık anahtarlı ya da donanım destekli bir imza değildir. |
-| Sağlam olduğunda `verify` kararı | `hashes consistent — but … is UNSIGNED (Null plugin)` (çıkış 0) | `seal verified — … is intact` (çıkış 0), yalnızca anahtar verildiğinde |
+| Sağlam olduğunda `verify` kararı | `UNSIGNED — hashes consistent, but … has a Null seal` (çıkış 3) | anahtarla `seal verified — … is intact` (çıkış 0); anahtar olmadan `CANNOT VERIFY` (çıkış 4) |
 
 ```bash
 export BITIG_SIGNATURE_KEY="change-me"      # gerçek anahtarı kabuk geçmişinin dışında tutun
@@ -364,8 +401,8 @@ CLI'ı kullanın.
 bitig case verify <id> [--key ANAHTAR] --cases-dir cases
 ```
 
-`verify` mühürlenmiş her değeri diskten yeniden hesaplar. Her denetim için `✓` ya da `✗`
-yazdırır:
+`verify` mühürlenmiş her değeri diskten yeniden hesaplar. Her denetim için `✓` (geçti),
+`✗` (başarısız) ya da `?` (denetlenemedi) yazdırır:
 
 | Denetim | Ne zaman başarısız olur |
 |---|---|
@@ -375,23 +412,51 @@ yazdırır:
 | `unregistered_files` | `evidence/` altında hiç kaydedilmemiş bir dosya olduğunda (bu dosya mühürün kapsamında **değildir**) |
 | `evidence_custody` | bir delil dosyası kayıtlı özet değeriyle artık eşleşmediğinde ya da eksik olduğunda |
 | `signer` | `case.json` içindeki `signed_by` / `signed_at`, `signed.json` ile farklı olduğunda |
-| `signature` | `case.json` ve `signed.json` içindeki eklenti kimlikleri uyuşmadığında; HMAC imzası eksik, geçersiz ya da anahtar olmadan denetlenemiyorsa; ya da bir anahtar verildiği halde mühürde imza yoksa |
+| `signature` | `case.json` ve `signed.json` içindeki eklenti kimlikleri uyuşmadığında; HMAC imzası eksik ya da geçersizse; ya da `--key` verildiği halde mühürde imza yoksa. Anahtar olmadan denetlenen bir HMAC imzası `✗` değil `?` ile işaretlenir. |
 
-Çıkış kodları: her denetim geçerse **0**, vaka imzasızsa **1**, herhangi bir denetim
-başarısız olursa **2**. **Null** mührü, örnekte gösterilen "UNSIGNED … not tamper-evident"
-uyarısıyla birlikte 0 koduyla geçer. Kurcalamaya karşı kanıt gerektiren betikler 0 çıkış
-kodunu tek başına kanıt saymamalıdır.
+Çıkış kodları:
 
-HMAC mührü için `--key` verin ya da `BITIG_SIGNATURE_KEY` ayarlayın. Anahtar olmadan
-doğrulama başarısız olur (`HMAC signature present but no key provided`). Yanlış anahtarla
-`HMAC signature INVALID` hatasıyla başarısız olur. Bir anahtar verildiğinde geçerli bir
-HMAC **zorunludur**, bu yüzden kaldırılmış ya da düşürülmüş bir imza geçemez. Bu aynı
-zamanda, ortamınızda `BITIG_SIGNATURE_KEY` ayarlıyken Null ile mühürlenmiş bir vakanın
-doğrulamada başarısız olacağı anlamına gelir.
+| Çıkış | Karar | Anlamı |
+|---|---|---|
+| **0** | `seal verified` | her denetim geçti ve HMAC imzası geçerli |
+| **1** | `… is not signed` | vaka imzasız; doğrulanacak bir şey yok |
+| **2** | `SEAL BROKEN` | en az bir denetim başarısız oldu (kurcalama ya da uyuşmazlık) |
+| **3** | `UNSIGNED` | özet değerleri sağlam, ancak mühür bir Null mührü ve kurcalamayı ortaya koymaz |
+| **4** | `CANNOT VERIFY` | özet değerleri sağlam, ancak HMAC imzası anahtar olmadan denetlenemez |
+
+Yalnızca 0 çıkış kodu, kurcalamayı ortaya koyan bir mührün denetlendiği anlamına gelir.
+HMAC mührü için `--key` verin ya da `BITIG_SIGNATURE_KEY` ayarlayın. Anahtar olmadan imza
+denetimi `?` ile işaretlenir:
+
+```text
+  ✓ signer: signed by 'J. Doe'
+  ? signature: CANNOT VERIFY: HMAC signature present but no key provided (pass
+signature_key= or set BITIG_SIGNATURE_KEY)
+CANNOT VERIFY — hashes consistent, but letter-2026-b carries an HMAC signature and no key
+was given (--key or $BITIG_SIGNATURE_KEY).
+```
+
+Doğru anahtarla denetim `✓ signature: HMAC signature valid` olur ve karar
+`seal verified — letter-2026-b is intact` olur. Yanlış anahtarla
+`✗ signature: HMAC signature INVALID (wrong key or tampered payload)` hatası ve 2 çıkış
+koduyla başarısız olur.
+
+Açıkça verilen bir `--key` her zaman geçerli bir HMAC **gerektirir**, bu yüzden
+kaldırılmış ya da düşürülmüş bir imza geçemez: `--key` ile doğrulanan bir Null mührü
+`a signature key was supplied but the seal carries no signature` hatasıyla başarısız olur
+(çıkış 2). Yalnızca `BITIG_SIGNATURE_KEY` içinde bulunan bir anahtar HMAC mühürlerini
+denetler, ancak bir Null mührünü 3 çıkış kodunda bırakır. İmza satırına bu durumda
+`$BITIG_SIGNATURE_KEY is set: if this case was signed with HMAC, its signature has been
+removed` notu eklenir. Vakanın HMAC ile imzalandığını biliyorsanız `--key` verin.
+
+Python'da `Case.verify_seal(signature_key=…)` bir `SealVerification` döndürür. Onun
+`status` değeri `not_signed`, `broken`, `unverifiable`, `unsigned` ya da `verified`
+olur; bunlar sırasıyla 1, 2, 4, 3 ve 0 çıkış kodlarına karşılık gelir.
 
 İmzalı bir vakada `bitig case status` da mühür artık yeniden üretilemiyorsa uyarır. Bu
 uyarı imza denetimini atlar. Arayüzün Report adımında, HMAC mühürleri için isteğe bağlı
-bir anahtar alan bir *Verify seal* penceresi vardır.
+bir anahtar alan bir *Verify seal* penceresi vardır; bu pencere anahtarsız denetlenen bir
+HMAC mührü için *CANNOT VERIFY* gösterir.
 
 ## Çatallama
 

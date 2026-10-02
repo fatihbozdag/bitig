@@ -122,24 +122,36 @@ registered evidence/questioned/letter.txt  sha256=5d57c5c6828e…
   custody: OK
 ```
 
-**3. Run the analysis.** The CLI has **no** `case run` command. Use the GUI's Run step, or
-call `perform_run` from Python:
+**3. Set the parameters and run the analysis.** `imposters_lr` needs a *Candidate
+author*. Parameters have no CLI command, so set them from Python (or in the GUI's Method
+step):
 
-```python title="run_case.py"
-from bitig.case_run import perform_run
+```python title="set_params.py"
 from bitig.cases import Case
 
 case = Case.load("cases/letter-2026")
 case.set_param("methods[verify].candidate", "Alice")  # author label of the suspect
 case.set_param("methods[verify].mfw_n", 50)           # tiny demo texts
-outcome = perform_run(case)
-print(outcome.status, "-", outcome.message)
+```
+
+Then run the case with `bitig case run`:
+
+```bash
+python set_params.py
+bitig case run letter-2026 --cases-dir cases
 ```
 
 ```text
-$ python run_case.py
-succeeded - All 1 method(s) succeeded.
+  ✓ verify
+  run: cases/letter-2026/runs/2026-10-02T10-28-12Z
+succeeded — All 1 method(s) succeeded.
 ```
+
+The runner's progress log goes to stderr and is left out above. Without the candidate
+parameter, the same command prints `blocked — Set the 'Candidate author' parameter …` and
+exits with code 2. The GUI's Run step does the same thing, and so does
+`bitig.case_run.perform_run(case)` from Python (see
+[Running the analysis](#running-the-analysis)).
 
 **4. Sign and verify.**
 
@@ -157,10 +169,13 @@ bitig case verify letter-2026 --cases-dir cases
   ✓ signer: signed by 'J. Doe'
   ✓ signature: UNSIGNED (Null plugin): hashes only — anyone with write access can
 recompute them, so this seal is not tamper-evident
-hashes consistent — but letter-2026 is UNSIGNED (Null plugin): this is not evidence
+UNSIGNED — hashes consistent, but letter-2026 has a Null seal: this is not evidence
 against tampering by anyone with write access. Sign with --signature-plugin hmac for a
 tamper-evident seal.
 ```
+
+The command exits with code **3**: the hashes are intact, but a Null seal is not
+tamper-evident (see [Verifying a seal](#verifying-a-seal)).
 
 **5. Continue in a fork.** The signed case is now read-only.
 
@@ -214,7 +229,7 @@ bitig case reacknowledge letter-2026-b evidence/known/bob_1.txt \
 
 ```text
 re-acknowledged evidence/known/bob_1.txt: 5d9655fb4ba4… → f4b35d03c52f… by J. Doe
-  Re-run the analysis before signing.
+  Re-run the analysis before signing: bitig case run letter-2026-b
 ```
 
 This adds an entry to `custody_log` with `at`, `by` (default: the examiner, or `--by`),
@@ -235,8 +250,13 @@ reason (see [Forking](#forking)).
 
 ## Running the analysis
 
-`bitig.case_run.perform_run(case)` drives the GUI's Run step. It checks these guards in
-order and returns `blocked` with a message at the first one that fails:
+```bash
+bitig case run <id> --cases-dir cases
+```
+
+`bitig case run`, the GUI's Run step and `bitig.case_run.perform_run(case)` in Python
+all do the same work. They check these guards in order and return `blocked` with a
+message at the first one that fails:
 
 1. the case is signed;
 2. a custody mismatch exists;
@@ -246,7 +266,8 @@ order and returns `blocked` with a message at the first one that fails:
     - at least one questioned document is registered;
     - every known document has an author label;
     - the *Candidate author* parameter is set and matches a known author;
-    - there is at least one other author, who serves as the impostors.
+    - there is at least one other author, who serves as the impostors;
+    - an explicit `target_ids` list names exactly the registered questioned documents.
 
 After the guards pass, bitig regenerates `study.yaml`, builds the corpus from registered
 evidence and records the case-state hash the run is computed on. The run writes to
@@ -259,14 +280,29 @@ evidence and records the case-state hash the run is computed on. The run writes 
 | `failed` | No method succeeded; the run directory stays on disk but is **not** recorded. |
 | `blocked` | A guard refused the run; nothing was executed. |
 
-!!! note "Set verification parameters after registering all questioned documents"
-    When `target_ids` is empty, the `verify` method targets every registered questioned
-    document. But `Case.set_param` (and the GUI drawer) saves the whole resolved method
-    into `overrides`, including the `target_ids` in effect at that moment. A questioned
-    document registered later is then **not** a target, and it has no author label, so
-    General Impostors fails with "some training documents lack metadata column 'author'".
-    Register all questioned documents first, or set `methods[verify].target_ids`
-    explicitly afterwards.
+`bitig case run` prints `✓` or `✗` (with the error) for each method, then the run
+directory and the status. Its exit code is **0** when every method succeeded, **1** for
+`partial` or `failed`, and **2** for `blocked`.
+
+!!! note "Questioned documents and `target_ids`"
+    When `target_ids` is empty or unset, the `verify` method targets every registered
+    questioned document, including one registered after you set the parameters.
+    `Case.set_param` and the GUI drawer do not store the auto-filled target list.
+
+    An explicit `target_ids` list in `overrides` must name exactly the registered
+    questioned documents. Such a list is there because you set it, or because an earlier
+    bitig version froze it when you called `set_param`. If it leaves a questioned document out, or
+    names an id that is not a registered questioned document, the run is blocked before
+    anything executes:
+
+    ```text
+    blocked — The verify method's target list does not match the questioned evidence:
+    questioned document(s) ['alice_2'] are not targeted. Clear or update 'target_ids'
+    (an empty list targets every questioned document).
+    ```
+
+    Fix it with `case.set_param("methods[verify].target_ids", [])` to target every
+    questioned document, or pass the full list.
 
 ## Reports
 
@@ -333,7 +369,7 @@ runs, `draft.html` and an exported `final.pdf` are not covered by the seal.
 | What it adds | nothing: hashes only | an HMAC-SHA256 `signature` block (`scheme: 2`) over the whole `signed.json` payload, signer included, plus a key fingerprint |
 | Key | none | a shared secret from `BITIG_SIGNATURE_KEY` (signing fails without it) |
 | Tamper-evident? | **No.** Anyone with write access can edit the case and recompute every hash. | Yes, against anyone who does not hold the key. It is a shared-secret scheme, not a public-key or hardware-backed signature. |
-| `verify` verdict when intact | `hashes consistent — but … is UNSIGNED (Null plugin)` (exit 0) | `seal verified — … is intact` (exit 0), only when the key is supplied |
+| `verify` verdict when intact | `UNSIGNED — hashes consistent, but … has a Null seal` (exit 3) | `seal verified — … is intact` (exit 0) with the key; `CANNOT VERIFY` (exit 4) without it |
 
 ```bash
 export BITIG_SIGNATURE_KEY="change-me"      # keep the real key out of shell history
@@ -349,7 +385,8 @@ seal.
 bitig case verify <id> [--key KEY] --cases-dir cases
 ```
 
-`verify` recomputes every sealed quantity from disk. Each check prints `✓` or `✗`:
+`verify` recomputes every sealed quantity from disk. Each check prints `✓` (passed), `✗`
+(failed) or `?` (could not be checked):
 
 | Check | Fails when |
 |---|---|
@@ -359,22 +396,48 @@ bitig case verify <id> [--key KEY] --cases-dir cases
 | `unregistered_files` | a file under `evidence/` was never registered (it is **not** covered by the seal) |
 | `evidence_custody` | an evidence file no longer matches its registered hash, or is missing |
 | `signer` | `signed_by` / `signed_at` in `case.json` differ from `signed.json` |
-| `signature` | plugin ids in `case.json` and `signed.json` disagree; an HMAC signature is missing, invalid or cannot be checked without a key; or a key was supplied but the seal has no signature |
+| `signature` | plugin ids in `case.json` and `signed.json` disagree; an HMAC signature is missing or invalid; or `--key` was passed but the seal has no signature. An HMAC signature checked without a key is marked `?`, not `✗`. |
 
-Exit codes: **0** when every check passes, **1** when the case is not signed, **2** when
-any check fails. A **Null** seal passes with exit 0 and the "UNSIGNED … not
-tamper-evident" warning shown in the walkthrough. Scripts that need tamper evidence must
-not treat exit 0 alone as proof.
+Exit codes:
 
-For an HMAC seal, pass `--key` or set `BITIG_SIGNATURE_KEY`. Without a key, verification
-fails (`HMAC signature present but no key provided`). With the wrong key it fails with
-`HMAC signature INVALID`. Whenever a key is supplied, a valid HMAC is **required**, so a
-stripped or downgraded signature cannot pass. This also means that a Null-sealed case
-fails verification while `BITIG_SIGNATURE_KEY` is set in your environment.
+| Exit | Verdict | Meaning |
+|---|---|---|
+| **0** | `seal verified` | every check passed and the HMAC signature is valid |
+| **1** | `… is not signed` | the case is not signed; nothing to verify |
+| **2** | `SEAL BROKEN` | at least one check failed (tampering or mismatch) |
+| **3** | `UNSIGNED` | the hashes are intact, but the seal is a Null seal and not tamper-evident |
+| **4** | `CANNOT VERIFY` | the hashes are intact, but the HMAC signature cannot be checked without a key |
+
+Only exit 0 means a tamper-evident seal was checked. For an HMAC seal, pass `--key` or set
+`BITIG_SIGNATURE_KEY`. Without a key, the signature check is marked `?`:
+
+```text
+  ✓ signer: signed by 'J. Doe'
+  ? signature: CANNOT VERIFY: HMAC signature present but no key provided (pass
+signature_key= or set BITIG_SIGNATURE_KEY)
+CANNOT VERIFY — hashes consistent, but letter-2026-b carries an HMAC signature and no key
+was given (--key or $BITIG_SIGNATURE_KEY).
+```
+
+With the right key the check reads `✓ signature: HMAC signature valid` and the verdict is
+`seal verified — letter-2026-b is intact`. With the wrong key it fails with
+`✗ signature: HMAC signature INVALID (wrong key or tampered payload)` and exit 2.
+
+An explicit `--key` always **requires** a valid HMAC, so a stripped or downgraded
+signature cannot pass: a Null seal verified with `--key` fails with
+`a signature key was supplied but the seal carries no signature` (exit 2). A key that is
+only set in `BITIG_SIGNATURE_KEY` checks HMAC seals but leaves a Null seal at exit 3. The
+signature line then adds `$BITIG_SIGNATURE_KEY is set: if this case was signed with HMAC,
+its signature has been removed`. Pass `--key` when you know the case was HMAC-signed.
+
+In Python, `Case.verify_seal(signature_key=…)` returns a `SealVerification`. Its `status`
+is one of `not_signed`, `broken`, `unverifiable`, `unsigned` or `verified`, matching exit
+codes 1, 2, 4, 3 and 0.
 
 `bitig case status` on a signed case also warns when the seal no longer reproduces. That
 warning skips the signature check. The GUI Report step has a *Verify seal* dialog, which
-accepts an optional key for HMAC seals.
+accepts an optional key for HMAC seals and shows *CANNOT VERIFY* for an HMAC seal checked
+without one.
 
 ## Forking
 

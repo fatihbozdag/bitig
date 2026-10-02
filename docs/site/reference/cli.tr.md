@@ -176,12 +176,13 @@ Forensic Lab vakalarını yönetir: delil zinciri kayıtlı deliller, bir tarif 
 | `bitig case open <id>` | Yol ve kısa bir özet |
 | `bitig case status <id> [--no-verify]` | Delil zinciri denetimiyle tam durum; delil uyuşmazlığında çıkış kodu 2 |
 | `bitig case reacknowledge <id> <evidence-path> --reason R [--by NAME]` | Değişmiş bir delil dosyasının yeni karma değerini kabul eder (kayda geçer); imzalamadan önce vaka yeniden çalıştırılmalıdır |
+| `bitig case run <id>` | Vakanın çözümlemesini kayıtlı deliller üzerinde, arayüzün Run adımıyla aynı ön koşullarla çalıştırır; her yöntem için ✓/✗ ve çalıştırma dizinini yazdırır. Çıkış 0 = tüm yöntemler başarılı, 1 = kısmi ya da başarısız, 2 = engellendi |
 | `bitig case fork <id> <new-id> [--title] [--examiner] [--acknowledge-mismatch REASON]` | İmzasız bir alt vaka olarak kopyalar |
 | `bitig case sign <id> [--signed-by NAME] [--signature-plugin hmac\|null]` | Vakayı imzalar ve kilitler; başarılı bir çalıştırma gerektirir |
-| `bitig case verify <id> [--key KEY]` | Mührü yeniden hesaplar; çıkış 0 = sağlam, 1 = imzalı değil, 2 = bozuk. HMAC anahtarı verilmezse `$BITIG_SIGNATURE_KEY` kullanılır |
+| `bitig case verify <id> [--key KEY]` | Mührü yeniden hesaplar; çıkış 0 = doğrulandı (geçerli HMAC), 1 = imzalı değil, 2 = bozuk, 3 = karma değerleri sağlam ama Null mührü (UNSIGNED), 4 = karma değerleri sağlam ama HMAC anahtarsız denetlenemiyor (CANNOT VERIFY). HMAC anahtarı verilmezse `$BITIG_SIGNATURE_KEY` kullanılır |
 
-CLI'da bir vakanın çözümlemesini çalıştıran bir komut yoktur; çalıştırmalar arayüzden
-(`bitig gui`) başlatılır.
+Vaka parametreleri için bir CLI komutu yoktur; onları arayüzün Method adımında ya da
+Python'da `Case.set_param` ile ayarlayın.
 
 ## Yardım alma
 

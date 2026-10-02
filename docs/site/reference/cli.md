@@ -172,12 +172,13 @@ report. Every subcommand takes `--cases-dir` (default `~/.bitig/cases/`). See th
 | `bitig case open <id>` | Path and a short summary |
 | `bitig case status <id> [--no-verify]` | Full status with a chain-of-custody check; exit code 2 on a custody mismatch |
 | `bitig case reacknowledge <id> <evidence-path> --reason R [--by NAME]` | Accept a changed evidence file's new hash (logged); the case must be re-run before signing |
+| `bitig case run <id>` | Run the case's analysis on its registered evidence, with the same guards as the GUI Run step; prints ✓/✗ per method and the run directory. Exit 0 = all methods succeeded, 1 = partial or failed, 2 = blocked |
 | `bitig case fork <id> <new-id> [--title] [--examiner] [--acknowledge-mismatch REASON]` | Clone into an unsigned descendant |
 | `bitig case sign <id> [--signed-by NAME] [--signature-plugin hmac\|null]` | Sign and lock the case; needs a successful run |
-| `bitig case verify <id> [--key KEY]` | Recompute the seal; exit 0 = intact, 1 = not signed, 2 = broken. The HMAC key falls back to `$BITIG_SIGNATURE_KEY` |
+| `bitig case verify <id> [--key KEY]` | Recompute the seal; exit 0 = verified (valid HMAC), 1 = not signed, 2 = broken, 3 = hashes intact but Null seal (UNSIGNED), 4 = hashes intact but HMAC not checkable without a key (CANNOT VERIFY). The HMAC key falls back to `$BITIG_SIGNATURE_KEY` |
 
-The CLI has no command to run a case's analysis; runs are started from the GUI
-(`bitig gui`).
+Case parameters have no CLI command; set them in the GUI's Method step or with
+`Case.set_param` in Python.
 
 ## Getting help
 

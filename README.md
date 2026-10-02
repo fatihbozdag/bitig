@@ -166,18 +166,15 @@ state, the report and the run outputs.
 ```bash
 bitig case new …            # create a case directory
 bitig case add-evidence …   # register questioned / known texts (hashed on entry)
-bitig gui                   # run the case recipe (Case → Run); refuses if custody fails
+bitig case run …            # run the case recipe; refuses if custody fails
 bitig case sign …           # render the report and seal the case
 bitig case verify …         # re-check custody, report, run outputs and seal
 ```
 
-Running the analysis for a case is currently only available in the GUI; the other steps
-work from both the CLI and the GUI.
-
 The default seal (Null plugin) is an integrity record, not tamper-evidence: anyone with
 write access to the case can recompute it, so `bitig case verify` reports such cases as
-UNSIGNED. An HMAC seal needs a secret key. General Impostors scores are not likelihood
-ratios, and the report says so. See the
+UNSIGNED (exit 3) rather than verified (exit 0). An HMAC seal needs a secret key. General
+Impostors scores are not likelihood ratios, and the report says so. See the
 [Forensic Lab page](https://fatihbozdag.github.io/bitig/forensic/case-workflow/) for the full
 workflow (evidence re-acknowledgement, forking, verification output).
 
