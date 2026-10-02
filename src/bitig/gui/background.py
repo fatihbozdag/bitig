@@ -23,7 +23,8 @@ class BackgroundTaskAbandonedError(RuntimeError):
 
 
 async def io_bound(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-    result = await run.io_bound(func, *args, **kwargs)
+    # Annotated so mypy keeps the type when nicegui is not installed (run is Any).
+    result: T | None = await run.io_bound(func, *args, **kwargs)
     if result is None:
         raise BackgroundTaskAbandonedError(
             f"{getattr(func, '__name__', 'task')} returned no result (the app is shutting down)"
