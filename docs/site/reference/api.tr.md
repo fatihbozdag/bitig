@@ -59,11 +59,50 @@ Kaynaktan mkdocstrings aracılığıyla otomatik oluşturulmuştur. Aşağıda l
     options:
       show_root_full_path: false
 
+## Forensic
+
+`GeneralImpostors`, `Unmasking` ve `CalibratedScorer`, `bitig` üst düzeyinde yeniden dışa
+aktarılır; `compute_pan_report` ve `PANReport` ise `bitig.forensic` modülünden içe aktarılır.
+
+::: bitig.forensic.verify.GeneralImpostors
+    options:
+      show_root_full_path: false
+
+::: bitig.forensic.unmasking.Unmasking
+    options:
+      show_root_full_path: false
+
+::: bitig.forensic.lr.CalibratedScorer
+    options:
+      show_root_full_path: false
+
+::: bitig.forensic.metrics.compute_pan_report
+
+::: bitig.forensic.metrics.PANReport
+    options:
+      show_root_full_path: false
+
+## Cases
+
+Adli Laboratuvar vaka API'si `bitig` üst düzeyinden değil, `bitig.cases` modülünden içe
+aktarılır.
+
+::: bitig.cases.Case
+    options:
+      show_root_full_path: false
+
+::: bitig.cases.SealVerification
+    options:
+      show_root_full_path: false
+
 ## Runner
 
 ::: bitig.runner.run_study
 
 ## Reporting
+
+`build_report`, `bitig` üst düzeyinde yeniden dışa aktarılır; `build_forensic_report` ise
+`bitig.report` modülünden içe aktarılır.
 
 ::: bitig.report.render.build_report
 

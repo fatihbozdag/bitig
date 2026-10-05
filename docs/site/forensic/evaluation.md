@@ -25,9 +25,9 @@ report.to_dict()
 
 | Metric | Measures | Use for | Range | Reference |
 |---|---|---|---|---|
-| `auc` | Ranking quality | **Choosing between systems.** Higher AUC → the system ranks same-author pairs above different-author pairs more reliably. | 0.5 (random) – 1.0 (perfect) | — |
+| `auc` | Ranking quality | **Choosing between systems.** Higher AUC → the system ranks same-author pairs above different-author pairs more reliably. | 0 (perfectly inverted) – 1 (perfect); 0.5 is random | — |
 | `c_at_1` | Accuracy with abstention credit | **Operational decisions** where "don't know" is safer than a wrong answer. | 0 – 1 | Peñas & Rodrigo 2011 |
-| `f05u` | Precision-weighted F with non-answer penalty | **PAN-style evaluation.** Penalises over-confident wrong answers. | 0 – 1 | Bevendorff et al. PAN 2022 |
+| `f05u` | Precision-weighted F with non-answer penalty | **PAN-style evaluation.** Penalises over-confident wrong answers. | 0 – 1 | Bevendorff et al. 2019/2020 |
 | `brier` | Posterior calibration | **Probabilistic output quality.** Lower = better-calibrated probabilities. | 0 (perfect) – 1 (worst) | Brier 1950 |
 | `ece` | Expected calibration error | **Is `predict_proba` honest?** Bins predictions by confidence; compares claimed vs. actual accuracy. | 0 (perfect) – 1 | — |
 | `cllr` | Log-likelihood-ratio cost | **Forensic LR quality.** The strict proper scoring rule for evidential output. | 0 (perfect) – ∞ | Brümmer & du Preez 2006 |
@@ -105,8 +105,9 @@ metric in one call — AUC, c@1, F0.5u, Brier, ECE, (optionally) C_llr.
 threshold-independent.
 *Don't use when:* you need an operational decision — AUC says nothing about where to
 set the threshold.
-*Expect:* a single number in `[0.5, 1]`. Does not depend on predicted probabilities
-being calibrated.
+*Expect:* a single number in `[0, 1]`, where 0.5 is a random ranking and values below
+0.5 indicate an inverted ranking. Does not depend on predicted probabilities being
+calibrated.
 
 ::: bitig.forensic.metrics.auc
 
@@ -164,7 +165,8 @@ outputs) — classic squared-error between predicted probability and ground trut
 *Use when:* you want a visual calibration check — plot target-trial vs. non-target
 log-LRs as cumulative distributions.
 *Don't use when:* you need a single-number summary (use `C_llr`).
-*Expect:* two arrays of cumulative LRs (target and non-target) ready for a matplotlib
-plot.
+*Expect:* a dict with `thresholds` (sorted unique log-LRs) and `target_cdf` /
+`nontarget_cdf`, the proportion of each class at or above each threshold, ready for a
+matplotlib plot.
 
 ::: bitig.forensic.metrics.tippett

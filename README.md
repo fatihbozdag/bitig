@@ -48,9 +48,10 @@ Optional extras:
 | `bitig[bayesian]` | PyMC + arviz (Wallace–Mosteller, hierarchical group comparison) |
 | `bitig[embeddings]` | sentence-transformers and contextual BERT embeddings |
 | `bitig[viz]` | plotly, kaleido, ete3 |
+| `bitig[interactive]` | plotly only, for interactive figures |
 | `bitig[reports]` | WeasyPrint for PDF export |
 | `bitig[gui]` | NiceGUI + pywebview for `bitig gui` |
-| `bitig[turkish]` | spacy-stanza + Stanza for Turkish parsing |
+| `bitig[turkish]` | spacy-stanza + Stanza for Turkish parsing (`bitig[multilang]` is an alias) |
 | `bitig[docs]` | MkDocs Material, to build the documentation site |
 
 English readability needs the CMU pronouncing dictionary, which bitig never downloads on its
@@ -101,7 +102,7 @@ Two worked examples ship with the repository:
 | **Corpus** | `.txt` + TSV metadata, filtering and grouping, a corpus hash that binds each text to its id and metadata |
 | **Features** | most frequent words, character / word / POS n-grams, dependency bigrams, function words, punctuation, sentence length, readability (6 English indices plus native Turkish, German, Spanish and French formulas), 8 lexical-diversity indices, sentence and contextual embeddings |
 | **Methods** | Burrows, Eder, Eder Simple, Argamon, Cosine and Quadratic Delta; Zeta (classic, Eder); PCA, MDS, t-SNE, UMAP; Ward, k-means, HDBSCAN; bootstrap consensus trees; sklearn classifiers with stylometry-aware cross-validation (stratified, leave-one-author-out, leave-one-text-out); Bayesian Wallace–Mosteller and hierarchical group comparison |
-| **Forensic** | General Impostors and Unmasking verification; Sapkota character n-gram categories and Stamatatos text distortion for topic robustness; Platt / isotonic calibration to log-LRs; C_llr, AUC, c@1, F0.5u (PAN definitions), ECE, Brier, Tippett data; LR-framed HTML report with the ENFSI verbal scale |
+| **Forensic** | General Impostors and Unmasking verification; Sapkota character n-gram categories and Stamatatos text distortion for topic robustness; Platt / isotonic calibration to log-LRs; C_llr, AUC, c@1, F0.5u (PAN definitions), ECE, Brier, Tippett data; LR-framed HTML report with the two-sided verbal scale of Nordgaard et al. (2012), as adopted by ENFSI (2015) |
 | **Languages** | English, Turkish, German, Spanish, French: per-language function words, readability and embedding defaults; Turkish parsing through Stanza (BOUN treebank) |
 | **Output** | `result.json` + Parquet tables + figures per method; HTML / Markdown reports; PDF export of case reports (`bitig[reports]`) |
 
@@ -213,4 +214,6 @@ see [`CITATION.cff`](CITATION.cff).
 - Vergeer, P., van Es, A., de Jongh, A., Alberink, I., & Stoel, R. (2016). Numerical
   likelihood ratios outputted by LR systems are often based on extrapolation: when to stop
   extrapolating? *Science & Justice*, 56(6), 482–491.
+- Nordgaard, A., Ansell, R., Drotz, W., & Jaeger, L. (2012). Scale of conclusions for the
+  value of evidence. *Law, Probability and Risk*, 11(1), 1–24.
 - ENFSI (2015). *Guideline for evaluative reporting in forensic science*.

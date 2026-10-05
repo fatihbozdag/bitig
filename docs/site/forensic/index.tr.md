@@ -59,7 +59,7 @@ $$
 
 — bu, aynı-yazar hipotezi altında kanıtın olasılığının farklı-yazar altındaki olasılığa oranıdır; bunun için **kalibre edilmiş** bir temel puanlayıcı gereklidir. Ham sınıflandırıcı posteriorları nadiren kalibredir ve adli semantiği yanlış temsil eden "suçluluk olasılığı" biçiminde kolayca kötüye kullanılabilir.
 
-bitig'nın `CalibratedScorer` + `log_lr_from_probs` işlem hattı, herhangi bir ham puanı adli raporda savunulabilir bir log-LR değerine dönüştürür. Rapor şablonundaki yerleşik ENFSI / Nordgaard sözel ölçeği (verbal scale), şeffaf bir sözel okuma sunar.
+bitig'nın `CalibratedScorer` sınıfı, ham bir doğrulama puanını aynı-yazar ve farklı-yazar denemelerinden oluşan etiketli bir kümeye karşı kalibre ederek log-LR değerine dönüştürür; General Impostors kazanma oranı gibi ham bir puan kendi başına bir olabilirlik oranı değildir. Rapor şablonu her kalibre edilmiş LR'yi iki yönlü Nordgaard et al. (2012) / ENFSI (2015) sözel ölçeğinde (verbal scale) okur; bu ölçek hem desteğin gücünü hem de desteklenen önermeyi belirtir.
 
 ## Delil zinciri
 

@@ -1,10 +1,10 @@
 site_name: bitig
-site_description: Computational stylometry — a Python replacement for R's Stylo, with a forensic toolkit on top.
+site_description: Computational stylometry in Python, covering the core methods of R's Stylo, with a forensic toolkit and case workflow.
 site_author: Fatih Bozdağ
 site_url: https://fatihbozdag.github.io/bitig/
 repo_url: https://github.com/fatihbozdag/bitig
 repo_name: fatihbozdag/bitig
-edit_uri: edit/main/docs/
+edit_uri: edit/main/docs/site/
 copyright: BSD-3-Clause
 
 docs_dir: docs/site

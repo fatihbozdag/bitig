@@ -9,11 +9,15 @@ hide:
   <img src="assets/bitig-banner.svg" alt="bitig — hesaplamalı stilometri" style="max-width: 100%;">
 </p>
 
-**Yazar tespiti, yazar grubu karşılaştırması ve adli dilbilim analizi için hesaplamalı stilometri.** R'ın `Stylo` paketinin modern bir Python karşılığı; güncel bir NLP işlem hattı (spaCy, transformer gömmeleri), Bayes katmanı (PyMC) ve kapsamlı bir adli dilbilim kanıt araç takımı içerir.
+`bitig`, **yazar tespiti**, **yazar grupları arasında üslup karşılaştırması** ve **adli
+yazarlık analizi** için geliştirilmiş bir Python paketi ve komut satırı aracıdır. R'ın
+`Stylo` paketinin temel yöntemlerini (Delta, Zeta, PCA/MDS, kümeleme, bootstrap konsensüs
+ağaçları, sınıflandırma) kapsar; bunlara bir spaCy işlem hattı, transformer gömmeleri, bir
+Bayes katmanı (PyMC), olabilirlik oranı kalibrasyonlu yazar doğrulama ve delil zinciri
+özetleri ile mühürlü raporlar içeren bir vaka iş akışı ekler.
 
-> Adını **bitig**ten alır — Eski Türkçede *yazı* / *yazıt* anlamına gelir; 8. yüzyıl
-> Orhon yazıtlarına kazınan türden. Bir bitig, yazarın elini taşıyan bir kayıttı; bu
-> paket de o eli arar.
+Ad, Eski Türkçede *yazı* ya da *yazıt* anlamına gelen ve 8. yüzyıl Orhon yazıtlarına
+kazınan türden metni karşılayan sözcükten gelir.
 
 ## Mimari
 
@@ -21,8 +25,9 @@ hide:
   <img src="assets/bitig-architecture.svg" alt="derlem → öznitelikler → yöntemler → adli → çıktı" style="max-width: 100%;">
 </p>
 
-Her katman `sklearn` uyumludur; her `Result` tam köken bilgisi taşır (derlem özeti,
-öznitelik özeti, tohum, spaCy sürümü, zaman damgası, çözümlenmiş yapılandırma); böylece
+Öznitelik çıkarıcılar, Delta sınıflandırıcıları ve Bayes yazar tespit modeli birer
+scikit-learn kestiricisidir. Her `Result` köken bilgisini taşır (derlem özeti, öznitelik
+özeti, tohum, kütüphane sürümleri, zaman damgası, çözümlenmiş yapılandırma); böylece
 `study.yaml` olarak yazılan bir çalışma, aynı tohum ve kütüphane sürümleriyle aynı
 değerlere yeniden üretilebilir (bkz. [Sonuçlar ve köken bilgisi](concepts/results.md)).
 
@@ -50,7 +55,7 @@ değerlere yeniden üretilebilir (bkz. [Sonuçlar ve köken bilgisi](concepts/re
 
     ---
 
-    General Impostors doğrulama, Unmasking, LR çıktısı ve kalibrasyon, PAN değerlendirme.
+    General Impostors ve Unmasking ile doğrulama, olabilirlik oranı kalibrasyonu, PAN değerlendirmesi ve Adli Laboratuvar vaka iş akışı.
 
     [:octicons-arrow-right-24: Adli dilbilim araç takımı](forensic/index.md)
 
@@ -58,7 +63,7 @@ değerlere yeniden üretilebilir (bkz. [Sonuçlar ve köken bilgisi](concepts/re
 
     ---
 
-    Mosteller & Wallace'ın Federalist Papers çalışmasını yeniden üretin; uçtan uca PAN tarzı adli doğrulama yapın.
+    Federalist Papers üzerinde Mosteller & Wallace'ı izleyin, uçtan uca PAN tarzı doğrulama yapın ve Türkçe düzyazıyı çözümleyin.
 
     [:octicons-arrow-right-24: Öğreticiler](tutorials/index.md)
 
@@ -66,40 +71,24 @@ değerlere yeniden üretilebilir (bkz. [Sonuçlar ve köken bilgisi](concepts/re
 
 ## Neler var?
 
-| Katman | Öne çıkanlar |
+| Katman | İçerik |
 |---|---|
-| **Derlem** | `.txt` + TSV meta veri alımı, filtre / grupla, içerik tabanlı özetleme |
-| **Diller** | EN / TR / DE / ES / FR tam destek — dile özgü işlev sözcüğü listeleri, okunabilirlik formülleri, bağlamsal/cümle gömme varsayılanları. Türkçe için Stanford Stanza (BOUN) `spacy-stanza` aracılığıyla |
-| **Öznitelikler** | MFW, karakter / sözcük / POS n-gram, bağımlılık bigramları, işlev sözcükleri, noktalama, okunabilirlik (EN + TR/DE/ES/FR yerel formüller), cümle uzunluğu, sözcüksel çeşitlilik, cümle + bağlamsal gömmeler |
-| **Yöntemler** | Burrows / Eder / Argamon / Cosine / Quadratic Delta; Zeta; PCA / UMAP / t-SNE / MDS; Ward / k-means / HDBSCAN; bootstrap konsensüs; sklearn sınıflandırma + CV; Wallace–Mosteller Bayes |
-| **Adli dilbilim** | General Impostors, Unmasking, Stamatatos çarpıtma, Sapkota n-gram kategorileri, Platt / izotonik kalibrasyon, log-LR + C_llr + AUC + c@1 + F0.5u + ECE + Brier + Tippett, PANReport, delil zinciri köken bilgisi, LR tabanlı HTML raporu |
+| **Derlem** | `.txt` + TSV meta veri, filtreleme ve gruplama, her metni kimliğine ve meta verisine bağlayan bir derlem özeti |
+| **Öznitelikler** | en sık sözcükler, karakter / sözcük / POS n-gramları, bağımlılık bigramları, işlev sözcükleri, noktalama, cümle uzunluğu, okunabilirlik (6 İngilizce gösterge ile Türkçe, Almanca, İspanyolca ve Fransızca için yerel formüller), 8 sözcüksel çeşitlilik göstergesi, cümle ve bağlamsal gömmeler |
+| **Yöntemler** | Burrows, Eder, Eder Simple, Argamon, Cosine ve Quadratic Delta; Zeta (klasik, Eder); PCA, MDS, t-SNE, UMAP; Ward, k-means, HDBSCAN; bootstrap konsensüs ağaçları; stilometriye uygun çapraz doğrulamalı sklearn sınıflandırıcıları (tabakalı, bir yazarı dışarıda bırak, bir metni dışarıda bırak); Bayesçi Wallace–Mosteller ve hiyerarşik grup karşılaştırması |
+| **Adli dilbilim** | General Impostors ve Unmasking ile doğrulama; konu sağlamlığı için Sapkota karakter n-gram kategorileri ve Stamatatos metin çarpıtması; Platt / izotonik kalibrasyonla log-LR; C_llr, AUC, c@1, F0.5u (PAN tanımları), ECE, Brier, Tippett verileri; Nordgaard vd. (2012) tarafından önerilen ve ENFSI (2015) tarafından benimsenen iki yönlü sözel ölçekle LR çerçeveli HTML raporu; delil zinciri özetleri ve mühürlü raporlar içeren vaka iş akışı ([Adli Laboratuvar](forensic/case-workflow.md)) |
+| **Diller** | İngilizce, Türkçe, Almanca, İspanyolca, Fransızca: dile özgü işlev sözcükleri, okunabilirlik ve gömme varsayılanları; Türkçe çözümleme Stanza (BOUN treebank'ı) ile |
+| **Çıktı** | her yöntem için `result.json` + Parquet tabloları + şekiller; HTML / Markdown raporları; vaka raporlarının PDF dışa aktarımı (`bitig[reports]`) |
+
+Dokümantasyon İngilizce ve Türkçedir (`/tr/`).
 
 ## Durum
 
-**5. aşama tamamlandı** — görselleştirme, Jinja2 raporları, bildirimsel çalıştırıcı (`bitig run`) ve
-Rich tabanlı etkileşimli `bitig shell`.
-
-**Adli dilbilim aşaması tamamlandı** — altı ek (General Impostors, LR + kalibrasyon + değerlendirme
-ölçütleri, Sapkota kategorileri + Stamatatos çarpıtma, Unmasking, delil zinciri + adli rapor şablonu,
-PAN çerçevesi).
-
-**Çok dilli aşama tamamlandı** — `bitig.languages` kayıt defterinin arkasında İngilizce, Türkçe,
-Almanca, İspanyolca ve Fransızca için tam destek. Türkçe, Stanford Stanza (BOUN
-treebank'ı) aracılığıyla `spacy-stanza` üzerinden çözümlenerek her öznitelik çıkarıcının değişmeden
-çalışabileceği yerel spaCy `Doc` nesneleri döndürür. Dile özgü yerel okunabilirlik formülleri
-(Türkçe için Ateşman + Bezirci–Yılmaz; Almanca için Flesch-Amstad + Wiener Sachtextformel;
-İspanyolca için Fernández-Huerta + Szigriszt-Pazos; Fransızca için Kandel–Moles + LIX).
-İşlev sözcüğü listeleri, UD kapalı-sınıf belirteçlerinden yeniden üretilebilir biçimde oluşturulur.
-
-**Dokümantasyon sitesi yayında** — Kavramlar, Adli dilbilim araç takımı, Federalist + PAN-CLEF +
-Türkçe öğreticileri ve CLI/API referansını içeren bu MkDocs Material sitesi.
-
-**Dokümantasyon sitesi çok dilli** — İngilizce (varsayılan) ve Türkçe (`/tr/`) `mkdocs-static-i18n`
-ile yayında; DE/ES/FR altyapısı hazır, çeviri içeriği sonraya bırakıldı.
-
-**Adli Laboratuvar** — vaka iş akışı (delil zinciri, reçete çalıştırmaları, mühürlü raporlar) [Adli Laboratuvar (vakalar)](forensic/case-workflow.md) sayfasında anlatılıyor.
-
-**PyPI'da yayında** — `pip install bitig`.
+PyPI'daki son sürüm **0.3.1**'dir (`pip install bitig`). `main` dalı henüz yayımlanmamış
+değişiklikler içerir; bunların bir kısmı sonuçları ya da davranışı değiştirir (vaka
+mühürleri, General Impostors varsayılanları, kalibrasyon, PAN ölçütleri, öznitelik
+ölçekleme). [`CHANGELOG.md`](https://github.com/fatihbozdag/bitig/blob/main/CHANGELOG.md)
+bunları **[results]** ve **[breaking]** etiketleriyle listeler.
 
 ## Lisans ve atıf
 

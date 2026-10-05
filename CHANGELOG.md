@@ -103,5 +103,10 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   title, venue/date and the author byline, which named Madison on every disputed paper). Only
   the essay body is analysed. With the leak gone, Burrows Delta at MFW 500 assigns No. 50 to the
   joint Hamilton–Madison class; every other reported attribution is unchanged (tutorial updated).
+- Docs home page (EN/TR) rewritten on the README's model; concepts, forensic (calibration,
+  evaluation, reporting), tutorials index, API reference and getting-started pages checked
+  against the code (nonexistent `CalibratedScorer` methods, AUC range, Tippett output, English
+  readability indices, run-directory figures, provenance fields, two-sided verbal scale).
+  `mkdocs.yml` "edit this page" links now point at `docs/site/`.
 - [results] The Turkish example study no longer includes Burrows Delta, which failed on its
   single-author corpus.

@@ -8,7 +8,7 @@ formulas, and tested end-to-end pipelines.
 
 | Code | Name    | Backend         | Default model            | Readability                             |
 |------|---------|-----------------|--------------------------|------------------------------------------|
-| en   | English | native spaCy    | `en_core_web_trf`        | Flesch, Flesch-Kincaid, Gunning Fog, SMOG, Dale-Chall, Coleman-Liau, ARI |
+| en   | English | native spaCy    | `en_core_web_trf`        | Flesch, Flesch-Kincaid, Gunning Fog, Coleman-Liau, ARI, SMOG |
 | tr   | Turkish | `spacy-stanza`  | Stanza `tr` (BOUN)       | Ateşman, Bezirci-Yılmaz                  |
 | de   | German  | native spaCy    | `de_dep_news_trf`        | Flesch-Amstad, Wiener Sachtextformel     |
 | es   | Spanish | native spaCy    | `es_dep_news_trf`        | Fernández-Huerta, Szigriszt-Pazos        |
@@ -94,8 +94,14 @@ Each non-English language ships at least two native readability indices, impleme
 - **Spanish (es):** Fernández-Huerta (1959), Szigriszt-Pazos (1993)
 - **French (fr):** Kandel-Moles (1958), LIX (Björnsson, 1968)
 
-When a study declares `type: readability`, the extractor picks the language's native indices
-automatically.
+German and French syllables are counted as vowel nuclei (`bitig.languages._syllables`), not
+as hyphenation points, which undercount words such as *Abend* or *école*. English indices
+come from `textstat` and need NLTK's cmudict, which bitig never downloads on its own
+(`python -m nltk.downloader cmudict`).
+
+When a study declares `type: readability`, the extractor uses the language's default indices
+(`LanguageSpec.readability_indices`) unless its `indices` argument names others. For English
+the defaults are Flesch, Flesch-Kincaid and Gunning Fog.
 
 ## Adding a sixth language
 

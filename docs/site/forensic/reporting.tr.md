@@ -1,14 +1,14 @@
 # Raporlama
 
-*Şu durumda kullanın:* kalibre edilmiş bir doğrulama `Result` nesneniz varsa ve mahkemeye hazır bir rapora ihtiyacınız varsa — delil zinciri meta verisi, ENFSI sözel ölçeğine dayalı olabilirlik oranı (LR) ifadesi ve denetlenebilir bir HTML artefaktı.
+*Şu durumda kullanın:* kalibre edilmiş bir doğrulama `Result` nesneniz varsa ve adli biçimde bir rapora ihtiyacınız varsa: delil zinciri meta verisi, iki yönlü Nordgaard et al. (2012) / ENFSI (2015) sözel ölçeğine dayalı olabilirlik oranı (LR) ifadesi ve denetlenebilir bir HTML artefaktı.
 *Şu durumda kullanmayın:* keşifsel bir araştırma şekli istiyorsanız — `concepts/results.md` içindeki standart raporlama yolunu kullanın.
-*Beklenen sonuç:* sabit bölümlere sahip oluşturulmuş bir HTML raporu: dava meta verisi, hipotez çifti, öznitelik hattı, kalibre edilmiş LR ve sözel ölçek ifadesi.
+*Beklenen sonuç:* sabit bölümlere sahip oluşturulmuş bir HTML raporu: test edilen hipotezler, delil zinciri, yöntem başına kalibre edilmiş LR ve sözel ifadesi, şekiller ve parametreler, kanıtsal sorumluluk reddi ve köken bilgisi.
 
 Adli raporlar bir puandan fazlasını gerektirir: test edilen **hipotez çifti (hypothesis pair)**, tanımlanan **bilinen ve sorgulanan** materyal, kaynak dosyalara uzanan **delil zinciri (chain of custody)** izi ve metriklerin analiz koşullarına bağlı olduğunu belirten **kanıtsal sorumluluk reddi**.
 
 ## build_forensic_report
 
-*Şu durumda kullanın:* `Result` nesnesinden mahkemeye hazır HTML'e tek çağrıyla ulaşmak istiyorsanız — delil zinciri alanlarını, kalibre edilmiş LR'leri ve sözel ölçek ifadelerini bir Jinja2 şablonuna aktarır.
+*Şu durumda kullanın:* `Result` nesnesinden HTML'e tek çağrıyla ulaşmak istiyorsanız. Delil zinciri alanlarını, kalibre edilmiş LR'leri ve sözel ölçek ifadelerini bir Jinja2 şablonuna aktarır.
 *Şu durumda kullanmayın:* araştırma makalesi şekli üretiyorsanız — standart `bitig report` CLI'yı veya `concepts/methods.md` içindeki çizim yardımcılarını kullanın.
 *Beklenen sonuç:* oluşturulan HTML dosyasının yolu (yalnızca HTML; Tippett grafiği için PAN-CLEF eğitimindeki gibi `bitig.forensic.tippett` ile kendi çiziminizi kullanın).
 
@@ -26,11 +26,13 @@ build_forensic_report(
 )
 ```
 
+`lr_summaries` içindeki değerler kalibre edilmiş olabilirlik oranları olmalıdır; örneğin vakanın kendi denemesi için `CalibratedScorer.predict_log_lr` çıktısı. Ham bir General Impostors puanı bir kazanma oranı, bir Unmasking puanı ise bir doğruluk düşüşü ölçüsüdür; hiçbiri LR değildir, bu nedenle önce [kalibrasyondan](calibration.md) geçirilmelidir. Sözel ifade, sayısal `lr` (veya `10 ** log_lr`) değerinden `bitig.forensic.verbal_scale.lr_verbal_statement` ile hesaplanır ve hiçbir zaman elle yazılmaz.
+
 Şablon bölümleri:
 
 1. **Test edilen hipotezler** — yalnızca `Provenance` üzerinde `hypothesis_pair`, `questioned_description` veya `known_description` doldurulmuşsa oluşturulur.
 2. **Delil zinciri** — yalnızca `acquisition_notes`, `custody_notes` veya `source_hashes` doldurulmuşsa oluşturulur.
-3. **Yöntem başına LR bloğu** — yalnızca `lr_summaries` sözlüğü geçirilmişse oluşturulur. log₁₀(LR) + LR + altı bantlı ENFSI / Nordgaard sözel ölçeği gösterilir.
+3. **Yöntem başına LR bloğu** — yalnızca `lr_summaries` sözlüğü geçirilmişse oluşturulur. log₁₀(LR), LR, iki yönlü sözel ifade (destek gücü ve desteklenen önerme) ve ölçeğin güç bantları gösterilir.
 4. **Yöntem başına şekiller + parametreler** (kaydedilmiş `Result` dizininden).
 5. **Kanıtsal sorumluluk reddi** — her zaman oluşturulur.
 6. **Yeniden üretilebilirlik köken bilgisi** — her zaman oluşturulur (`Provenance` kaydının tam JSON'u).
@@ -73,7 +75,8 @@ Adli rapor şablonu, Jinja2 otomatik kaçış (autoescape) etkin olarak oluştur
 > Çıktı, uzman adli dilbilim kararını bilgilendirmeye yöneliktir; yerini almaz.
 > Burada bildirilen olabilirlik oranları, belirli bilinen ve sorgulanan materyal,
 > seçilen öznitelik uzayı ve kullanılan kalibrasyon kümesine koşulludur. Kalibrasyon
-> koşulları dışındaki popülasyonlara genelleme yapılması uygun değildir.
+> koşulları dışındaki popülasyonlara genelleme yapılması uygun değildir. Raporlama,
+> Avrupa Adli Bilimler Enstitüleri Ağı'nın (ENFSI 2015) önerdiği çerçeveyi izler.
 
 Özel bir şablon sağlayarak sorumluluk reddini geçersiz kılabilirsiniz; referans uygulama için yerleşik `src/bitig/report/templates/forensic_lr.html.j2` dosyasına bakın.
 
@@ -81,18 +84,20 @@ Adli rapor şablonu, Jinja2 otomatik kaçış (autoescape) etkin olarak oluştur
 
 *Şu durumda kullanın:* bir log-LR değerini adli raporda beklenen sade dil tanımlayıcısına çevirmeniz gerekiyorsa (ENFSI 2015 / Nordgaard ve diğerleri 2012).
 *Şu durumda kullanmayın:* istatistiksel bir kitleye rapor sunuyorsanız — log-LR değerini `C_llr` ile birlikte doğrudan aktarın.
-*Beklenen sonuç:* log-LR büyüklüğüne karşılık gelen tek satırlık sözel ifade.
+*Beklenen sonuç:* log-LR değerinin büyüklüğüne ve desteklenen önermeyi belirleyen işaretine karşılık gelen tek satırlık sözel ifade.
 
 Sözel ölçek, pratisyenlerin İngilizce ankor terimini koruyabilmesi için her iki dilde sunulmaktadır:
 
-| English | Turkish |
-|---|---|
-| weak support | *zayıf destek* |
-| moderate support | *ılımlı destek* |
-| moderately strong support | *ılımlı güçlü destek* |
-| strong support | *güçlü destek* |
-| very strong support | *çok güçlü destek* |
-| extremely strong support | *son derece güçlü destek* |
+| \|log₁₀(LR)\| aralığı | English | Turkish |
+|---|---|---|
+| 0 – 1 | weak support | *zayıf destek* |
+| 1 – 2 | moderate support | *ılımlı destek* |
+| 2 – 3 | moderately strong support | *ılımlı güçlü destek* |
+| 3 – 4 | strong support | *güçlü destek* |
+| 4 – 6 | very strong support | *çok güçlü destek* |
+| ≥ 6 | extremely strong support | *son derece güçlü destek* |
+
+Ölçek iki yönlüdür: LR > 1 aynı yazar önermesini (Hp), LR < 1 farklı yazar önermesini (Hd) destekler; bir LR ile tersi için destek gücü aynıdır. Ölçek tek bir yerde, `bitig.forensic.verbal_scale.LR_LADDER` içinde tanımlanır; raporlar onu buradan okur.
 
 ## Referans
 

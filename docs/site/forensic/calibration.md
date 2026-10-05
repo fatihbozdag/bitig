@@ -5,12 +5,13 @@ that need to be turned into calibrated log-likelihood ratios before an evidentia
 report.
 *Don't use when:* your scorer is already a well-calibrated LR — skip straight to
 evaluation.
-*Expect:* a scorer wrapper whose `predict_proba` / `log_lr` outputs are
-probability-calibrated against a labelled development set.
+*Expect:* a fitted calibrator whose `predict_proba` / `predict_log_lr` outputs are
+calibrated against a labelled development set.
 
 Raw scores from a verifier are rarely honest probabilities out-of-the-box. This page
-covers the two standard post-hoc calibration methods plus the chain-of-custody
-metadata that turns a calibrated score into a court-ready LR statement.
+covers the two standard post-hoc calibration methods and the conversion of a calibrated
+posterior into a log-LR; the chain-of-custody fields and the report itself are covered in
+[Reporting](reporting.md).
 
 Verification systems produce raw scores. Forensic reporting expects **calibrated
 posteriors** converted to **likelihood ratios** — the evidential semantics courts
@@ -33,13 +34,14 @@ on the test set gives optimistic C_llr and ECE.
 
 ## CalibratedScorer
 
-*Use when:* you want to wrap any scorer (`GeneralImpostors`, `Unmasking`, a custom
-Delta classifier) so it produces calibrated probabilities and log-LRs in one call.
+*Use when:* you have raw scores from any verifier (`GeneralImpostors`, `Unmasking`, a
+custom Delta classifier) and want calibrated probabilities and log-LRs for them.
 *Don't use when:* your upstream scorer already emits calibrated output.
-*Expect:* `score(q, k)` returns raw; `predict_proba(q, k)` returns calibrated
-probability; `log_lr(q, k)` returns the evidential quantity.
+*Expect:* `fit(scores, y)` learns the mapping from labelled calibration trials;
+`predict_proba(scores)` returns calibrated p(H1 | score); `predict_log_lr(scores)`
+returns the evidential quantity. It operates on score arrays, not on the verifier itself.
 
-Wraps a 1-D monotone calibrator — either Platt (logistic) or isotonic.
+Fits a 1-D monotone calibrator, either Platt (logistic) or isotonic.
 
 ```python
 from bitig.forensic import CalibratedScorer
@@ -122,8 +124,8 @@ scale:
 LR > 1 supports the same-author proposition, LR < 1 the different-author proposition;
 the strength is the same for an LR and its reciprocal (`bitig.forensic.verbal_scale`).
 
-The `build_forensic_report` template renders this scale automatically beside each
-method's LR value. See [Reporting](reporting.md).
+The `build_forensic_report` template renders the verbal statement beside each LR passed
+in `lr_summaries`. See [Reporting](reporting.md).
 
 ## Reference
 

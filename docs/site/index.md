@@ -9,11 +9,15 @@ hide:
   <img src="assets/bitig-banner.svg" alt="bitig — computational stylometry" style="max-width: 100%;">
 </p>
 
-**Computational stylometry for authorship attribution, author-group comparison, and forensic-linguistic analysis.** A Python alternative to R's `Stylo`, with a modern NLP pipeline (spaCy, transformer embeddings), a Bayesian layer (PyMC), and a full forensic-evidential toolkit on top.
+`bitig` is a Python package and command-line tool for **authorship attribution**,
+**author-group style comparison** and **forensic authorship analysis**. It covers the core
+methods of R's `Stylo` (Delta, Zeta, PCA/MDS, clustering, bootstrap consensus trees,
+classification) and adds a spaCy pipeline, transformer embeddings, a Bayesian layer (PyMC),
+authorship verification with likelihood-ratio calibration, and a case workflow with
+chain-of-custody hashing and sealed reports.
 
-> Named after the **bitig** — the Turkic word for *writing* / *inscription*, the kind
-> chiselled into the 8th-century Orkhon stelae. A bitig was a recorded text bearing a
-> writer's hand; this package looks for that hand.
+The name is the Old Turkic word for *writing* or *inscription*, the kind cut into the
+8th-century Orkhon stelae.
 
 ## Architecture
 
@@ -21,9 +25,10 @@ hide:
   <img src="assets/bitig-architecture.svg" alt="corpus → features → methods → forensic → output" style="max-width: 100%;">
 </p>
 
-Every layer is `sklearn`-compatible; every `Result` carries full provenance (corpus hash,
-feature hash, seed, spaCy version, timestamp, resolved config) so a study written as a
-`study.yaml` re-runs to the same values given the same seed and library versions
+Feature extractors, the Delta classifiers and the Bayesian attributor are scikit-learn
+estimators. Every `Result` carries its provenance (corpus hash, feature hash, seed, library
+versions, timestamp, resolved config), so a study written as a `study.yaml` re-runs to the
+same values given the same seed and library versions
 (see [Results & provenance](concepts/results.md)).
 
 ## Quick navigation
@@ -50,7 +55,7 @@ feature hash, seed, spaCy version, timestamp, resolved config) so a study writte
 
     ---
 
-    General Impostors verification, Unmasking, LR output + calibration, PAN evaluation.
+    General Impostors and Unmasking verification, LR calibration, PAN evaluation, and the Forensic Lab case workflow.
 
     [:octicons-arrow-right-24: Forensic toolkit](forensic/index.md)
 
@@ -58,48 +63,32 @@ feature hash, seed, spaCy version, timestamp, resolved config) so a study writte
 
     ---
 
-    Reproduce Mosteller & Wallace on the Federalist Papers; run PAN-style forensic verification end-to-end.
+    Follow Mosteller & Wallace on the Federalist Papers, run PAN-style verification end to end, and analyse Turkish prose.
 
     [:octicons-arrow-right-24: Tutorials](tutorials/index.md)
 
 </div>
 
-## What's in the box
+## What's included
 
-| Layer | Highlights |
+| Layer | Contents |
 |---|---|
-| **Corpus** | `.txt` + TSV metadata ingestion, filter / groupby, content-addressed hashing |
-| **Languages** | EN / TR / DE / ES / FR first-class — per-language function words, readability formulas, contextual/sentence embedding defaults. Turkish via Stanford Stanza (BOUN) through `spacy-stanza` |
-| **Features** | MFW, char / word / POS n-grams, dependency bigrams, function words, punctuation, readability (EN + TR/DE/ES/FR native formulas), sentence length, lexical diversity, sentence + contextual embeddings |
-| **Methods** | Burrows / Eder / Argamon / Cosine / Quadratic Delta; Zeta; PCA / UMAP / t-SNE / MDS; Ward / k-means / HDBSCAN; bootstrap consensus; sklearn classify + CV; Wallace–Mosteller Bayesian |
-| **Forensic** | General Impostors, Unmasking, Stamatatos distortion, Sapkota n-gram categories, Platt / isotonic calibration, log-LR + C_llr + AUC + c@1 + F0.5u + ECE + Brier + Tippett, PANReport, chain-of-custody Provenance, LR-framed HTML report |
+| **Corpus** | `.txt` + TSV metadata, filtering and grouping, a corpus hash that binds each text to its id and metadata |
+| **Features** | most frequent words, character / word / POS n-grams, dependency bigrams, function words, punctuation, sentence length, readability (6 English indices plus native Turkish, German, Spanish and French formulas), 8 lexical-diversity indices, sentence and contextual embeddings |
+| **Methods** | Burrows, Eder, Eder Simple, Argamon, Cosine and Quadratic Delta; Zeta (classic, Eder); PCA, MDS, t-SNE, UMAP; Ward, k-means, HDBSCAN; bootstrap consensus trees; sklearn classifiers with stylometry-aware cross-validation (stratified, leave-one-author-out, leave-one-text-out); Bayesian Wallace–Mosteller and hierarchical group comparison |
+| **Forensic** | General Impostors and Unmasking verification; Sapkota character n-gram categories and Stamatatos text distortion for topic robustness; Platt / isotonic calibration to log-LRs; C_llr, AUC, c@1, F0.5u (PAN definitions), ECE, Brier, Tippett data; LR-framed HTML report with the two-sided verbal scale of Nordgaard et al. (2012), as adopted by ENFSI (2015); a case workflow with custody hashing and sealed reports ([Forensic Lab](forensic/case-workflow.md)) |
+| **Languages** | English, Turkish, German, Spanish, French: per-language function words, readability and embedding defaults; Turkish parsing through Stanza (BOUN treebank) |
+| **Output** | `result.json` + Parquet tables + figures per method; HTML / Markdown reports; PDF export of case reports (`bitig[reports]`) |
+
+The documentation is in English and Turkish (`/tr/`).
 
 ## Status
 
-**Phase 5 landed** — visualisation, Jinja2 reports, declarative runner (`bitig run`), and a
-Rich-based interactive `bitig shell`.
-
-**Forensic phase landed** — six additions (General Impostors, LR + calibration + evaluation
-metrics, Sapkota categories + Stamatatos distortion, Unmasking, chain-of-custody + forensic
-report template, PAN harness).
-
-**Multi-language phase landed** — first-class support for English, Turkish, German, Spanish,
-French behind a `bitig.languages` registry. Turkish parses through Stanford Stanza (BOUN
-treebank) via `spacy-stanza`, returning native spaCy `Doc` objects so every feature extractor
-works unchanged. Native readability formulas per language (Ateşman + Bezirci–Yılmaz for Turkish,
-Flesch-Amstad + Wiener Sachtextformel for German, Fernández-Huerta + Szigriszt-Pazos for
-Spanish, Kandel–Moles + LIX for French). Function-word lists generated reproducibly from
-UD closed-class tokens.
-
-**Docs site landed** — this MkDocs Material site with Concepts, Forensic toolkit, Federalist +
-PAN-CLEF + Turkish tutorials, and CLI/API reference.
-
-**Docs site is multilingual** — English (default) and Turkish (`/tr/`) launched via
-`mkdocs-static-i18n`; DE/ES/FR infrastructure ready, translation content deferred.
-
-**Forensic Lab** — the case workflow (evidence custody, recipe runs, sealed reports) is documented in [Forensic Lab (cases)](forensic/case-workflow.md).
-
-**Released on PyPI** — `pip install bitig`.
+The latest release on PyPI is **0.3.1** (`pip install bitig`). `main` carries unreleased
+changes, several of which change results or behaviour (case seals, General Impostors
+defaults, calibration, PAN metrics, feature scaling).
+[`CHANGELOG.md`](https://github.com/fatihbozdag/bitig/blob/main/CHANGELOG.md) lists them,
+marked **[results]** and **[breaking]**.
 
 ## License & citation
 

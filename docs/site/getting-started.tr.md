@@ -34,6 +34,10 @@ uv pip install "bitig[docs]"        # mkdocs + material teması (bu siteyi derle
 spaCy modeli yalnızca `bitig ingest` ve Python API'sindeki ayrıştırmaya dayalı öznitelikler
 için gereklidir; `bitig run` ham metin üzerinde çalışır.
 
+İngilizce okunabilirlik ölçütleri CMU sesletim sözlüğünü gerektirir ve bitig bu sözlüğü hiçbir
+zaman kendiliğinden indirmez. Sözlüğü bir kez `python -m nltk.downloader cmudict` ile kurun;
+sözlük yoksa okunabilirlik çıkarıcısı bu komutu belirten bir hata verir.
+
 ## Beş komutla bir çalışma
 
 ```bash
@@ -54,6 +58,11 @@ sütunu içeren bir üst veri dosyası gerektirir. `bitig info`; bitig, Python, 
 sürümlerini ve bir proje içinde çalıştırıldığında `study.yaml` dosyasında ayarlı dili
 yazdırır. `study.yaml` dosyasına başka yöntemler eklemek için
 [şema başvurusuna](reference/config.md) bakın.
+
+`bitig run`, herhangi bir yöntem başarısız olursa başarısız yöntemleri listeleyerek 1 çıkış
+koduyla sonlanır (her yöntemin `error.txt` dosyası hata izini içerir). Ayrıca `--overwrite`
+verilmedikçe önceki bir çalıştırmanın çıktılarını barındıran bir çalıştırma dizinine yazmayı
+reddeder.
 
 ## İlk Python oturumunuz
 

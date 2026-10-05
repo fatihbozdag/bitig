@@ -30,7 +30,7 @@ Stanza'yı hiç yüklemez.
 ## Derlem
 
 `corpus/` dizinine Türkçe metinlerinizi UTF-8 `.txt` dosyası olarak ekleyin. İyi bir
-telif hakkı süresi dolmuş kaynak, [Türkçe Vikiskaynak'taki Ömer Seyfettin](https://tr.wikisource.org/wiki/Yazar:%C3%96mer_Seyfettin)
+telif hakkı süresi dolmuş kaynak, [Türkçe Vikikaynak'taki Ömer Seyfettin](https://tr.wikisource.org/wiki/Yazar:%C3%96mer_Seyfettin)
 sayfasıdır — 20. yüzyıl başına ait düzinelerce kısa hikaye orada zaten yazıya geçirilmiş durumdadır.
 
 `corpus/metadata.tsv` dosyasını ekleyin ve `study.yaml` içindeki `metadata:` satırının yorumunu

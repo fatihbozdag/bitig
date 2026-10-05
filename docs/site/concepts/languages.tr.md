@@ -6,7 +6,7 @@ bitig beş dil için birinci sınıf destek sunar: **İngilizce**, **Türkçe**,
 
 | Kod | Dil | Arka uç | Varsayılan model | Okunabilirlik |
 |------|---------|-----------------|--------------------------|------------------------------------------|
-| en | İngilizce | yerel spaCy | `en_core_web_trf` | Flesch, Flesch-Kincaid, Gunning Fog, SMOG, Dale-Chall, Coleman-Liau, ARI |
+| en | İngilizce | yerel spaCy | `en_core_web_trf` | Flesch, Flesch-Kincaid, Gunning Fog, Coleman-Liau, ARI, SMOG |
 | tr | Türkçe | `spacy-stanza` | Stanza `tr` (BOUN) | Ateşman, Bezirci-Yılmaz |
 | de | Almanca | yerel spaCy | `de_dep_news_trf` | Flesch-Amstad, Wiener Sachtextformel |
 | es | İspanyolca | yerel spaCy | `es_dep_news_trf` | Fernández-Huerta, Szigriszt-Pazos |
@@ -80,7 +80,14 @@ python scripts/regenerate_function_words.py
 - **İspanyolca (es):** Fernández-Huerta (1959), Szigriszt-Pazos (1993)
 - **Fransızca (fr):** Kandel-Moles (1958), LIX (Björnsson, 1968)
 
-Bir çalışma `type: readability` bildirdiğinde, çıkarıcı dilin yerel indekslerini otomatik olarak seçer.
+Almanca ve Fransızca heceler, *Abend* ya da *école* gibi sözcükleri eksik sayan heceleme
+noktalarına göre değil, ünlü çekirdeklerine göre sayılır (`bitig.languages._syllables`).
+İngilizce indeksler `textstat` kütüphanesinden gelir ve bitig'in kendiliğinden hiçbir zaman
+indirmediği NLTK cmudict sözlüğünü gerektirir (`python -m nltk.downloader cmudict`).
+
+Bir çalışma `type: readability` bildirdiğinde, çıkarıcı `indices` bağımsız değişkeni başka
+indeksler belirtmedikçe dilin varsayılan indekslerini (`LanguageSpec.readability_indices`)
+kullanır. İngilizce için varsayılanlar Flesch, Flesch-Kincaid ve Gunning Fog'dur.
 
 ## Altıncı bir dil ekleme
 

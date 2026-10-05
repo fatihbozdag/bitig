@@ -75,7 +75,7 @@ record, so two studies with the same corpus share a hash regardless of filesyste
 run time, or document ordering in the input directory.
 
 `Provenance.corpus_hash_scheme` records which hashing scheme produced the value. Scheme 2
-(bitig 0.3.2+) replaced scheme 1, which hashed texts and ids as two independent lists and
+(releases after bitig 0.3.1) replaced scheme 1, which hashed texts and ids as two independent lists and
 did not bind them; hashes from different schemes are not comparable.
 
 !!! note "Order sensitivity"

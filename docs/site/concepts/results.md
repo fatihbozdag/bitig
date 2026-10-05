@@ -25,7 +25,9 @@ result.save("results/demo/pca")   # writes result.json + table_*.parquet
 
 - `result.json` — `method_name`, `params`, `values` (with numpy encoded), `provenance`
 - `table_0.parquet`, `table_1.parquet`, … — one per DataFrame in `tables`
-- Figures are deferred to the viz layer (`render_figures.py` per example)
+- No figures: `Result.save` leaves them to the viz layer. `bitig run` renders a default
+  figure per method where one applies (for example `scatter.png` for reducers,
+  `dendrogram.png` for hierarchical clustering, `zeta.png` for Zeta)
 
 Round-trip with `Result.from_json("results/demo/pca/result.json")`.
 
@@ -52,6 +54,8 @@ class Provenance:
     acquisition_notes: str | None
     custody_notes: str | None
     source_hashes: dict[str, str]
+    corpus_hash_scheme: int         # 2 for current corpus hashes
+    library_versions: dict[str, str]
 ```
 
 `Provenance.current(...)` builds a record from the runtime + your inputs.
@@ -60,7 +64,7 @@ class Provenance:
 ### Reproducibility contract
 
 Two runs of the same `study.yaml` against the same corpus with the same seed, in the same
-environment (Python, numpy, scikit-learn versions), produce **identical result values** —
+environment (Python, numpy, scikit-learn versions, which `library_versions` records), produce **identical result values**,
 up to floating-point rounding in the last digits, which multithreaded BLAS can vary.
 `result.json` is not byte-identical: `provenance.timestamp` records when each run happened.
 The runner threads `cfg.seed` (unless a method sets its own) into:
@@ -83,12 +87,18 @@ results/demo/
 │   └── result.json
 ├── pca/
 │   ├── result.json
-│   └── figure.png          # if rendered
+│   ├── scatter.png         # default figure
+│   └── pca_biplot.png
 └── zeta/
     ├── result.json
     ├── table_0.parquet
-    └── table_1.parquet
+    ├── table_1.parquet
+    └── zeta.png
 ```
+
+A method that fails leaves an `error.txt` with the traceback in its directory, and
+`bitig run` then exits with code 1. A directory that already holds a run is refused
+unless you pass `--overwrite`.
 
 `build_report(results/demo, output="report.html")` loads every `result.json` under the
 directory and renders a single HTML report.

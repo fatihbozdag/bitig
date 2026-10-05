@@ -59,11 +59,49 @@ at `bitig` top level (unless otherwise noted).
     options:
       show_root_full_path: false
 
+## Forensic
+
+`GeneralImpostors`, `Unmasking` and `CalibratedScorer` are re-exported at `bitig` top level;
+`compute_pan_report` and `PANReport` are imported from `bitig.forensic`.
+
+::: bitig.forensic.verify.GeneralImpostors
+    options:
+      show_root_full_path: false
+
+::: bitig.forensic.unmasking.Unmasking
+    options:
+      show_root_full_path: false
+
+::: bitig.forensic.lr.CalibratedScorer
+    options:
+      show_root_full_path: false
+
+::: bitig.forensic.metrics.compute_pan_report
+
+::: bitig.forensic.metrics.PANReport
+    options:
+      show_root_full_path: false
+
+## Cases
+
+The Forensic Lab case API is imported from `bitig.cases`, not from `bitig` top level.
+
+::: bitig.cases.Case
+    options:
+      show_root_full_path: false
+
+::: bitig.cases.SealVerification
+    options:
+      show_root_full_path: false
+
 ## Runner
 
 ::: bitig.runner.run_study
 
 ## Reporting
+
+`build_report` is re-exported at `bitig` top level; `build_forensic_report` is imported from
+`bitig.report`.
 
 ::: bitig.report.render.build_report
 
