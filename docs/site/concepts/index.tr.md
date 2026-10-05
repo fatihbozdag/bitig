@@ -11,7 +11,7 @@ bitig, bir metni kimin yazdığına dair üç soruyu yanıtlar:
   tanımlanmış bir gruptan nasıl ayrılır?
 
 Bu temel soruların üstünde bir adli katman yer alır: kalibre edilmiş olabilirlik oranları,
-delil zinciri üstverisi ve mahkeme kullanımına göre ayarlanmış değerlendirme ölçütleri.
+delil zinciri üstverisi ve olabilirlik oranı sistemleri için değerlendirme ölçütleri.
 
 Hangi soruyu sorduğunuzdan emin değil misiniz? **[Yöntem seçimi rehberiyle
 başlayın](choosing.md).**
@@ -43,7 +43,8 @@ flowchart LR
 
 Her ok, verinin diske düzgünce serileştirildiği bir sınırı temsil eder:
 
-- **Corpus → FeatureMatrix**: önbellekte parquet + spaCy DocBin.
+- **Corpus → FeatureMatrix**: ayrıştırılmış belgeler, belge özeti ve işlem hattı
+  yapılandırmasıyla anahtarlanan spaCy `DocBin` blokları olarak önbelleğe alınır.
 - **FeatureMatrix → Result**: her sonuç dizini `result.json` + isteğe bağlı `table_*.parquet` + şekiller içerir.
 - **Result → Report**: Jinja2 şablonları, sonuç dizinini tek bir HTML veya Markdown dosyasına dönüştürür.
 
@@ -51,9 +52,11 @@ Her ok, verinin diske düzgünce serileştirildiği bir sınırı temsil eder:
 
 Her `Result`, şunları içeren bir `Provenance` kaydı taşır:
 
-- bitig sürümü, Python sürümü, spaCy modeli + sürümü
-- derlem özeti (içerik tabanlı özetleme)
-- öznitelik özeti (yapılandırma + derlem özeti)
+- bitig sürümü, Python sürümü, spaCy sürümü ve modeli (`bitig run` hiçbir ayrıştırma
+  yapmadığı için `"none (no spaCy parsing in this run)"` kaydeder)
+- sonucu biçimlendiren kütüphanelerin sürümleri ve varsa NLTK cmudict dosyasının sağlama özeti
+- derlem özeti (her metni kimliğine ve üstverisine bağlar) ve onu üreten özetleme şeması
+- öznitelik özeti (çıkarıcı, yapılandırma + derlem özeti)
 - çalıştırmada kullanılan seed değeri
 - zaman damgası
 - çözümlenmiş `study.yaml` yapılandırması

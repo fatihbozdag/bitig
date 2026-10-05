@@ -34,6 +34,10 @@ uv pip install "bitig[docs]"        # mkdocs + material theme (build this site)
 The spaCy model is only needed for `bitig ingest` and the parse-based features in the Python
 API; `bitig run` works on raw text.
 
+English readability needs the CMU pronouncing dictionary, which bitig never downloads on its
+own. Install it once with `python -m nltk.downloader cmudict`; without it the readability
+extractor raises an error that names this command.
+
 ## A study in five commands
 
 ```bash
@@ -53,6 +57,10 @@ grouped by the `author` metadata column. It does not create `metadata.tsv`; Delt
 with an `author` column. `bitig info` prints the bitig, Python, platform and spaCy versions
 and, inside a project, the language set in `study.yaml`. Add more methods to `study.yaml`
 using the [schema reference](reference/config.md).
+
+`bitig run` exits with code 1 if any method failed, listing the failed methods (each one's
+`error.txt` holds the traceback). It also refuses to write into a run directory that already
+holds a previous run unless you pass `--overwrite`.
 
 ## Your first Python session
 

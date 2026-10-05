@@ -68,9 +68,11 @@ probability under different-author, with a **calibrated** underlying scorer. Raw
 classifier posteriors are rarely calibrated and are easily abused as "probability of
 guilt" in ways that misrepresent forensic semantics.
 
-bitig's `CalibratedScorer` + `log_lr_from_probs` pipeline converts any raw score to a
-log-LR defensible in a forensic report, and the bundled ENFSI / Nordgaard verbal scale in
-the report template gives a transparent verbal reading.
+bitig's `CalibratedScorer` converts a raw verification score into a log-LR, calibrated
+against a labelled set of same-author and different-author trials; a raw score such as a
+General Impostors win fraction is not itself a likelihood ratio. The report template reads
+each calibrated LR on the two-sided Nordgaard et al. (2012) / ENFSI (2015) verbal scale,
+which states both the strength of support and the proposition it favours.
 
 ## Chain of custody
 

@@ -25,7 +25,9 @@ result.save("results/demo/pca")   # result.json + table_*.parquet yazar
 
 - `result.json` — `method_name`, `params`, `values` (numpy kodlanmış), `provenance`
 - `table_0.parquet`, `table_1.parquet`, … — `tables` içindeki her DataFrame için birer dosya
-- Figürler görselleştirme katmanına ertelenir (`render_figures.py` örnek başına)
+- Figür yazılmaz: `Result.save` bunları görselleştirme katmanına bırakır. `bitig run`,
+  uygun olduğu yerde her yöntem için varsayılan bir figür üretir (örneğin indirgeyiciler için
+  `scatter.png`, hiyerarşik kümeleme için `dendrogram.png`, Zeta için `zeta.png`)
 
 `Result.from_json("results/demo/pca/result.json")` ile gidiş-dönüş sağlanır.
 
@@ -52,6 +54,8 @@ class Provenance:
     acquisition_notes: str | None
     custody_notes: str | None
     source_hashes: dict[str, str]
+    corpus_hash_scheme: int         # güncel derlem özetleri için 2
+    library_versions: dict[str, str]
 ```
 
 `Provenance.current(...)` çalışma zamanı ve girdilerinizden bir kayıt oluşturur.
@@ -59,7 +63,7 @@ class Provenance:
 
 ### Yeniden üretilebilirlik sözleşmesi
 
-Aynı seed değeriyle, aynı ortamda (Python, numpy, scikit-learn sürümleri) aynı corpus üzerinde aynı `study.yaml`'ın iki ayrı çalıştırılması **özdeş sonuç değerleri** üretir — çok iş parçacıklı BLAS'ın değiştirebildiği son basamaklardaki kayan nokta yuvarlaması dışında. `result.json` bayt düzeyinde özdeş değildir: `provenance.timestamp` her çalıştırmanın zamanını kaydeder. Çalıştırıcı, bir yöntem kendi değerini belirtmedikçe `cfg.seed` değerini şunlara iletir:
+Aynı seed değeriyle, aynı ortamda (`library_versions` alanının kaydettiği Python, numpy, scikit-learn sürümleri) aynı corpus üzerinde aynı `study.yaml`'ın iki ayrı çalıştırılması **özdeş sonuç değerleri** üretir; tek istisna, çok iş parçacıklı BLAS'ın değiştirebildiği son basamaklardaki kayan nokta yuvarlamasıdır. `result.json` bayt düzeyinde özdeş değildir: `provenance.timestamp` her çalıştırmanın zamanını kaydeder. Çalıştırıcı, bir yöntem kendi değerini belirtmedikçe `cfg.seed` değerini şunlara iletir:
 
 - her indirgeyicinin (PCA, MDS, t-SNE, UMAP) ve k-means'in `random_state` parametresi
 - her `classify` tahmincisinin `random_state` parametresi ve Stratified K-Fold karıştırması
@@ -78,12 +82,18 @@ results/demo/
 │   └── result.json
 ├── pca/
 │   ├── result.json
-│   └── figure.png          # işlendiyse
+│   ├── scatter.png         # varsayılan figür
+│   └── pca_biplot.png
 └── zeta/
     ├── result.json
     ├── table_0.parquet
-    └── table_1.parquet
+    ├── table_1.parquet
+    └── zeta.png
 ```
+
+Başarısız olan bir yöntem, kendi dizinine hata izini içeren bir `error.txt` bırakır ve
+`bitig run` bu durumda 1 koduyla çıkar. Önceki bir çalıştırmayı barındıran dizin,
+`--overwrite` verilmedikçe reddedilir.
 
 `build_report(results/demo, output="report.html")`, dizin altındaki her `result.json`'ı yükler ve tek bir HTML raporu oluşturur.
 

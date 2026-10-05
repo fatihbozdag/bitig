@@ -10,7 +10,7 @@ bitig answers three questions about who wrote a text:
   defined group?
 
 On top of those core questions it ships a forensic layer: calibrated likelihood ratios,
-chain-of-custody metadata, and evaluation metrics tuned for courtroom use.
+chain-of-custody metadata, and evaluation metrics for likelihood-ratio systems.
 
 Not sure which question you're asking? **[Start with the Choosing a method
 guide](choosing.md).**
@@ -43,7 +43,8 @@ flowchart LR
 
 Each arrow is a boundary where data serialises cleanly to disk:
 
-- **Corpus → FeatureMatrix**: cached parquet + spaCy DocBin.
+- **Corpus → FeatureMatrix**: parsed documents are cached as spaCy `DocBin` blobs, keyed
+  by document hash and pipeline configuration.
 - **FeatureMatrix → Result**: every result directory contains `result.json` + optional
   `table_*.parquet` + figures.
 - **Result → Report**: Jinja2 templates render the result directory to a single HTML or
@@ -53,9 +54,12 @@ Each arrow is a boundary where data serialises cleanly to disk:
 
 Every `Result` carries a `Provenance` record with:
 
-- bitig version, Python version, spaCy model + version
-- corpus hash (content-addressed)
-- feature hash (config + corpus hash)
+- bitig version, Python version, spaCy version and model (`bitig run` records
+  `"none (no spaCy parsing in this run)"`, since it parses nothing)
+- versions of the result-shaping libraries, plus a checksum of NLTK's cmudict when present
+- corpus hash (binds each text to its id and metadata) and the hashing scheme that
+  produced it
+- feature hash (extractor, config and corpus hash)
 - seed used for the run
 - timestamp
 - resolved `study.yaml` config

@@ -1,12 +1,13 @@
 # Reporting
 
-*Use when:* you have a calibrated verification `Result` and need a court-ready
-report — chain-of-custody metadata, LR statement framed on the ENFSI verbal scale,
-and an auditable HTML artefact.
+*Use when:* you have a calibrated verification `Result` and need a forensic-styled
+report: chain-of-custody metadata, an LR statement framed on the two-sided
+Nordgaard et al. (2012) / ENFSI (2015) verbal scale, and an auditable HTML artefact.
 *Don't use when:* you want an exploratory research figure — use the standard
 reporting path in `concepts/results.md`.
-*Expect:* a rendered HTML report with fixed sections: case metadata, hypothesis
-pair, feature pipeline, calibrated LR and its verbal-scale statement.
+*Expect:* a rendered HTML report with fixed sections: hypotheses under test, chain of
+custody, per-method calibrated LR and its verbal statement, figures and parameters,
+evidentiary disclaimer and provenance.
 
 Forensic reports need more than a score — they need the **hypothesis pair** under test,
 the **known and questioned** material identified, a **chain-of-custody** trail back to
@@ -37,6 +38,13 @@ build_forensic_report(
 )
 ```
 
+The values in `lr_summaries` must be calibrated likelihood ratios, for example the output
+of `CalibratedScorer.predict_log_lr` for the case's own trial. A raw General Impostors
+score is a win fraction and an Unmasking score is an accuracy-degradation measure;
+neither is an LR, so pass them through [calibration](calibration.md) first. The verbal
+statement is computed from the numeric `lr` (or `10 ** log_lr`) with
+`bitig.forensic.verbal_scale.lr_verbal_statement`, never typed by hand.
+
 Template sections:
 
 1. **Hypotheses under test** — rendered iff `hypothesis_pair`, `questioned_description`,
@@ -44,7 +52,8 @@ Template sections:
 2. **Chain of custody** — rendered iff `acquisition_notes`, `custody_notes`, or
    `source_hashes` is populated.
 3. **Per-method LR block** — rendered iff `lr_summaries` dict is passed. Shows
-   log₁₀(LR) + LR + the six-band ENFSI / Nordgaard verbal scale.
+   log₁₀(LR), LR, the two-sided verbal statement (strength and the proposition it
+   supports) and the strength bands of the scale.
 4. **Figures + params** per method (from the saved `Result` directory).
 5. **Evidentiary disclaimer** — always rendered.
 6. **Reproducibility provenance** — always rendered (full JSON of the `Provenance` record).
@@ -91,7 +100,8 @@ reporting guideline:
 > Output is intended to inform, not replace, expert forensic-linguistic judgement.
 > Likelihood ratios reported here are conditional on the specific known and questioned
 > material, the feature space chosen, and the calibration set used. Extrapolation to
-> populations outside the calibration conditions is not warranted.
+> populations outside the calibration conditions is not warranted. Reporting follows the
+> framing recommended by the European Network of Forensic Science Institutes (ENFSI 2015).
 
 You may override the disclaimer by providing a custom template; see the bundled
 `src/bitig/report/templates/forensic_lr.html.j2` for the reference implementation.
@@ -102,7 +112,8 @@ You may override the disclaimer by providing a custom template; see the bundled
 expected in a forensic report (ENFSI 2015 / Nordgaard et al. 2012).
 *Don't use when:* you're reporting to a statistical audience — quote the log-LR with
 its `C_llr` directly.
-*Expect:* a one-line verbal statement keyed to the log-LR magnitude.
+*Expect:* a one-line verbal statement keyed to the magnitude of the log-LR and to its
+sign, which determines the supported proposition.
 
 | \|log₁₀(LR)\| range | Verbal descriptor |
 |---|---|

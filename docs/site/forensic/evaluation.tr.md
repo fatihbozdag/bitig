@@ -24,9 +24,9 @@ report.to_dict()
 
 | Ölçüt | Ölçtüğü | Ne için | Aralık | Kaynak |
 |---|---|---|---|---|
-| `auc` | Sıralama kalitesi | **Sistemler arasında seçim yaparken.** Daha yüksek AUC → sistem, aynı-yazar çiftlerini farklı-yazar çiftlerinin üzerinde daha güvenilir biçimde sıralar. | 0.5 (rastgele) – 1.0 (mükemmel) | — |
+| `auc` | Sıralama kalitesi | **Sistemler arasında seçim yaparken.** Daha yüksek AUC → sistem, aynı-yazar çiftlerini farklı-yazar çiftlerinin üzerinde daha güvenilir biçimde sıralar. | 0 (tamamen ters) – 1 (mükemmel); 0.5 rastgeledir | — |
 | `c_at_1` | Çekimser kalma kredisiyle doğruluk | **"Bilmiyorum" cevabının yanlış cevaptan daha güvenli olduğu operasyonel kararlar** için. | 0 – 1 | Peñas & Rodrigo 2011 |
-| `f05u` | Yanıtsızlık cezalı hassasiyet ağırlıklı F | **PAN-tipi değerlendirme.** Aşırı güvenli yanlış cevapları cezalandırır. | 0 – 1 | Bevendorff et al. PAN 2022 |
+| `f05u` | Yanıtsızlık cezalı hassasiyet ağırlıklı F | **PAN-tipi değerlendirme.** Aşırı güvenli yanlış cevapları cezalandırır. | 0 – 1 | Bevendorff et al. 2019/2020 |
 | `brier` | Posterior kalibrasyonu | **Olasılıksal çıktı kalitesi.** Düşük = daha iyi kalibre edilmiş olasılıklar. | 0 (mükemmel) – 1 (en kötü) | Brier 1950 |
 | `ece` | Beklenen kalibrasyon hatası | **`predict_proba` dürüst mü?** Tahminleri güvene göre gruplar; iddia edilen ile gerçek doğruluğu karşılaştırır. | 0 (mükemmel) – 1 | — |
 | `cllr` | Log-olabilirlik-oranı maliyeti | **Adli LR kalitesi.** Kanıtsal çıktı için katı uygun puanlama kuralı. | 0 (mükemmel) – ∞ | Brümmer & du Preez 2006 |
@@ -94,7 +94,7 @@ plt.legend()
 
 *Şu durumda kullanın:* aynı kıyaslama üzerinde iki doğrulama sistemini karşılaştırırken — AUC eşik bağımsızdır.
 *Şu durumda kullanmayın:* operasyonel bir karar almanız gerekiyor — AUC, eşiğin nereye ayarlanacağı konusunda hiçbir şey söylemez.
-*Beklenen sonuç:* `[0.5, 1]` aralığında tek bir sayı. Tahmin edilen olasılıkların kalibre edilmiş olmasına bağlı değildir.
+*Beklenen sonuç:* `[0, 1]` aralığında tek bir sayı; 0.5 rastgele bir sıralamayı, 0.5'in altındaki değerler ise ters bir sıralamayı gösterir. Tahmin edilen olasılıkların kalibre edilmiş olmasına bağlı değildir.
 
 ::: bitig.forensic.metrics.auc
 
@@ -142,6 +142,6 @@ plt.legend()
 
 *Şu durumda kullanın:* görsel bir kalibrasyon denetimi istiyorsanız — hedef deneme ve hedef olmayan log-LR'leri kümülatif dağılımlar olarak çizin.
 *Şu durumda kullanmayın:* tek sayılı bir özete ihtiyacınız varsa (`C_llr` kullanın).
-*Beklenen sonuç:* matplotlib grafiği için hazır iki kümülatif LR dizisi (hedef ve hedef olmayan).
+*Beklenen sonuç:* `thresholds` (sıralı benzersiz log-LR değerleri) ile `target_cdf` / `nontarget_cdf` (her sınıfta her eşiğin üzerinde veya eşiğinde kalan denemelerin oranı) anahtarlarını içeren, matplotlib grafiği için hazır bir sözlük.
 
 ::: bitig.forensic.metrics.tippett

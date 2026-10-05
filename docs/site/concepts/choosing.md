@@ -14,18 +14,18 @@ for the full detail.
 | Compare two pre-defined author groups | 10+ docs per group | [`ZetaClassic`](methods.md#zetaclassic) or [`ZetaEder`](methods.md#zetaeder) | per-word distinctiveness score | — |
 | Classify docs into groups with ML | 20+ docs per class | [`build_classifier`](methods.md#classification-cv) + [`cross_validate_bitig`](methods.md#classification-cv) | CV accuracy / F1 | — |
 | Reduce features for visualisation | any `FeatureMatrix` | [`PCAReducer`](methods.md#pcareducer) / [`UMAPReducer`](methods.md#umapreducer) / [`TSNEReducer`](methods.md#tsnereducer) / [`MDSReducer`](methods.md#mdsreducer) | visual inspection | — |
-| Bayesian single-candidate attribution | N candidates × ≥1k words; 1 questioned doc | [`BayesianAuthorshipAttributor`](methods.md#bayesianauthorshipattributor) | posterior probability per candidate | — |
+| Bayesian attribution among N candidates | N candidates × ≥1k words as raw counts (`MFWExtractor(scale="none")`); 1 questioned doc | [`BayesianAuthorshipAttributor`](methods.md#bayesianauthorshipattributor) | posterior probability per candidate | — |
 | Bootstrap-consensus tree across MFW bands | 10+ docs, multiple MFW bands | [`BootstrapConsensus`](methods.md#bootstrapconsensus) | Newick tree with clade support | — |
 
 ## Forensic — one-case verification
 
 | I want to… | Required data | Method | Headline metric | Tutorial |
 |---|---|---|---|---|
-| Verify "same author?" between 1 questioned doc and 1 candidate | 1 candidate's known writings + an impostor pool (~100 docs) | [`GeneralImpostors`](../forensic/verification.md#general-impostors) | calibrated log-LR + `C_llr` | [PAN-CLEF](../tutorials/pan-clef.md) |
+| Verify "same author?" between 1 questioned doc and 1 candidate | 1 candidate's known writings + an impostor pool (~100 docs) | [`GeneralImpostors`](../forensic/verification.md#general-impostors) | verification score (a log-LR only after [`CalibratedScorer`](../forensic/calibration.md#calibratedscorer)) | [PAN-CLEF](../tutorials/pan-clef.md) |
 | Verify same-author with topic-robustness | Q + K long prose + impostor pool | [`Unmasking`](../forensic/verification.md#unmasking) | accuracy-drop curve | [PAN-CLEF](../tutorials/pan-clef.md) |
 | Minimise topic bias in verification features | any corpus | [`CategorizedCharNgramExtractor`](features.md#categorizedcharngramextractor) with `categories=("prefix","suffix","punct")`, or [`distort_corpus(mode="dv_ma")`](features.md#distort_corpus) | same as upstream verifier | [PAN-CLEF](../tutorials/pan-clef.md) |
 | Turn raw verifier scores into evidential LR | verifier outputs on labelled dev trials | [`CalibratedScorer`](../forensic/calibration.md#calibratedscorer) + [`compute_pan_report`](../forensic/evaluation.md#compute_pan_report) | log-LR, `C_llr`, `ECE` | [PAN-CLEF](../tutorials/pan-clef.md) |
-| Generate a court-ready LR-framed report | `Result` with chain-of-custody fields | [`build_forensic_report`](../forensic/reporting.md) | ENFSI verbal scale | — |
+| Generate an LR-framed forensic report | `Result` with chain-of-custody fields | [`build_forensic_report`](../forensic/reporting.md) | two-sided ENFSI verbal scale | — |
 
 ## How to read this page
 
