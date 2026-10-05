@@ -3,260 +3,214 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="BSD-3-Clause" src="https://img.shields.io/badge/license-BSD--3--Clause-0F1A2B?style=flat-square"></a>
-  <a href="pyproject.toml"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-0F1A2B?style=flat-square"></a>
-  <a href="https://fatihbozdag.github.io/bitig/"><img alt="docs" src="https://img.shields.io/badge/docs-mkdocs%20material-0F1A2B?style=flat-square"></a>
   <a href="https://pypi.org/project/bitig/"><img alt="PyPI" src="https://img.shields.io/pypi/v/bitig?style=flat-square&color=0F1A2B"></a>
-  <img alt="status" src="https://img.shields.io/badge/status-multi--language%20%7C%20forensic%20%7C%20phase%205-C9A34A?style=flat-square">
+  <a href="pyproject.toml"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-0F1A2B?style=flat-square"></a>
   <a href="https://github.com/fatihbozdag/bitig/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fatihbozdag/bitig/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://fatihbozdag.github.io/bitig/"><img alt="docs" src="https://img.shields.io/badge/docs-mkdocs%20material-0F1A2B?style=flat-square"></a>
   <img alt="languages" src="https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20DE%20%7C%20ES%20%7C%20FR-0F1A2B?style=flat-square">
+  <a href="LICENSE"><img alt="BSD-3-Clause" src="https://img.shields.io/badge/license-BSD--3--Clause-0F1A2B?style=flat-square"></a>
 </p>
 
 ---
 
-`bitig` ("writing, inscription, charter" — from Old Turkic) is a Python package and
-interactive CLI for **authorship attribution**, **author-group style comparison**, and
-**forensic-linguistic analysis**. It reimplements the analytical breadth of R's `Stylo`,
-then adds a modern NLP pipeline (spaCy, transformer embeddings), a Bayesian layer
-(PyMC), and a full forensic-evidential toolkit on top.
+`bitig` is a Python package and command-line tool for **authorship attribution**,
+**author-group style comparison** and **forensic authorship analysis**. It covers the core
+methods of R's `Stylo` (Delta, Zeta, PCA/MDS, clustering, bootstrap consensus trees,
+classification) and adds a spaCy pipeline, transformer embeddings, a Bayesian layer (PyMC),
+authorship verification with likelihood-ratio calibration, and a case workflow with
+chain-of-custody hashing and sealed reports.
 
-> Named after the **bitig**, the Turkic word for *writing* / *inscription* — the kind
-> chiselled into the 8th-century Orkhon stelae. A bitig was a recorded text bearing a
-> writer's hand; this package looks for that hand.
-
-## Architecture
+The name is the Old Turkic word for *writing* or *inscription*, the kind cut into the
+8th-century Orkhon stelae.
 
 <p align="center">
   <img src="docs/assets/bitig-architecture.svg" alt="bitig architecture: corpus → features → methods → forensic → output" width="100%">
 </p>
 
-Every layer is sklearn-compatible; every `Result` carries full provenance (corpus hash,
-feature hash, seed, spaCy version, timestamp, resolved config), so a study written as
-`study.yaml` re-runs to the same values given the same seed and library versions
-(see the [reproducibility contract](https://fatihbozdag.github.io/bitig/concepts/results/)).
-
 ## Install
 
 ```bash
-uv pip install bitig
+pip install bitig            # or: uv pip install bitig
+```
+
+`bitig run` works on raw text. The spaCy model is only needed for `bitig ingest` and the
+parse-based features (POS n-grams, dependency bigrams):
+
+```bash
 python -m spacy download en_core_web_trf
 ```
 
 Optional extras:
 
-```bash
-uv pip install "bitig[bayesian]"    # PyMC + arviz for hierarchical models
-uv pip install "bitig[embeddings]"  # sentence-transformers + contextual BERT
-uv pip install "bitig[viz]"         # plotly, kaleido, ete3
-uv pip install "bitig[reports]"     # weasyprint for PDF export
-uv pip install "bitig[turkish]"     # spacy-stanza + Stanza for Turkish pipelines
-```
+| Extra | Adds |
+|---|---|
+| `bitig[cluster]` | UMAP and HDBSCAN |
+| `bitig[bayesian]` | PyMC + arviz (Wallace–Mosteller, hierarchical group comparison) |
+| `bitig[embeddings]` | sentence-transformers and contextual BERT embeddings |
+| `bitig[viz]` | plotly, kaleido, ete3 |
+| `bitig[reports]` | WeasyPrint for PDF export |
+| `bitig[gui]` | NiceGUI + pywebview for `bitig gui` |
+| `bitig[turkish]` | spacy-stanza + Stanza for Turkish parsing |
+| `bitig[docs]` | MkDocs Material, to build the documentation site |
+
+English readability needs the CMU pronouncing dictionary, which bitig never downloads on its
+own: `python -m nltk.downloader cmudict`.
 
 ## Quickstart
 
 ```bash
-bitig init my-study
+bitig init my-study                # scaffold corpus/, results/ and a study.yaml
 cd my-study
-# drop .txt files into corpus/
-# add metadata.tsv mapping filename → author, group, year, ...
-bitig ingest corpus/ --metadata corpus/metadata.tsv
-bitig info
-bitig run study.yaml --name demo
+# 1. put .txt files in corpus/
+# 2. add corpus/metadata.tsv (tab-separated: filename, author, ...)
+# 3. in study.yaml, uncomment the `metadata: corpus/metadata.tsv` line
+bitig run study.yaml --name demo   # Burrows Delta on the 1000 most frequent words
 bitig report results/demo --output results/demo/report.html
 ```
 
-A complete beginner-friendly walkthrough using 9 Federalist Papers (including the disputed
-No. 50) lives at [`examples/quickstart/`](examples/quickstart/). The full 85-paper analysis
-reproducing the classic Mosteller & Wallace (1964) result is at
-[`examples/federalist/`](examples/federalist/).
+Each method writes a `result.json` with its provenance (corpus hash, feature hash, seed,
+library versions, resolved config) plus its figures. `bitig run` exits with code 1 if any
+method failed and refuses to overwrite an earlier run unless you pass `--overwrite`.
 
-## Desktop GUI
+The same in Python:
 
-If you'd rather click than write YAML, bitig ships a NiceGUI + pywebview desktop shell that
-walks the same workflow — **Ingest → Study → Run → Results** — plus a dedicated
-**Forensic** tab.
+```python
+import numpy as np
+from bitig import BurrowsDelta, MFWExtractor, load_corpus
 
-```bash
-uv pip install "bitig[gui]"
-bitig gui
+corpus = load_corpus("corpus", metadata="corpus/metadata.tsv")
+fm = MFWExtractor(n=200, scale="zscore", lowercase=True).fit_transform(corpus)
+
+authors = np.array(corpus.metadata_column("author"))
+known = authors != "Unknown"
+delta = BurrowsDelta().fit(fm.X[known], authors[known])
+print(delta.predict(fm.X[~known]))
 ```
 
-This opens a native window with native file pickers; pass `--no-native` to fall back to a
-browser tab. From the **Study** page you can pick the method (Burrows/Cosine/Argamon/…
-Delta, PCA/MDS/t-SNE/UMAP, Ward/k-means/HDBSCAN, Zeta classic/Eder, bootstrap consensus,
-classify, Bayesian) and the feature family (MFW, char/word n-grams, function words,
-punctuation, lexical diversity, readability), set parameters, save `study.yaml`, run, and
-view results — figures, parquet tables, and `result.json` scalars — in one place.
+Two worked examples ship with the repository:
 
-### Example output
+- [`examples/quickstart/`](examples/quickstart/): nine Federalist Papers, step by step,
+  attributing the disputed No. 50.
+- [`examples/federalist/`](examples/federalist/): all 85 papers, following Mosteller &
+  Wallace (1964). The texts are essay bodies only; headers and author bylines are stripped.
 
-PCA on 200 MFW over the eight known-author Federalist Papers in the quickstart. With
-this few essays the authors do not separate cleanly. The map is exploratory; the
-attribution of the disputed #50 (Madison, matching the historical consensus) comes from
-Burrows Delta in [step 6 of the quickstart](examples/quickstart/README.md).
+## What's included
 
-<p align="center">
-  <img src="examples/quickstart/results/demo/pca/pca.png" alt="PCA of four Hamilton and four Madison Federalist papers on 200 most frequent words" width="82%">
-</p>
-
-## Capabilities at a glance
-
-| Layer | What's included |
+| Layer | Contents |
 |---|---|
-| **Languages** | EN, TR, DE, ES, FR — first-class. Turkish via Stanford Stanza (BOUN) through `spacy-stanza`; the rest via official spaCy `_trf` pipelines. Per-language function words, readability formulas, and contextual/sentence embedding defaults |
-| **Corpus** | `.txt` ingestion + TSV metadata, strict/lenient mode, `filter`, `groupby`, content-addressed hashing, language-stamped |
-| **Features** | MFW, char n-grams, word n-grams, POS n-grams, dependency bigrams, function words, punctuation, readability (English 6 + TR/DE/ES/FR native), sentence length, lexical diversity (eight indices), sentence + contextual embeddings |
-| **Methods** | Burrows / Eder / Argamon / Cosine / Quadratic Delta; Zeta (classic + Eder); PCA / MDS / UMAP / t-SNE; Ward / k-means / HDBSCAN; bootstrap consensus trees; sklearn classify with stylometry-aware CV; Bayesian Wallace-Mosteller + hierarchical group comparison |
-| **Forensic** | General Impostors verification, Unmasking, Stamatatos distortion, Sapkota char-n-gram categories, CalibratedScorer, log-LR + C_llr + AUC + c@1 + F0.5u + ECE + Brier + Tippett, PANReport, chain-of-custody Provenance, LR-framed HTML report (ENFSI / Nordgaard verbal scale) |
-| **Output** | Uniform `Result` record → JSON + Parquet + figures; Jinja2 HTML / Markdown report; publication-grade matplotlib with 300-DPI colourblind palette |
-
-## Multi-language support
-
-Five first-class languages behind a single `bitig.languages` registry — English, Turkish,
-German, Spanish, French. Language flows through `Corpus.language` and drives per-language
-defaults for function words, readability formulas, and embedding models:
-
-```bash
-uv pip install "bitig[turkish]"
-python -c "import stanza; stanza.download('tr')"
-bitig init demo-tr --language tr
-bitig ingest corpus/ --language tr --metadata corpus/metadata.tsv
-bitig run study.yaml --name first-run
-```
-
-Turkish parsing goes through Stanford Stanza (BOUN treebank) wrapped by `spacy-stanza` — it
-returns native spaCy `Doc` objects, so every bitig feature extractor works unchanged. Native
-readability formulas are implemented for each language (Ateşman + Bezirci–Yılmaz for Turkish,
-Flesch-Amstad + Wiener Sachtextformel for German, Fernández-Huerta + Szigriszt-Pazos for
-Spanish, Kandel–Moles + LIX for French). Function-word lists are regenerated reproducibly from
-Universal Dependencies treebanks via `scripts/regenerate_function_words.py`. See
-[`docs/site/concepts/languages.md`](docs/site/concepts/languages.md) and the
-[Turkish tutorial](docs/site/tutorials/turkish.md).
+| **Corpus** | `.txt` + TSV metadata, filtering and grouping, a corpus hash that binds each text to its id and metadata |
+| **Features** | most frequent words, character / word / POS n-grams, dependency bigrams, function words, punctuation, sentence length, readability (6 English indices plus native Turkish, German, Spanish and French formulas), 8 lexical-diversity indices, sentence and contextual embeddings |
+| **Methods** | Burrows, Eder, Eder Simple, Argamon, Cosine and Quadratic Delta; Zeta (classic, Eder); PCA, MDS, t-SNE, UMAP; Ward, k-means, HDBSCAN; bootstrap consensus trees; sklearn classifiers with stylometry-aware cross-validation (stratified, leave-one-author-out, leave-one-text-out); Bayesian Wallace–Mosteller and hierarchical group comparison |
+| **Forensic** | General Impostors and Unmasking verification; Sapkota character n-gram categories and Stamatatos text distortion for topic robustness; Platt / isotonic calibration to log-LRs; C_llr, AUC, c@1, F0.5u (PAN definitions), ECE, Brier, Tippett data; LR-framed HTML report with the ENFSI verbal scale |
+| **Languages** | English, Turkish, German, Spanish, French: per-language function words, readability and embedding defaults; Turkish parsing through Stanza (BOUN treebank) |
+| **Output** | `result.json` + Parquet tables + figures per method; HTML / Markdown reports; PDF export of case reports (`bitig[reports]`) |
 
 ## Forensic toolkit
 
-Forensic authorship research needs more than attribution — it needs **one-class
-verification**, **topic-invariant features**, and **evidential output framed as a
-likelihood ratio**. `bitig.forensic` ships these as a cohesive layer on top of the analysis
-methods:
-
 ```python
 from bitig.forensic import (
-    GeneralImpostors, Unmasking,        # verification
-    CategorizedCharNgramExtractor,      # Sapkota 2015 topic-invariant features
-    distort_corpus,                     # Stamatatos 2017 content masking
-    CalibratedScorer,                   # Platt / isotonic calibration
-    compute_pan_report,                 # AUC + c@1 + F0.5u + Brier + ECE + (cllr)
+    GeneralImpostors, Unmasking,       # authorship verification
+    CategorizedCharNgramExtractor,     # Sapkota et al. (2015) n-gram categories
+    distort_corpus,                    # Stamatatos (2017) text distortion
+    CalibratedScorer,                  # scores → calibrated log-LRs
+    compute_pan_report,                # PAN-style evaluation
 )
-from bitig.report import build_forensic_report  # LR-framed report template
 ```
 
-Every forensic method is classifier-agnostic — pair it with any bitig feature set and any
-Delta / Zeta / classify method. Every `Result` can carry six optional chain-of-custody
-metadata fields (`questioned_description`, `known_description`, `hypothesis_pair`,
-`acquisition_notes`, `custody_notes`, `source_hashes`) so a report traces back to its source
-material. See [`src/bitig/forensic/`](src/bitig/forensic/) for the full surface.
+A verification score is not a likelihood ratio. `CalibratedScorer` turns scores into log-LRs
+using a calibration set of same-author and different-author trials; isotonic calibration
+needs at least 20 trials per class and caps |log₁₀ LR| at log₁₀ of the calibration-set size.
+Report the LR of the case you are asked about, not an average over trials. The
+[forensic docs](https://fatihbozdag.github.io/bitig/forensic/) and the
+[PAN-CLEF tutorial](https://fatihbozdag.github.io/bitig/tutorials/pan-clef/) go through the
+full pipeline.
 
-## Forensic Lab: case workflow
+## Forensic Lab: cases
 
-For casework, `bitig case` keeps one directory per case: registered evidence with SHA-256
-custody hashes, a recipe-driven analysis run, an HTML report, and a seal over the case
-state, the report and the run outputs.
+`bitig case` keeps one directory per investigation: registered evidence with SHA-256
+custody hashes, a recipe-driven analysis, an HTML report and a seal.
 
 ```bash
-bitig case new …            # create a case directory
-bitig case add-evidence …   # register questioned / known texts (hashed on entry)
-bitig case run …            # run the case recipe; refuses if custody fails
-bitig case sign …           # render the report and seal the case
-bitig case verify …         # re-check custody, report, run outputs and seal
+bitig case new letter-2026 --title "Disputed letter" --examiner "A. Examiner" --recipe imposters_lr
+bitig case add-evidence letter-2026 questioned.txt --role questioned
+bitig case add-evidence letter-2026 known_a1.txt known_a2.txt --role known --author A
+bitig case add-evidence letter-2026 known_b1.txt known_b2.txt --role known --author B
+python -c "from bitig.cases import Case; Case.load('$HOME/.bitig/cases/letter-2026').set_param('methods[verify].candidate', 'A')"
+bitig case run letter-2026       # refuses if any evidence file changed since registration
+bitig case sign letter-2026      # renders the report and seals the case (read-only afterwards)
+bitig case verify letter-2026    # re-checks custody, report, run outputs and the seal
 ```
 
-The default seal (Null plugin) is an integrity record, not tamper-evidence: anyone with
-write access to the case can recompute it, so `bitig case verify` reports such cases as
-UNSIGNED (exit 3) rather than verified (exit 0). An HMAC seal needs a secret key. General
-Impostors scores are not likelihood ratios, and the report says so. See the
-[Forensic Lab page](https://fatihbozdag.github.io/bitig/forensic/case-workflow/) for the full
-workflow (evidence re-acknowledgement, forking, verification output).
+`bitig case verify` exits with 0 for a verified HMAC seal, 1 if the case is not signed,
+2 if any check fails, 3 for an intact Null seal and 4 for an HMAC seal checked without its
+key. The default (Null) seal is an integrity record only: anyone with write access can
+recompute it. Sign with `--signature-plugin hmac` and a key in `BITIG_SIGNATURE_KEY` for a
+tamper-evident seal. Changed evidence must be re-acknowledged with a reason, which goes into
+a sealed custody log, and a signed case can only be forked. Case parameters (here the
+candidate author for General Impostors) are set in the GUI's Method step or with
+`Case.set_param`; there is no CLI command for them yet. See the
+[Forensic Lab page](https://fatihbozdag.github.io/bitig/forensic/case-workflow/).
+
+## Desktop GUI
+
+```bash
+pip install "bitig[gui]"
+bitig gui              # native window; --no-native opens a browser tab instead
+```
+
+The GUI has two parts. The study pages (**Ingest → Study → Run → Results**, plus
+**Forensic**) build and run a `study.yaml`. The **Forensic Lab** walks a case through
+Evidence, Method, Run, Findings and Report. The GUI can seal a case only with the Null
+plugin; use the CLI for HMAC seals.
+
+<p align="center">
+  <img src="examples/quickstart/results/demo/pca/pca.png" alt="PCA of four Hamilton and four Madison Federalist papers on 200 most frequent words" width="70%">
+</p>
+<p align="center"><sub>PCA of the eight training papers in the quickstart. With this few essays the two authors do not separate cleanly; the attribution of No. 50 comes from Burrows Delta.</sub></p>
 
 ## Documentation
 
-Full MkDocs Material site — **<https://fatihbozdag.github.io/bitig/>**
+**<https://fatihbozdag.github.io/bitig/>**, in English and Turkish.
 
-- [Getting started](https://fatihbozdag.github.io/bitig/getting-started/) — install, five-command quickstart
-- [Concepts](https://fatihbozdag.github.io/bitig/concepts/) — Corpus / Features / Languages / Methods / Results & provenance
-- [Languages](https://fatihbozdag.github.io/bitig/concepts/languages/) — EN / TR / DE / ES / FR registry, adding a sixth language
-- [Forensic toolkit](https://fatihbozdag.github.io/bitig/forensic/) — verification, calibration, topic-invariance, PAN evaluation, reporting
-- [Turkish tutorial](https://fatihbozdag.github.io/bitig/tutorials/turkish/) — end-to-end Turkish authorship walkthrough
-- [PAN-CLEF verification tutorial](https://fatihbozdag.github.io/bitig/tutorials/pan-clef/) — end-to-end runnable pipeline
-- [Federalist tutorial](https://fatihbozdag.github.io/bitig/tutorials/federalist/) — reproduce Mosteller & Wallace (1964)
-- [CLI + API reference](https://fatihbozdag.github.io/bitig/reference/)
-
-Serve locally:
-
-```bash
-uv pip install "bitig[docs]"
-mkdocs serve             # http://127.0.0.1:8000
-```
-
-CI (`.github/workflows/docs.yml`) builds the site strictly on every push + PR and
-deploys to GitHub Pages on every merge to `main`.
+- [Getting started](https://fatihbozdag.github.io/bitig/getting-started/)
+- [Concepts](https://fatihbozdag.github.io/bitig/concepts/): corpus, features, languages, methods, results and provenance
+- [Forensic toolkit](https://fatihbozdag.github.io/bitig/forensic/): verification, calibration, topic invariance, PAN evaluation, reporting, the case workflow
+- Tutorials: [Federalist Papers](https://fatihbozdag.github.io/bitig/tutorials/federalist/), [PAN-CLEF verification](https://fatihbozdag.github.io/bitig/tutorials/pan-clef/), [Turkish stylometry](https://fatihbozdag.github.io/bitig/tutorials/turkish/)
+- [Reference](https://fatihbozdag.github.io/bitig/reference/): CLI, `study.yaml` schema, Python API
 
 ## Status
 
-**Phase 5 landed** — visualisation, Jinja2 reports, declarative runner (`bitig run`), and a
-Rich-based interactive `bitig shell`.
+The latest release on PyPI is **0.3.1**. `main` carries unreleased changes, several of
+which change results or behaviour (case seals, General Impostors defaults, calibration,
+PAN metrics, feature scaling). [`CHANGELOG.md`](CHANGELOG.md) lists them, marked
+**[results]** and **[breaking]**.
 
-**Forensic phase landed** — six additions (General Impostors, LR + calibration + evaluation
-metrics, Sapkota categories + Stamatatos distortion, Unmasking, chain-of-custody + forensic
-report template, PAN harness).
+## License and citation
 
-**Multi-language phase landed** — first-class support for English, Turkish, German, Spanish,
-French behind a `bitig.languages` registry. Turkish parses through Stanford Stanza (BOUN
-treebank) via `spacy-stanza`, returning native spaCy `Doc` objects so every feature extractor
-works unchanged. Native readability formulas per language (Ateşman + Bezirci–Yılmaz for
-Turkish, Flesch-Amstad + Wiener Sachtextformel for German, Fernández-Huerta + Szigriszt-Pazos
-for Spanish, Kandel–Moles + LIX for French). Function-word lists generated reproducibly from
-UD closed-class tokens.
-
-**Docs site landed** — MkDocs Material site with Concepts, Forensic toolkit, Federalist +
-PAN-CLEF + Turkish tutorials, and CLI/API reference, backed by an automated test suite
-(see the CI badge above).
-
-**Docs site is multilingual** — English (default) and Turkish (`/tr/`) launched via
-`mkdocs-static-i18n`; DE/ES/FR infrastructure ready, translation content deferred.
-
-**Released on PyPI** — `pip install bitig`. See [`CHANGELOG.md`](CHANGELOG.md) for unreleased changes.
-
-See [`docs/superpowers/specs/2026-04-17-bitig-stylometry-package-design.md`](docs/superpowers/specs/2026-04-17-bitig-stylometry-package-design.md) for the full design.
-
-## License
-
-BSD-3-Clause. See [`LICENSE`](LICENSE).
-
-## Citation
-
-If you use bitig in published work, please cite it — see [`CITATION.cff`](CITATION.cff).
+BSD-3-Clause; see [`LICENSE`](LICENSE). If you use bitig in published work, please cite it:
+see [`CITATION.cff`](CITATION.cff).
 
 ## References
 
-The forensic toolkit implements methods from the following peer-reviewed sources:
-
-- Koppel, M., & Winter, Y. (2014). Determining if two documents are written by the same
-  author. *JASIST*, 65(1), 178–187.
+- Burrows, J. (2002). 'Delta': a measure of stylistic difference and a guide to likely
+  authorship. *Literary and Linguistic Computing*, 17(3), 267–287.
+- Mosteller, F., & Wallace, D. L. (1964). *Inference and Disputed Authorship: The Federalist*.
+  Addison-Wesley.
 - Koppel, M., & Schler, J. (2004). Authorship verification as a one-class classification
   problem. *Proceedings of ICML 2004*, 489–495.
+- Koppel, M., & Winter, Y. (2014). Determining if two documents are written by the same
+  author. *JASIST*, 65(1), 178–187.
 - Sapkota, U., Bethard, S., Montes-y-Gómez, M., & Solorio, T. (2015). Not all character
   n-grams are created equal. *Proceedings of NAACL-HLT 2015*, 93–102.
-- Stamatatos, E. (2013). On the robustness of authorship attribution based on character
-  n-gram features. *Journal of Law and Policy*, 21(2), 421–439.
 - Stamatatos, E. (2017). Authorship attribution using text distortion. *Proceedings of
   EACL 2017*, 1138–1149.
+- Platt, J. C. (1999). Probabilistic outputs for SVMs and comparisons to regularized
+  likelihood methods. *Advances in Large Margin Classifiers*, 61–74.
 - Brümmer, N., & du Preez, J. (2006). Application-independent evaluation of speaker
   detection. *Computer Speech & Language*, 20(2–3), 230–275.
 - Peñas, A., & Rodrigo, A. (2011). A simple measure to assess non-response. *Proceedings of
   ACL-HLT 2011*, 1415–1424.
-- Platt, J. C. (1999). Probabilistic outputs for SVMs and comparisons to regularized
-  likelihood methods. *Advances in Large Margin Classifiers*, 61–74.
-- ENFSI (2015). *Guideline for evaluative reporting in forensic science*; Nordgaard, A.,
-  Ansell, R., Drotz, W., & Jaeger, L. (2012). Scale of conclusions for the value of
-  evidence. *Law, Probability and Risk*, 11(1), 1–24.
+- Vergeer, P., van Es, A., de Jongh, A., Alberink, I., & Stoel, R. (2016). Numerical
+  likelihood ratios outputted by LR systems are often based on extrapolation: when to stop
+  extrapolating? *Science & Justice*, 56(6), 482–491.
+- ENFSI (2015). *Guideline for evaluative reporting in forensic science*.
