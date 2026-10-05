@@ -5,8 +5,8 @@ hide:
 
 # bitig
 
-<p align="center">
-  <img src="assets/bitig-banner.svg" alt="bitig — computational stylometry" style="max-width: 100%;">
+<p align="center" markdown>
+  ![bitig — computational stylometry](assets/bitig-banner.svg){ style="max-width: 100%;" }
 </p>
 
 `bitig` is a Python package and command-line tool for **authorship attribution**,
@@ -21,8 +21,8 @@ The name is the Old Turkic word for *writing* or *inscription*, the kind cut int
 
 ## Architecture
 
-<p align="center">
-  <img src="assets/bitig-architecture.svg" alt="corpus → features → methods → forensic → output" style="max-width: 100%;">
+<p align="center" markdown>
+  ![corpus → features → methods → forensic → output](assets/bitig-architecture.svg){ style="max-width: 100%;" }
 </p>
 
 Feature extractors, the Delta classifiers and the Bayesian attributor are scikit-learn
