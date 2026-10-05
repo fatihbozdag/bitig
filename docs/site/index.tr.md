@@ -5,8 +5,8 @@ hide:
 
 # bitig
 
-<p align="center">
-  <img src="assets/bitig-banner.svg" alt="bitig — hesaplamalı stilometri" style="max-width: 100%;">
+<p align="center" markdown>
+  ![bitig — hesaplamalı stilometri](assets/bitig-banner.svg){ style="max-width: 100%;" }
 </p>
 
 `bitig`, **yazar tespiti**, **yazar grupları arasında üslup karşılaştırması** ve **adli
@@ -21,8 +21,8 @@ kazınan türden metni karşılayan sözcükten gelir.
 
 ## Mimari
 
-<p align="center">
-  <img src="assets/bitig-architecture.svg" alt="derlem → öznitelikler → yöntemler → adli → çıktı" style="max-width: 100%;">
+<p align="center" markdown>
+  ![derlem → öznitelikler → yöntemler → adli → çıktı](assets/bitig-architecture.svg){ style="max-width: 100%;" }
 </p>
 
 Öznitelik çıkarıcılar, Delta sınıflandırıcıları ve Bayes yazar tespit modeli birer
