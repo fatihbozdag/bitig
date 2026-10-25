@@ -45,7 +45,7 @@ Optional extras:
 | Extra | Adds |
 |---|---|
 | `bitig[cluster]` | UMAP and HDBSCAN |
-| `bitig[bayesian]` | PyMC + arviz (Wallace–Mosteller, hierarchical group comparison) |
+| `bitig[bayesian]` | PyMC + arviz for hierarchical group comparison (the Wallace–Mosteller attributor needs no extra) |
 | `bitig[embeddings]` | sentence-transformers and contextual BERT embeddings |
 | `bitig[viz]` | plotly, kaleido, ete3 |
 | `bitig[interactive]` | plotly only, for interactive figures |

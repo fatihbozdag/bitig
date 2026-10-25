@@ -90,6 +90,7 @@ plugins:
             CLI: Komut satırı
             study.yaml schema: study.yaml şeması
             Python API: Python API
+            Troubleshooting: Sorun giderme
   - mkdocstrings:
       handlers:
         python:
@@ -159,3 +160,4 @@ nav:
       - CLI: reference/cli.md
       - study.yaml schema: reference/config.md
       - Python API: reference/api.md
+  - Troubleshooting: troubleshooting.md
