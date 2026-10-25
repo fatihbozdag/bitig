@@ -20,7 +20,7 @@ def gui_command(
     height: int = typer.Option(800, "--height", help="Native window height in pixels."),
     dev: bool = typer.Option(False, "--dev", help="Enable hot reload (for GUI development)."),
 ) -> None:
-    """Launch the bitig desktop GUI. Requires the `bitig[gui]` extra."""
+    r"""Launch the bitig desktop GUI. Requires the `bitig\[gui]` extra."""
     try:
         from bitig.gui import launch
     except ImportError as exc:
