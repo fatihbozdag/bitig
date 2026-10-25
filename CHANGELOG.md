@@ -89,6 +89,22 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - Unknown study parameters and unsupported feature types are refused at load time;
   `method:` on a Delta method is a deprecated alias for `variant:`. **[breaking]**
 
+### Dependencies and security
+
+- `import bitig` no longer imports sentence-transformers at module load. With the
+  `turkish` extra's torch < 2.6, transformers 5.20 failed on import with a `NameError`,
+  which the `ImportError` guard did not catch, so `import bitig` itself crashed for
+  `bitig[turkish,embeddings]` installs (weekly Turkish CI run of 2026-10-19).
+- The `turkish` extra caps `transformers<5.19`: 5.19 needs torch >= 2.6 to build a model
+  and 5.20 fails at import; 5.18 is the newest release that runs on torch 2.5.
+- The `reports` extra requires `weasyprint>=70`, which fixes the advisories reported
+  against 68.x.
+- `uv.lock` refreshed: Pillow 13.0.0 (six GitHub advisories against 12.x, one critical),
+  WeasyPrint 70.0, nltk 3.10.4, urllib3, aiohttp, virtualenv and others. `pip-audit`
+  over all extras goes from 19 flagged packages to 2, torch 2.5.1 and Stanza 1.6.1,
+  which the `turkish` extra pins (spacy-stanza 1.0.4 caps stanza < 1.7, and stanza 1.6
+  does not load on torch >= 2.6).
+
 ### Documentation
 
 - New Forensic Lab page (EN/TR) documenting the case workflow, seals and `bitig case verify`.
