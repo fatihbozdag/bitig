@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 (2026-10-26)
 
 Remediation of the 2026-09-26 audit (`design/audit-2026-09-26.md`). Several changes
 alter numbers bitig produces or refuse inputs it used to accept; they are marked

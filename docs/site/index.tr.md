@@ -84,11 +84,11 @@ Dokümantasyon İngilizce ve Türkçedir (`/tr/`).
 
 ## Durum
 
-PyPI'daki son sürüm **0.3.1**'dir (`pip install bitig`). `main` dalı henüz yayımlanmamış
-değişiklikler içerir; bunların bir kısmı sonuçları ya da davranışı değiştirir (vaka
-mühürleri, General Impostors varsayılanları, kalibrasyon, PAN ölçütleri, öznitelik
-ölçekleme). [`CHANGELOG.md`](https://github.com/fatihbozdag/bitig/blob/main/CHANGELOG.md)
-bunları **[results]** ve **[breaking]** etiketleriyle listeler.
+PyPI'daki son sürüm **0.3.2**'dir (`pip install bitig`). Bu sürümdeki değişikliklerin bir
+kısmı, 0.3.1'e göre sonuçları ya da davranışı değiştirir (vaka mühürleri, General Impostors
+varsayılanları, kalibrasyon, PAN ölçütleri, öznitelik ölçekleme);
+[`CHANGELOG.md`](https://github.com/fatihbozdag/bitig/blob/main/CHANGELOG.md) bunları
+**[results]** ve **[breaking]** etiketleriyle listeler.
 
 ## Lisans ve atıf
 

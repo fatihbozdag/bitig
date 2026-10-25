@@ -84,9 +84,9 @@ The documentation is in English and Turkish (`/tr/`).
 
 ## Status
 
-The latest release on PyPI is **0.3.1** (`pip install bitig`). `main` carries unreleased
-changes, several of which change results or behaviour (case seals, General Impostors
-defaults, calibration, PAN metrics, feature scaling).
+The latest release on PyPI is **0.3.2** (`pip install bitig`). Several of its changes alter
+results or behaviour relative to 0.3.1 (case seals, General Impostors defaults, calibration,
+PAN metrics, feature scaling);
 [`CHANGELOG.md`](https://github.com/fatihbozdag/bitig/blob/main/CHANGELOG.md) lists them,
 marked **[results]** and **[breaking]**.
 

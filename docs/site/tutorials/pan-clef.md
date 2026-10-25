@@ -176,7 +176,8 @@ print(f"mean score (target trials): {scores[labels == 1].mean():.3f}")
 print(f"mean score (non-target):    {scores[labels == 0].mean():.3f}")
 ```
 
-Output on this synthetic setup (bitig 0.3.1, numpy 2.4.6, scikit-learn 1.9.1):
+Output on this synthetic setup (bitig 0.3.2 with numpy 2.4.6 and scikit-learn 1.9.1; numpy 2.4.4
+with scikit-learn 1.8.0 gives the same output):
 
 ```
 Corpus: 80 documents from 40 authors

@@ -181,10 +181,9 @@ plugin; use the CLI for HMAC seals.
 
 ## Status
 
-The latest release on PyPI is **0.3.1**. `main` carries unreleased changes, several of
-which change results or behaviour (case seals, General Impostors defaults, calibration,
-PAN metrics, feature scaling). [`CHANGELOG.md`](CHANGELOG.md) lists them, marked
-**[results]** and **[breaking]**.
+The latest release on PyPI is **0.3.2**. Several of its changes alter results or behaviour
+relative to 0.3.1 (case seals, General Impostors defaults, calibration, PAN metrics, feature
+scaling); [`CHANGELOG.md`](CHANGELOG.md) lists them, marked **[results]** and **[breaking]**.
 
 ## License and citation
 
