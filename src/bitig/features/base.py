@@ -104,7 +104,9 @@ class BaseFeatureExtractor(BaseEstimator, TransformerMixin):
         """Return (X, feature_names) for the given corpus."""
 
     def fit(self, corpus: Corpus | list, y: Any = None) -> BaseFeatureExtractor:
-        self._fit(_ensure_corpus(corpus))
+        corpus = _ensure_corpus(corpus)
+        self._fit(corpus)
+        self._training_corpus_hash = corpus.hash()
         return self
 
     def transform(self, corpus: Corpus | list) -> FeatureMatrix:
@@ -130,5 +132,24 @@ class BaseFeatureExtractor(BaseEstimator, TransformerMixin):
             "config": self.get_params(),
             "corpus_hash": corpus.hash(),
             "feature_type": self.feature_type,
+            # The same config fitted on different texts yields a different vocabulary and
+            # different scaling statistics, so the hash binds the training corpus and the
+            # fitted state, not only the corpus being transformed.
+            "training_corpus_hash": getattr(self, "_training_corpus_hash", None),
+            "fitted_state": self._fitted_state(),
         }
         return hash_mapping(payload)
+
+    _FITTED_ATTRS = ("_vocabulary", "_words", "_column_means", "_column_stds", "_resolved_indices")
+
+    def _fitted_state(self) -> dict[str, Any]:
+        state: dict[str, Any] = {}
+        for name in self._FITTED_ATTRS:
+            value = getattr(self, name, None)
+            if value is not None:
+                state[name] = value.tolist() if isinstance(value, np.ndarray) else list(value)
+        vectorizer = getattr(self, "_vectorizer", None)
+        vocabulary = getattr(vectorizer, "vocabulary_", None)
+        if vocabulary is not None:
+            state["vectorizer_vocabulary"] = sorted((k, int(v)) for k, v in vocabulary.items())
+        return state

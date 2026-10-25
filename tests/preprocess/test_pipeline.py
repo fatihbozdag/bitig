@@ -140,3 +140,33 @@ def test_pipeline_exclude_warns_on_spacy_stanza_backend(
     call_args = mock_log.warning.call_args
     fmt = call_args.args[0] if call_args.args else ""
     assert "exclude" in fmt and "ignored" in fmt
+
+
+def test_cache_key_binds_the_model_version(tmp_path) -> None:
+    # Upgrading a model package under the same spaCy release must not reuse old parses.
+    import spacy
+
+    from bitig.corpus import Document
+    from bitig.preprocess.pipeline import SpacyPipeline
+
+    first, second = SpacyPipeline(cache_dir=tmp_path), SpacyPipeline(cache_dir=tmp_path)
+    first._nlp, second._nlp = spacy.blank("en"), spacy.blank("en")
+    first._nlp.meta["version"], second._nlp.meta["version"] = "1.0.0", "1.0.1"
+    doc = Document("a", "Hello world.")
+    assert first._key(doc) != second._key(doc)
+
+
+def test_unreadable_checksum_valid_entry_is_reparsed(tmp_path) -> None:
+    # A checksum-valid entry that is not a DocBin (e.g. from an incompatible spaCy) is a miss.
+    import spacy
+
+    from bitig.corpus import Corpus, Document
+    from bitig.preprocess.pipeline import SpacyPipeline
+
+    pipe = SpacyPipeline(cache_dir=tmp_path)
+    pipe._nlp = spacy.blank("en")
+    doc = Document("a", "Hello world.")
+    pipe.cache.put(pipe._key(doc), b"not a docbin")
+    (parsed,) = list(pipe.parse(Corpus([doc])).spacy_docs())
+    assert parsed.text == doc.text
+    assert pipe.cache.get(pipe._key(doc)) != b"not a docbin"  # replaced by the fresh parse

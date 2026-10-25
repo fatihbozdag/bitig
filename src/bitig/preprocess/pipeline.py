@@ -123,7 +123,8 @@ class SpacyPipeline:
         return f"spacy={self.spacy_version};model={model_version}"
 
     def _key(self, doc: Document) -> str:
-        return cache_key(doc.hash, self.model, self.backend_version, self.exclude)
+        model_version = str(self.nlp.meta.get("version", ""))
+        return cache_key(doc.hash, self.model, self.backend_version, self.exclude, model_version)
 
     def parse(self, corpus: Corpus) -> ParsedCorpus:
         parsed: list[Doc | None] = []
@@ -131,10 +132,19 @@ class SpacyPipeline:
         to_parse_texts: list[str] = []
 
         for i, doc in enumerate(corpus.documents):
-            cached = self.cache.get(self._key(doc))
+            key = self._key(doc)
+            cached = self.cache.get(key)
+            spacy_doc = None
             if cached is not None:
-                bin_ = DocBin().from_bytes(cached)
-                (spacy_doc,) = list(bin_.get_docs(self.nlp.vocab))
+                try:
+                    (spacy_doc,) = list(DocBin().from_bytes(cached).get_docs(self.nlp.vocab))
+                except Exception:
+                    # Checksum-valid but unreadable (e.g. written by an incompatible spaCy):
+                    # drop it and re-parse instead of failing the run.
+                    _log.warning("dropping unreadable DocBin cache entry for %s", doc.id)
+                    self.cache.drop(key)
+                    spacy_doc = None
+            if spacy_doc is not None:
                 parsed.append(spacy_doc)
             else:
                 parsed.append(None)

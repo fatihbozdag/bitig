@@ -67,3 +67,42 @@ def test_feature_matrix_len_is_n_documents():
 def test_feature_matrix_n_features_property():
     fm = _fm(np.zeros((2, 7)), [f"f{i}" for i in range(7)])
     assert fm.n_features == 7
+
+
+def test_provenance_hash_binds_the_training_corpus() -> None:
+    # Same config, same target, different training texts -> different vocabulary, different hash.
+    from bitig.corpus import Corpus, Document
+    from bitig.features import MFWExtractor
+
+    target = Corpus([Document("t", "alpha beta")])
+    a = MFWExtractor(n=1, scale="none").fit(Corpus([Document("a", "alpha")])).transform(target)
+    b = MFWExtractor(n=1, scale="none").fit(Corpus([Document("b", "beta")])).transform(target)
+    assert a.feature_names != b.feature_names
+    assert a.provenance_hash != b.provenance_hash
+
+
+def test_provenance_hash_binds_scaling_statistics() -> None:
+    import numpy as np
+
+    from bitig.corpus import Corpus, Document
+    from bitig.features import MFWExtractor
+
+    corpus = Corpus([Document("a", "alpha alpha beta"), Document("b", "alpha beta beta")])
+    target = Corpus([Document("t", "alpha beta")])
+    extractor = MFWExtractor(n=2).fit(corpus)
+    before = extractor.transform(target)
+    extractor._column_stds = extractor._column_stds * 2
+    after = extractor.transform(target)
+    np.testing.assert_array_equal(before.X, after.X)  # target sits at the mean: z = 0 either way
+    assert before.provenance_hash != after.provenance_hash
+
+
+def test_provenance_hash_is_stable_across_identical_fits() -> None:
+    from bitig.corpus import Corpus, Document
+    from bitig.features import MFWExtractor
+
+    corpus = Corpus([Document("a", "alpha alpha beta"), Document("b", "alpha beta gamma")])
+    assert (
+        MFWExtractor(n=2).fit_transform(corpus).provenance_hash
+        == MFWExtractor(n=2).fit_transform(corpus).provenance_hash
+    )
