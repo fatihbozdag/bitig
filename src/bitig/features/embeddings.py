@@ -15,6 +15,7 @@ at fit time (so `SentenceEmbeddingExtractor()` on a Turkish corpus picks the Tur
 
 from __future__ import annotations
 
+import importlib.util
 from typing import Any, Literal
 
 import numpy as np
@@ -22,12 +23,11 @@ import numpy as np
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
 
-try:
-    from sentence_transformers import SentenceTransformer
-
-    _sentence_transformers_available = True
-except ImportError:
-    _sentence_transformers_available = False
+# Probe for the extra without importing it: importing sentence-transformers pulls in
+# transformers and torch, and an incompatible pair (transformers >= 5.19 on the torch < 2.6
+# that bitig[turkish] pins) fails with NameError rather than ImportError. A module-level
+# import therefore made `import bitig` itself crash; the import now happens on first use.
+_sentence_transformers_available = importlib.util.find_spec("sentence_transformers") is not None
 
 Pool = Literal["mean", "cls", "max"]
 
@@ -68,6 +68,8 @@ class SentenceEmbeddingExtractor(BaseFeatureExtractor):
     def _load_encoder(self) -> Any:
         if self._encoder is None:
             assert self.model is not None, "call _resolve_model(corpus) before _load_encoder()"
+            from sentence_transformers import SentenceTransformer
+
             self._encoder = SentenceTransformer(self.model, device=self.device)
         return self._encoder
 
