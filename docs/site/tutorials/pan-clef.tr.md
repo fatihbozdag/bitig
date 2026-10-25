@@ -176,7 +176,8 @@ print(f"mean score (target trials): {scores[labels == 1].mean():.3f}")
 print(f"mean score (non-target):    {scores[labels == 0].mean():.3f}")
 ```
 
-Bu yapay kurulumdaki çıktı (bitig 0.3.1, numpy 2.4.6, scikit-learn 1.9.1):
+Bu yapay kurulumdaki çıktı (numpy 2.4.6 ve scikit-learn 1.9.1 ile bitig 0.3.2; numpy 2.4.4 ve
+scikit-learn 1.8.0 aynı çıktıyı verir):
 
 ```
 Corpus: 80 documents from 40 authors
