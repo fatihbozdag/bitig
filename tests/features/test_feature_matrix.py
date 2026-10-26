@@ -81,22 +81,6 @@ def test_provenance_hash_binds_the_training_corpus() -> None:
     assert a.provenance_hash != b.provenance_hash
 
 
-def test_provenance_hash_binds_scaling_statistics() -> None:
-    import numpy as np
-
-    from bitig.corpus import Corpus, Document
-    from bitig.features import MFWExtractor
-
-    corpus = Corpus([Document("a", "alpha alpha beta"), Document("b", "alpha beta beta")])
-    target = Corpus([Document("t", "alpha beta")])
-    extractor = MFWExtractor(n=2).fit(corpus)
-    before = extractor.transform(target)
-    extractor._column_stds = extractor._column_stds * 2
-    after = extractor.transform(target)
-    np.testing.assert_array_equal(before.X, after.X)  # target sits at the mean: z = 0 either way
-    assert before.provenance_hash != after.provenance_hash
-
-
 def test_provenance_hash_is_stable_across_identical_fits() -> None:
     from bitig.corpus import Corpus, Document
     from bitig.features import MFWExtractor

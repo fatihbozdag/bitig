@@ -56,7 +56,8 @@ Her `Result`, şunları içeren bir `Provenance` kaydı taşır:
   yapmadığı için `"none (no spaCy parsing in this run)"` kaydeder)
 - sonucu biçimlendiren kütüphanelerin sürümleri ve varsa NLTK cmudict dosyasının sağlama özeti
 - derlem özeti (her metni kimliğine ve üstverisine bağlar) ve onu üreten özetleme şeması
-- öznitelik özeti (çıkarıcı, yapılandırma + derlem özeti)
+- öznitelik özeti (çıkarıcı, yapılandırma, dönüştürülen derlemin özeti ile eğitim derlemi ve
+  öğrenilen sözcük dağarcığı)
 - çalıştırmada kullanılan seed değeri
 - zaman damgası
 - çözümlenmiş `study.yaml` yapılandırması

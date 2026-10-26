@@ -134,13 +134,15 @@ class BaseFeatureExtractor(BaseEstimator, TransformerMixin):
             "feature_type": self.feature_type,
             # The same config fitted on different texts yields a different vocabulary and
             # different scaling statistics, so the hash binds the training corpus and the
-            # fitted state, not only the corpus being transformed.
+            # fitted vocabulary, not only the corpus being transformed.
             "training_corpus_hash": getattr(self, "_training_corpus_hash", None),
             "fitted_state": self._fitted_state(),
         }
         return hash_mapping(payload)
 
-    _FITTED_ATTRS = ("_vocabulary", "_words", "_column_means", "_column_stds", "_resolved_indices")
+    # Vocabularies and word lists only: scaling statistics follow from config + training
+    # corpus (already bound) and would make the hash sensitive to float rounding across CPUs.
+    _FITTED_ATTRS = ("_vocabulary", "_words", "_resolved_indices")
 
     def _fitted_state(self) -> dict[str, Any]:
         state: dict[str, Any] = {}

@@ -18,6 +18,11 @@ def fold_lower(text: str) -> str:
     This is deliberately not full Turkish casing: ASCII ``'I'`` still folds to
     ``'i'`` rather than the dotless ``'ı'``, because the tokeniser is
     language-neutral and must not corrupt English ``'I'``.
+
+    Every combining mark that survives NFC is dropped. That is lossless for the
+    supported languages (en, tr, de, es, fr), whose accented letters all compose,
+    but would strip marks that never compose (e.g. Arabic harakat, Devanagari
+    vowel signs) if those scripts were added.
     """
     folded = unicodedata.normalize("NFC", text.lower())
     return "".join(ch for ch in folded if not unicodedata.combining(ch))

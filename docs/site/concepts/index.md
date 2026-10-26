@@ -59,7 +59,8 @@ Every `Result` carries a `Provenance` record with:
 - versions of the result-shaping libraries, plus a checksum of NLTK's cmudict when present
 - corpus hash (binds each text to its id and metadata) and the hashing scheme that
   produced it
-- feature hash (extractor, config and corpus hash)
+- feature hash (extractor, config, the transformed corpus's hash, and the training corpus
+  and fitted vocabulary)
 - seed used for the run
 - timestamp
 - resolved `study.yaml` config

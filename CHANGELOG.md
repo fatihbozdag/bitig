@@ -73,12 +73,12 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - **[results]** `HierarchicalGroupComparison` uses `sigma_group` for the author spread (it
   was created but unused) and standardises each feature, returning the mean/SD used.
   `BayesianAuthorshipAttributor` rejects negative or NaN input at predict time too.
-- Feature provenance hashes bind the training corpus and the fitted state (vocabulary,
-  word list, scaling statistics): the same config fitted on different texts, or with
-  different scaling statistics, used to give the same `provenance_hash`. Every feature hash
+- Feature provenance hashes bind the training corpus and the fitted vocabulary: the same
+  config fitted on different texts used to give the same `provenance_hash`. Every feature hash
   changes value once (ported from #57).
-- The spaCy parse cache key includes the loaded model's version, so upgrading a model
-  package no longer reuses stale parses, and a checksum-valid entry that cannot be decoded
+- The spaCy parse cache key includes the loaded pipeline's version, so upgrading a spaCy
+  model package no longer reuses stale parses (Stanza model upgrades are still keyed only
+  by the `stanza` library version), and a checksum-valid entry that cannot be decoded
   is dropped and re-parsed instead of failing the run. Existing caches are re-parsed once
   (ported from #57).
 - **[results]** Turkish dotted capital İ no longer fragments tokens: `str.lower()` turns
