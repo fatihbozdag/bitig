@@ -27,6 +27,13 @@ def test_gui_help_describes_native_and_no_native() -> None:
     assert "--port" in result.stdout
 
 
+def test_gui_help_names_the_extra() -> None:
+    # Rich markup used to consume "[gui]" as a style tag, printing "the `bitig` extra".
+    result = runner.invoke(app, ["gui", "--help"], env=_WIDE_ENV)
+    assert result.exit_code == 0
+    assert "bitig[gui]" in result.stdout
+
+
 def test_gui_fails_cleanly_without_extra(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """If nicegui is not installed, the command exits 1 with a helpful error."""
     import builtins

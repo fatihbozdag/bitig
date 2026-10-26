@@ -11,6 +11,7 @@ import numpy as np
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
 from bitig.languages import LANGUAGES
+from bitig.plumbing.textnorm import fold_lower
 
 Scale = Literal["none", "zscore", "l1", "l2"]
 
@@ -27,7 +28,7 @@ def _tokens(text: str, index: dict[str, int]) -> list[str]:
     listed function word, plus ``homme``; ``don't`` stays one token.
     """
     out: list[str] = []
-    for raw in _WORD_RE.findall(text.lower().replace(_RSQUO, "'")):
+    for raw in _WORD_RE.findall(fold_lower(text).replace(_RSQUO, "'")):
         if raw in index or "'" not in raw:
             out.append(raw)
             continue
@@ -88,7 +89,7 @@ class FunctionWordExtractor(BaseFeatureExtractor):
 
     def _fit(self, corpus: Corpus) -> None:
         if self.wordlist is not None:
-            self._words = [w.lower().replace(_RSQUO, "'") for w in self.wordlist]
+            self._words = [fold_lower(w).replace(_RSQUO, "'") for w in self.wordlist]
         else:
             lang = self.language or corpus.language
             self._words = _load_bundled_list(lang)
@@ -103,7 +104,7 @@ class FunctionWordExtractor(BaseFeatureExtractor):
 
     def _counts(self, corpus: Corpus) -> tuple[np.ndarray, np.ndarray]:
         """(function-word counts, total word tokens) per document."""
-        index = {w: i for i, w in enumerate(self._words)}
+        index = {fold_lower(w): i for i, w in enumerate(self._words)}
         X = np.zeros((len(corpus), len(self._words)), dtype=float)  # noqa: N806
         lengths = np.zeros(len(corpus), dtype=float)
         for row, doc in enumerate(corpus.documents):

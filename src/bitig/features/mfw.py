@@ -15,6 +15,7 @@ import numpy as np
 
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
+from bitig.plumbing.textnorm import fold_lower
 
 Scale = Literal["none", "zscore", "l1", "l2"]
 
@@ -23,7 +24,7 @@ _WORD_RE = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 
 def _tokenise(text: str, lowercase: bool) -> list[str]:
     tokens = _WORD_RE.findall(text)
-    return [t.lower() for t in tokens] if lowercase else tokens
+    return [fold_lower(t) for t in tokens] if lowercase else tokens
 
 
 class MFWExtractor(BaseFeatureExtractor):

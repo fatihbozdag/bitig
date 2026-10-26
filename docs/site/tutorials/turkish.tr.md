@@ -125,12 +125,12 @@ examples/turkish_seyfettin/results/seyfettin/
 
 ### MFW-500 sözcüksel uzayı üzerinde PCA
 
-PC1 varyansın **%8,0**'ini, PC2 ise **%6,9**'unu açıklar. Tek bir bileşen baskın değildir:
+PC1 varyansın **%8,0**'ini, PC2 ise **%6,8**'ini açıklar. Tek bir bileşen baskın değildir:
 tek bir yazarın iç sözcüksel varyansı pek çok küçük eksene yayılır.
 
-**En büyük yüklemeler — PC1**: `o`, `akşam`, `gül`, `bana`, `karşı`, `bakıyordu`, `nihayet`, `ki`.
+**En büyük yüklemeler — PC1**: `o`, `gül`, `akşam`, `karşı`, `bana`, `bakıyordu`, `ki`, `nihayet`.
 
-**En büyük yüklemeler — PC2**: `durdu`, `idi`, `başını`, `hafif`, `değildi`, `üzerine`, `şeyler`, `tarafa`.
+**En büyük yüklemeler — PC2**: `idi`, `durdu`, `başını`, `hafif`, `değildi`, `üzerine`, `şeyler`, `tarafa`.
 
 `pca/pca_biplot.png`, en büyük 15 yükleme vektörünü aynı 2-B izdüşüm üzerine bindirir.
 
@@ -140,14 +140,15 @@ Dendrogramı (`ward/dendrogram.png`) dört düz kümede kesmek şunu verir:
 
 | Küme | n  | Üyeler | Hikaye uzunluğu (belirteç) |
 |-----:|---:|---|---|
-| 0    | 17 | `and`, `antiseptik`, `elma`, `kasag`, … | medyan 1 152 (326–3 115) |
-| 1    |  9 | `aleko`, `bomba`, `ferman`, `forsa`, … | medyan 2 418 (1 096–4 455) |
+| 0    |  2 | `antiseptik`, `bir_kay_s_n_tesiri` | medyan 595 (551–639) |
+| 1    | 24 | `aleko`, `and`, `ask_dalgas`, `ask_ve_ayak_parmaklar`, … | medyan 1 794 (326–4 455) |
 | 2    |  1 | `keramet` | 508 |
 | 3    |  1 | `hediye` | 454 |
 
-Hikaye uzunluğu kümelerle örtüşür: iki tekil küme, derlemin en kısa ikinci ve üçüncü
-hikayeleridir; 1. küme ise uzun hikayeleri toplar. Kısa metinlerde z-skorlu MFW sayımları
-gürültülenir, dolayısıyla kısa hikayeler konudan bağımsız olarak ana buluttan uzaklaşır. Bu
+Hikaye uzunluğu kümelerle kısmen örtüşür: ana kümenin dışında kalan dört hikayenin tümü en
+kısa altı hikaye arasındadır (tekil kümeler en kısa ikinci ve üçüncü, iki hikayelik küme en
+kısa beşinci ve altıncı hikayelerdir); ancak en kısa hikayenin kendisi ana kümede kalır. Kısa metinlerde z-skorlu MFW sayımları
+gürültülenir, dolayısıyla kısa hikayeler konudan bağımsız olarak ana buluttan uzaklaşma eğilimindedir. Bu
 yöntem hatası değil — küçük *N* için MFW kestirim varyansının doğal sonucudur:
 
 > Türkçe kısa düzyazıda stilometri yapıyorsanız, alt küme yapısından

@@ -14,6 +14,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
+from bitig.plumbing.textnorm import fold_lower
 
 Scale = Literal["none", "zscore", "l1", "l2"]
 
@@ -122,7 +123,10 @@ class WordNgramExtractor(BaseFeatureExtractor):
         self._vectorizer = CountVectorizer(
             analyzer="word",
             ngram_range=_coerce_range(self.n),
-            lowercase=self.lowercase,
+            # sklearn's str.lower() turns "İ" into "i" + U+0307, which the token
+            # pattern then splits ("İstanbul" -> "i", "stanbul"); fold_lower does not.
+            lowercase=False,
+            preprocessor=fold_lower if self.lowercase else None,
             token_pattern=r"(?u)\b\w+\b",
             max_features=self.max_features,
         )

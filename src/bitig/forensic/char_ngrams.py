@@ -35,6 +35,7 @@ import numpy as np
 
 from bitig.corpus import Corpus
 from bitig.features.base import BaseFeatureExtractor
+from bitig.plumbing.textnorm import fold_lower
 
 Category = Literal[
     "prefix",  # word-start + char-internal ("the" in "there")
@@ -178,7 +179,7 @@ class CategorizedCharNgramExtractor(BaseFeatureExtractor):
     def _fit(self, corpus: Corpus) -> None:
         vocab: set[str] = set()
         for doc in corpus.documents:
-            text = doc.text.lower() if self.lowercase else doc.text
+            text = fold_lower(doc.text) if self.lowercase else doc.text
             for ngram, left, right in _iter_ngrams_with_context(text, self.n):
                 category = classify_ngram(ngram, left, right)
                 if category in self._keep_categories:
@@ -212,7 +213,7 @@ class CategorizedCharNgramExtractor(BaseFeatureExtractor):
         index = {tok: i for i, tok in enumerate(self._vocabulary)}
         X = np.zeros((len(corpus), len(self._vocabulary)), dtype=float)  # noqa: N806
         for row, doc in enumerate(corpus.documents):
-            text = doc.text.lower() if self.lowercase else doc.text
+            text = fold_lower(doc.text) if self.lowercase else doc.text
             for ngram, left, right in _iter_ngrams_with_context(text, self.n):
                 category = classify_ngram(ngram, left, right)
                 if category in self._keep_categories:

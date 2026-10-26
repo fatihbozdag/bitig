@@ -73,6 +73,21 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
 - **[results]** `HierarchicalGroupComparison` uses `sigma_group` for the author spread (it
   was created but unused) and standardises each feature, returning the mean/SD used.
   `BayesianAuthorshipAttributor` rejects negative or NaN input at predict time too.
+- Feature provenance hashes bind the training corpus and the fitted vocabulary: the same
+  config fitted on different texts used to give the same `provenance_hash`. Every feature hash
+  changes value once (ported from #57).
+- The spaCy parse cache key includes the loaded pipeline's version, so upgrading a spaCy
+  model package no longer reuses stale parses (Stanza model upgrades are still keyed only
+  by the `stanza` library version), and a checksum-valid entry that cannot be decoded
+  is dropped and re-parsed instead of failing the run. Existing caches are re-parsed once
+  (ported from #57).
+- **[results]** Turkish dotted capital İ no longer fragments tokens: `str.lower()` turns
+  "İ" into "i" + U+0307, so "İstanbul" split into "i" + "stanbul" and "İçin" counted as a
+  different word from "için". Every lowercasing tokenizer (MFW, Zeta, function words,
+  lexical diversity, dependency bigrams, word n-grams, Sapkota character n-grams,
+  Stamatatos distortion) now folds case with `plumbing.textnorm.fold_lower`. English
+  results are unchanged; the Turkish tutorial's PCA and Ward numbers are updated from a
+  re-run (ported from #57).
 - **[results]** Unmasking merges a trailing chunk shorter than half `chunk_size` into the
   previous chunk instead of counting it as a sample.
 - **[results]** Classification CV refits the feature extractor inside each training
@@ -126,3 +141,58 @@ alter numbers bitig produces or refuse inputs it used to accept; they are marked
   `mkdocs.yml` "edit this page" links now point at `docs/site/`.
 - [results] The Turkish example study no longer includes Burrows Delta, which failed on its
   single-author corpus.
+
+## 0.3.1 (2026-06-08)
+
+- Made the `bitig[turkish]` extra resolvable (Stanza / spacy-stanza / torch version pins).
+
+## 0.3.0 (2026-06-07)
+
+Forensic-methodology and robustness pass driven by an external audit
+(`design/audit-2026-06-03.md`).
+
+- Added the two-sided ENFSI/Nordgaard verbal scale for likelihood-ratio reporting,
+  centralised in `bitig.forensic.verbal_scale`.
+- Chain-of-custody seal hardening for case signing and verification.
+- Corrected four stylometry methods and several forensic details (General Impostors
+  fidelity, Delta resubstitution labelling, c@1).
+- Path-traversal hardening and atomic writes for the Forensic Lab case store.
+- Packaging: split out the `cluster` extra (UMAP, HDBSCAN); metadata and typing sweep.
+- GitHub Actions Trusted Publishing workflow for PyPI releases.
+- Added a CI job for the GUI, report and PDF tests. Its pytest step did not run until the
+  2026-09-26 audit remediation, because the job's mypy step failed first.
+
+## 0.2.0 (2026-05-17, tagged; not published to PyPI)
+
+- Forensic Lab case workflow (`bitig case new/list/open/status/fork/sign/verify`).
+- Plotly interactive renderers (rolling Delta, impostors, reliability diagram) and a
+  static/interactive toggle on the GUI Results page.
+
+## 0.1.1 (2026-05-04)
+
+- Package renamed from `tamga` to `bitig`.
+- NiceGUI desktop GUI, with General Impostors and rolling Delta pages.
+- Plotly renderers for the core figures (dendrogram, scatter, distance heatmap, confusion
+  matrix, PCA biplot, posterior heatmap); matplotlib PCA biplot, posterior heatmap,
+  reliability diagram, bootstrap consensus tree, rolling Delta and impostors plots.
+
+## 0.1.0 (2026-04-23)
+
+First release. The `v0.1.0` tag holds the package under its original name, `tamga`.
+
+- Corpus and features: `.txt` + TSV ingestion; MFW, character / word / POS n-grams,
+  dependency bigrams, function words, punctuation, readability, sentence length, lexical
+  diversity and optional sentence / contextual embeddings.
+- Methods: Burrows, Eder, Argamon, Cosine and Quadratic Delta; classic and Eder Zeta; PCA,
+  MDS, t-SNE, UMAP; Ward, k-means, HDBSCAN; bootstrap consensus trees; sklearn
+  classification with stylometry-aware CV; Bayesian Wallace–Mosteller and hierarchical group
+  comparison.
+- Forensic toolkit: General Impostors, Unmasking, Sapkota character n-gram categories,
+  Stamatatos distortion, Platt / isotonic calibration, LR and PAN evaluation metrics,
+  chain-of-custody provenance and an LR-framed HTML report template.
+- Languages: English, Turkish, German, Spanish and French behind the `languages` registry,
+  with native readability formulas and Turkish parsing through Stanza.
+- Orchestration: the declarative `study.yaml` runner (`run`), the Rich-based `shell`,
+  matplotlib figures and `Result` records (JSON, Parquet, figures).
+- Documentation: MkDocs Material site (EN and TR) with Federalist, PAN-CLEF and Turkish
+  tutorials.

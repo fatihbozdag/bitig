@@ -22,12 +22,15 @@ def cache_key(
     spacy_model: str,
     backend_version: str,
     excluded_components: list[str],
+    model_version: str = "",
 ) -> str:
     """Return a stable cache key for a (document, backend configuration) pair.
 
     `backend_version` is a structured string like 'spacy=3.7.2' (native spaCy backend) or
     'spacy_stanza=1.0.4;stanza=1.6.1' (Stanza-via-spacy-stanza backend). The native branch
     preserves the prior format so English caches built on older bitig versions remain valid.
+    `model_version` is the loaded pipeline's own version (``nlp.meta["version"]``), so
+    upgrading a model package under the same spaCy release does not reuse stale parses.
     """
     return hash_mapping(
         {
@@ -35,6 +38,7 @@ def cache_key(
             "model": spacy_model,
             "version": backend_version,
             "exclude": sorted(excluded_components),
+            "model_version": model_version,
         }
     )
 
@@ -73,6 +77,11 @@ class DocBinCache:
             sidecar.unlink(missing_ok=True)
             return None
         return payload
+
+    def drop(self, key: str) -> None:
+        """Remove an entry and its sidecar, if present."""
+        self._path(key).unlink(missing_ok=True)
+        self._sidecar(key).unlink(missing_ok=True)
 
     def put(self, key: str, payload: bytes) -> None:
         self._atomic_write(self._path(key), payload)
